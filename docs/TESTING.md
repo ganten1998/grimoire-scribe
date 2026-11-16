@@ -2596,6 +2596,14 @@ What they cannot show is the Scribe's own storage, so this round ships only once
 9. Only if step 1 said the storage takes symlinks, with Grimoire closed:
    `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
    `linked` among the templates. Remove the link.
+10. **The clipboard, the compaction lists, the shortcut files and the PDF cache** (the same read, since
+    #118). Lasso some ink, Copy, turn the page and Paste: it pastes. Take a notebook of two pages or more
+    that the PDF mirror has written (step 6's, if it has two pages; else change another one and close it
+    once with the mirror on), change one of its pages and close it: its
+    `bg: export of <id>: N pages, D drawn` line has D smaller than N (the other pages were found in the PDF
+    cache). Erase a word on a page, close the notebook and start Grimoire again: the log has no
+    `its list does not read` line. With shortcuts on and a keyboard at hand, a key of `shortcuts.ini` acts
+    as before.
 
 ## Hardening round (2026-11), invariants: the documents and the build's crate rule
 
@@ -2675,7 +2683,8 @@ import commits. The owner's check:
    `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
    listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
    that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
-   stays in `import/` and is read again up to three times.
+   stays in `import/` and is read again twice (three times in all), after which its row in the Import place
+   reads "Couldn't import PDF (see grimoire.log)." although its notebook exists.
 8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
    again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
    after it.", and it starts once the first has ended.
@@ -2725,6 +2734,72 @@ On the Scribe:
    X: the Library is in Atkinson.
 3. **Terminess after a crash.** As step 3 of "2.1.0-beta.2, fix round, F3", but tap Terminess and then Back:
    settings.ini has no `font=file:` line any more, and the next start does not load the font.
+
+## 2.2, Files' storage writes (issue #117): device checks
+
+Automated: the unit tests of `fsview.rs` (the name rules, the trash's names, the record read strictly, what an
+import holds), `bgjob.rs` (the jobs' paths) and `bgwork_copy.rs` (the job's path), and
+`rust/tests/test_fsview_writes.rs` (the allow-list's refusals, no replace, another writer at the name between
+the fallback's check and its rename, a case-only rename, a rename and a trash stopped half way, the busy check,
+trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
+its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
+reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
+`RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
+questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
+screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
+docs/KINDLE.md (How it fits in).
+
+1. **Does the storage take the no-replace rename?** KOReader's LuaJIT can make the call (`382` is
+   `renameat2` on the Scribe's 32-bit ARM kernel, `-100` the current folder, `1` the no-replace flag; if
+   KOReader is installed elsewhere, use its `luajit`):
+
+   ```
+   mkdir /mnt/us/grimoire/.probe && cd /mnt/us/grimoire/.probe && echo a > a && echo b > b
+   /mnt/us/koreader/luajit -e '
+   local ffi = require("ffi")
+   ffi.cdef[[long syscall(long n, ...); char *strerror(int e);]]
+   local function try(from, to)
+     local r = tonumber(ffi.C.syscall(382, ffi.cast("long", -100), from, ffi.cast("long", -100), to, ffi.cast("long", 1)))
+     local e = ffi.errno()
+     print(from .. " -> " .. to .. ": " .. r .. (r ~= 0 and (" " .. ffi.string(ffi.C.strerror(e))) or ""))
+   end
+   try("a", "b") try("a", "B") try("a", "c")'
+   ls; cat b c
+   ```
+
+   The flag works when it prints `a -> b: -1 File exists`, `a -> B: -1 File exists` (on a storage that folds
+   case, `B` is `b`) and `a -> c: 0`, and `ls` shows `b c` with `b` holding `b` and `c` holding `a`: Grimoire's
+   renames are the kernel's own. It prints `Invalid argument` (or `Function not implemented`) for all three, and
+   `a` is still there, when the storage refuses it: Grimoire then takes the fallback (the name reserved first),
+   and its log says so once a session (`files: the storage refused the no-replace rename`). On a storage that
+   keeps case apart, `a -> B: 0` then `a -> c: -1 No such file or directory`, and `ls` shows `B b`: send the
+   output (the case rules matter to the screens). Any other answer (anything replaced, or another error) is not
+   expected: send the output.
+2. **Is a move into the trash one rename, for a file and for a folder?** In the same folder:
+
+   ```
+   dd if=/dev/zero of=big bs=1048576 count=50 && mkdir dir && echo x > dir/f
+   stat -c '%i %s' big dir
+   time mv big ../trash/probe-big; time mv dir ../trash/probe-dir
+   stat -c '%i %s' ../trash/probe-big ../trash/probe-dir
+   rm -rf ../trash/probe-big ../trash/probe-dir
+   ```
+
+   One rename each: the same numbers before and after, and each `mv` well under a second for the 50 MB file.
+   A copy would take seconds and give new numbers: then trash is not instant there, and the screens must say
+   so before a big file goes.
+3. **Do the numbers a check compares stay the same?** "File changed. Try again." compares a file's device,
+   inode, size and time with what its listing saw. In the same folder:
+   `echo keep > keep && stat -c '%d %i %s %Y' keep`, and note the line. Then ask again over SSH
+   (`stat -c '%d %i %s %Y' /mnt/us/grimoire/.probe/keep`) after a restart of the Kindle, and with Grimoire open
+   for a minute (from SSH while it runs). The same line every time: a file left alone never reads as changed. The
+   Scribe connects to a computer over MTP, so its storage stays mounted while a cable is in: a connection is no
+   separate case to ask about. A new device or inode number after the restart matters only to a listing kept
+   across it (none is); one that changes while Grimoire runs would make the screens refuse for no reason: send
+   the lines.
+
+Tidy: `cd /; rm -rf /mnt/us/grimoire/.probe`.
 
 ## 2.2, Files (issue #124): device checks
 

@@ -47,6 +47,54 @@ each for its own issue:
   pages' drawings kept in memory), #52 (lasso fixes for #50 and #51) and #67 (issue #60), which the owner reported
   checked on 2026-11-13.
 
+## Files' storage writes (2.2, issue #117): what waits
+
+The storage layer writes now (docs/DESIGN.md, Files' storage writes): rename, trash with its record, restore,
+the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on screen calls them yet.
+
+- **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
+  font...):
+  - Their words for each refusal: "File changed. Try again." (`Changed`), "Importing now." (`Busy`), "Name can't
+    contain %s" (`NameRule::Char`) and words for the other rules (empty, too long, a space at either end, a dot at
+    the start or the end, the extension kept), a name taken on rename (`Exists`: offer " 2"), "Couldn't restore.
+    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
+    a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
+    storage full?" for any failed copy (the job ends 0 or 1 only). None is a string yet.
+  - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
+    file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
+    `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is
+    a walk of its own, not built. FsListing keeps at most 5,000 names in the order the storage gives them, and
+    the trash only grows (every deleted page is an entry), so past 5,000 the place would sort an arbitrary
+    5,000, not the newest: the screens decide what it shows then.
+  - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
+    check) brings it back to the Graph; its mirror PDF is made at its next change.
+  - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
+    sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
+  - A held item: its row greyed and its card's Rename and Delete saying "Importing now.", from `FsStorage::busy`.
+- **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,
+  between them, to Import) and New folder in Import (the owner decides whether they are 2.2's); Restore for a
+  page (its place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2
+  reads that form and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
+- **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
+  that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
+  shows.
+- **The fallback's last moment.** Where the storage refuses the no-replace flag, a rename reserves the new name
+  and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
+  copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the
+  last check and the rename loses what it wrote, and a crash there leaves an empty file or folder at the new name.
+- **What a rename or a trash acts on** is whatever is at the name at its rename, checked just before: an entry
+  swapped in at that name in between (over USB) is moved, never replaced or deleted. A check after the rename
+  would refuse every rename on a storage whose inode numbers change on rename, which the Scribe's check (step 2)
+  has not ruled out yet.
+- **A copy's source changed during the read** is caught by the check at the copy's end (size and time, and the
+  bytes read against the size), except a rewrite of the same size within the storage's time granularity (a
+  second; two on FAT); no test changes a source in the middle of a read (the tests change it before the job
+  reads it).
+- **The Scribe's checks** (docs/TESTING.md, "2.2, Files' storage writes (issue #117): device checks"): whether the
+  storage takes the no-replace rename (also for a name that differs in case only), whether a move into the trash
+  is one rename for a file and a folder, and whether device and inode numbers stay the same across a restart and
+  while Grimoire runs. Not run yet (issue #100); due before the first screen that uses the writes ships.
+
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 
 - **Bulk erase slowdown (issue #42) is not fixed in the app.** PR #43 ("Fix slowdown") changed the C tree only
@@ -204,7 +252,7 @@ each for its own issue:
   steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
   file one identity by its name and by an open file, which the scan's look, the import lock and the move to
   `import/done` all compare (if it did not, every dropped PDF would wait a minute, no import would start, and
-  an imported PDF would stay in `import/` and be read again up to three times). No release holds this round's
+  an imported PDF would stay in `import/` and be read again twice). No release holds this round's
   import commits until those have run.
 - **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
   record opens that notebook without reading the file whole; compare the whole file in the background before
@@ -246,9 +294,9 @@ each for its own issue:
   scan. Give `folder_holds_pdfs` the look's answer for such a folder.
 - **The import's small files and the bounded read.** The marks and an import's state are read through
   `util::read_file`, which since the storage reads takes plain files only; they have limits of their own when
-  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, and the last slice's
-  `links.part` and `names.part` with it too (today `std::fs::read`, then a size check). The storage reads'
-  list below names the marks as well; the lock file's own open could share `util`'s plain-file open.
+  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, as the last slice
+  reads `links.part` and `names.part` since #118. The storage reads' list below names the marks as well; the
+  lock file's own open could share `util`'s plain-file open.
 - **The picker's own test of "under import"** compares names without case; on a storage that tells names
   apart, rows of a folder only spelled like import would show a status.
 - **Picture folders with a line break in their name** are still imported by the picture scan; give
@@ -314,9 +362,10 @@ What waits for the lanes that use them:
   (the picker, L8; Previews in 2.2). Their screens' rules are in `notice_pick`; Import shows on the Library only
   until the browser has screens of its own.
 - fsview's writes (delete as a rename into the trash, `renameat2(RENAME_NOREPLACE)` with its fallback, the
-  allow-list, "File changed. Try again.", the free-space refusal and "Kindle storage nearly full."), the
-  Loading notice over 1 s, and its first readers (the picker, the PDF import, the KOReader hand-over's walk in
-  place of `realpath`).
+  allow-list, the check before acting, the free-space refusal) came in 2.2's storage layer (issue #117: "Files'
+  storage writes (2.2, issue #117): what waits", above); their words ("File changed. Try again.", "Kindle storage
+  nearly full.") wait for the screens. The Loading notice over 1 s, and its first readers (the picker, the PDF
+  import, the KOReader hand-over's walk in place of `realpath`).
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
 
@@ -353,10 +402,16 @@ Built on the plan's other recommended defaults (the owner has not answered them;
 - **The eraser's chips are screen millimetres**, so at a zoom under 1 the 12 mm chip is clamped at the format's 12
   page millimetres.
 
-What waits: O2 (the ink row in a pen's card), O3 (size keys and the `quick-size` action, ids 105 to 107), O4 (your
-own chips), O6 (hold in the picker), O8 to O10 stay out; the live ink on the largest chips (charcoal 2, marker
-2.8, highlighter 8, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
-top chip if live ink lags.
+Done in 2.2 (#122, the owner's decisions of 2026-11-15): O3, the size keys. `size-smaller` and `size-larger` (ids
+105 and 106, Shift+[ and Shift+] in the starter map, brought to an unedited starter at the start) step the pen in
+use through its five chips as a chip's tap does, each step saying the size in a short toast ("Size: 0.5 mm", 1.2 s),
+as the light keys and the eraser mode's button say theirs; the paired row "Smaller / larger size" is the Tools
+group's twelfth on the Buttons and Gestures pages. `quick-size` (id 107, no row, no key) opens the card beside the
+pen in use's button or the folded box (docs/SHORTCUTS.md).
+
+What waits: O2 (the ink row in a pen's card), O4 (your own chips), O6 (hold in the picker), O8 to O10 stay out; the
+live ink on the largest chips (charcoal 2, marker 2.8, highlighter 8, eraser 12 mm) is for the owner to measure with
+`tools/bench-ink.c` (docs/TESTING.md): drop a top chip if live ink lags, which changes what a size key walks too.
 
 ## Classic fonts (2.1.0): choices for the owner, and what waits
 
@@ -1376,17 +1431,14 @@ items of Document links. Left:
 
 ## Hardening round (2026-11), storage reads: what waits
 
-- The other reads by path take the plain-file read (`util::open_read_nofollow`): the clipboard, the
-  compaction's list, the shortcut files, one read in the fonts' cache, the PDF cache's records. The
-  compaction's list goes first: it is read at every start, before the first frame
-  (`compact_queue_listed`), and the start is fully under the rule only once it is.
+- The one reader left that opens by path, in your own fonts (`userfonts.rs` `read_small`: a font's verdict
+  and the crash guard, after an `lstat` that refuses a link), takes the plain-file read
+  (`util::open_read_nofollow`) with the change that owns that file (#111).
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
 - A page file that is there but does not read fails to open rather than opening blank; with it, a size
   limit on page files.
 - `mkdir_p` stays as it is (an existing entry counts as the folder): the data root, a platform's folders
   and the tests' folders may sit behind a link.
-- Tidy-up: the PDF cache's and the share spool's own "made afresh" onto `util::create_fresh_nofollow`;
-  `nav.rs` `read_sidecar` onto `util::open_read_nofollow`.
 - If no other lane has taken them by the merge: the marks in `pdfimport.rs` read with their own limits,
   and the link tests run as root in CI's sandbox job.

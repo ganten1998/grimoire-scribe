@@ -2,6 +2,11 @@
 
 ## 2.1.1 (unreleased)
 
+- **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
+  size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
+  Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
+  gestures.ini, opens the sizes card from a key or a gesture. An unedited shortcuts.ini gets the two keys at the
+  next start.
 - **Files**: the Kindle's storage as a place to browse. "Show Files in Library", the last row of New notebook >
   From a file..., puts a Files card at the end of the Library (its menu hides it again). Files lists Grimoire's
   places (Import, Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's folders, with a path bar whose
@@ -30,6 +35,9 @@
   break in a name is left where it is, a file picked from a folder that is only spelled like
   `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
   opened without following links.
+- Housekeeping: package-check's size guard is now 13 MB for the Kindle binary and 7 MB for the zip (was 11 MB and
+  6 MB): the new Settings menu brought the binary to 10.96 MB, and 2.2's Files, PDF fills and KOReader's hand-over
+  by path need more.
 
 ## 2.1.0 (2026-11-13)
 

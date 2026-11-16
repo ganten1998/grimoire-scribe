@@ -57,7 +57,7 @@ root/fonts/                             font files the owner copies in, for Clas
 root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
-root/trash/                             deleted notebooks and pages, moved here, never unlinked
+root/trash/                             deleted notebooks and pages, moved here, never unlinked; from 2.2 also files and folders of import/, templates/, photos/ and fonts/, each with its record (The trash)
 root/PDFs/                              the PDF mirror (an export, not data)
 root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposable (2.1.0-beta.2)
 ```
@@ -67,19 +67,23 @@ root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposa
 `notebook.ini`, not the numbers. Every file is written atomically (`<file>.tmp`, fsync, rename).
 
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
-`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `thumb.pgm`, previews and `bg/`, the
-pictures and folders of `templates/`, `photos/` and `import/`, the import marks and `import/.attempts`. A
-link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that is not
-there. A folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is
-held to this. Some other files of the listing are still opened by path (docs/BACKLOG.md, "Hardening round
-(2026-11), storage reads: what waits").
+`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
+`bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
+`import/.attempts`, an import's work files `links.part` and `names.part`, `clipboard.qpg`, the shortcut files
+(`shortcuts.ini`, `controller.ini`, `shortcuts/`, `gestures.ini`, `live-keys.ini`) and the PDF cache's
+records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
+is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
+folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is held to this.
+Your own fonts' check results and crash guard are still opened by path, after a look at the entry that does
+not follow a link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
 
-The small text files are read up to a size, and a longer one is not read: `settings.ini`,
-`notebook.ini`, `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import
-folder's mark up to 4 KiB, `import/.attempts` up to 64 KiB, and a PGM (`thumb.pgm`, `sleep.pgm`, a preview)
-up to 64,000,064 bytes (its largest picture, 8000 x 8000, and a header). Page files and pictures have no
-limit of this kind. A `folders.ini` over its limit reads as an empty list; what the other readers do with a
-file that is not read is in their sections.
+The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
+`folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
+4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, an import's `links.part` up to 4,194,314
+bytes and its `names.part` up to 406,000 (the most one worker's walk can have the first slice write: "Imports:
+PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
+8000 x 8000, and a header). Page files and pictures have no limit of this kind. A `folders.ini` over its limit
+reads as an empty list; what the other readers do with a file that is not read is in their sections.
 
 ## Pages: `p<id>.qpg`
 
@@ -299,8 +303,12 @@ zip, a `grimoire-pull` copy or an older version.
   later pass or for the version that can: one that does not read, one of another size than its
   notebook's (compacted once the editor writes it at the notebook's size), and one holding data
   1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
-  is there but does not read (a read error) is never written over: the editor tries again at its
-  next save, and compaction leaves it as it is.
+  is there but does not read (a read error, or from 2.1.1 on one longer than 64 KiB: the longest
+  Grimoire writes is 45,136 bytes, 4096 ids) is never written over: the editor tries again at its
+  next save, and compaction leaves it as it is. From 2.1.1 on an entry at its name that is no plain
+  file (a link, to a file or to nothing, a FIFO, a folder) is no list, as nothing there is: no
+  compaction runs for it, and the editor's next write of the list replaces the entry itself, never
+  the file a link names (a folder there stays, and the page is not listed while it does).
 - Opening the notebook stops its compaction first, whether it waits or runs, and so does Grimoire
   leaving (a notebook it closes as it leaves is not compacted then): a page is never left half
   written (each is its old file or its new one), and the list keeps the pages that are not done.
@@ -734,7 +742,9 @@ just before the move it looks at the name once more. When the name no longer hol
 and inode, with the size and mtime it was opened with: another file was put there meanwhile, or the file
 changed, or it is gone), nothing moves and no `done` mark is written; what is at the name is taken by the next
 scan as the file it is. Such an end leaves its try counted in `import/.attempts` (below), so a name that never
-holds the file read is tried three times with those contents and then waits until the file changes. A path
+holds the file read is tried three times with those contents and then waits until the file changes. Its row in
+the Import place then reads "Couldn't import PDF (see grimoire.log)." and the scan's log line counts it among
+the files that failed, although the PDF was imported and its notebook exists. A path
 that spells Grimoire's folder or `import` in another case lies in `import/` only
 where the storage takes both spellings as one folder (the Scribe's does); on a storage that tells names apart by
 case they are two folders, and the file stays where it is. Names: a name typed in New notebook's sheet (one of
@@ -842,9 +852,13 @@ waits, and within 10 s of the end of a previous run's import):
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
   the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
-  worker's own record grammar, read back strictly by the last slice. The commit writes `doclinks.ini` (below) and
-  `nav.ini` from them, before `notebook.ini`, and removes the two parts. A worker that dies, stalls or lies in
-  the walk costs the notebook its links and names only (logged); the pages do not depend on it. What is read:
+  worker's own record grammar, read back strictly by the last slice, each only as a plain file of at most its
+  size: `links.part` 4,194,314 bytes (a worker's 4 MiB of records, line for line, and the `F` line the slice
+  writes itself when the walk sent none), `names.part` 406,000 (an `O` line of at most 203 bytes for each of
+  at most 2000 pages); a part that does not read leaves the notebook without links and names. The commit
+  writes `doclinks.ini` (below) and `nav.ini` from them, before `notebook.ini`, and removes the two parts. A
+  worker that dies, stalls or lies in the walk costs the notebook its links and names only (logged); the
+  pages do not depend on it. What is read:
   an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
   destination, or a name or string looked up in the catalog's `/Names /Dests` name tree and its PDF 1.1 `/Dests`
   dictionary, each tried for either type), the four Named actions (`NextPage`, `PrevPage`, `FirstPage`,
@@ -1354,7 +1368,9 @@ earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a ve
 (2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load. From
 2.0.0-beta.5 on, a file that binds none of the D-pad's four directions (`pad.Up`, `Down`, `Left`,
 `Right`: no earlier version read a D-pad, so none wrote them) gets the starter file's D-pad lines in
-memory; the file is not changed.
+memory; the file is not changed. From 2.1.1 on an entry at its name that is no plain file (a link, to a
+file or to nothing, or a FIFO) is a file that is there and does not read, as one over the 64 KiB limit
+is: no mappings come from it. The other shortcut files below are read the same way.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
 Shortcuts > Buttons (Settings > Controller > Buttons before 2.0.0-beta.2): `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
@@ -1630,6 +1646,59 @@ as a target they do not know (it does nothing there). The released 2.0.0-beta.1 
 targets into the other notebook, as every build since 2.0.0-rc.2 does. Moving pages needs nothing of any
 version: each reads the `pages` order it finds.
 
+## The trash: `root/trash/`
+
+Nothing put here is ever unlinked by Grimoire: there is no Empty (the owner cleans it over USB). Each entry is
+one rename on the same storage, so it is instant at any size. Three kinds of entry, told apart by the name
+alone:
+
+| entry | what it is | written by |
+|---|---|---|
+| `<id>-<time>` | a notebook's folder, as it was in `notebooks/` | every version (Library > Delete) |
+| `<id>-p<page id>-<time>` | a page file (`p<page id>.qpg`) | every version (the Pages view's Delete) |
+| `files-<YYYYMMDD-HHMMSS>-<4 hex>/` | a folder holding one file or folder of `import/`, `templates/`, `photos/` or `fonts/` under its own name, and `.grimoire-trash`, its record | 2.2 on (the storage layer, `fsview.rs`) |
+
+`<time>` is unix seconds; `<YYYYMMDD-HHMMSS>` is the local time and `<4 hex>` four lowercase hex digits
+(random), so two in one second have two folders. A page's place in its notebook is kept nowhere, so a page is
+listed and never restored by Grimoire. A notebook goes back to `notebooks/<id>` (refused while a notebook of
+that id is there): its name, its Library folder and its links are in its own files, and links to it work
+again (Links).
+
+The record, `.grimoire-trash`:
+
+```
+# Grimoire: where this went from, for Restore (docs/FORMAT.md, The trash)
+from=grimoire/templates/Holiday.png
+time=1763200000
+```
+
+`from=` is the path the item had, relative to the storage's root (`/mnt/us` on the Kindle: `grimoire/...`),
+as bytes (a name need not be UTF-8), and `time=` unix seconds. Every line ends with a line feed. It is read
+strictly: a plain file at that name (a link, a folder or a FIFO is no record), at most 4 KiB, lines beginning
+with `#` passed over, `from=` and `time=` each exactly once, `from=` a path under 600 bytes with no empty,
+`.` or `..` part and no leading `/`, `time=` digits only, and no other line (no blank line, no carriage
+return, no key this version does not know). A record that does not read so leaves its item listed and not
+restorable from Grimoire. A path with a line break in it cannot be recorded, so such an item is not trashed.
+
+Restore puts a file or folder back in the folder `from=` names, when that folder is still there, no import
+holds it, and it is inside Grimoire's `import/`, `templates/`, `photos/` or `fonts/` (never the folder itself,
+never `import/done` itself); a name taken there gets " 2", " 3" and so on up to " 99" (before a file's
+extension: `Holiday 2.png`). Then the record and the emptied `files-...` folder are removed: the only removal
+the trash ever sees. Anything put into that folder by hand stays there, in a folder with no record. A record
+whose `from=` is `grimoire/notebooks/<id>` over a folder named `<id>` restores that notebook, as `<id>-<time>`
+does (2.2 writes notebooks in the old form; the record form is read so a later version may write it).
+
+A trash cut off by a crash before its rename leaves a `files-...` folder holding only its record, or nothing,
+while the item is still where it was. Such a folder is listed like any other; Restore removes it (the record,
+then the folder) and puts nothing back. A folder holding anything else and no record that reads is left as it
+is (not restorable from Grimoire).
+
+What older versions do with the trash as 2.2 leaves it: none of them reads `trash/` at all (they only rename
+into it), so a `files-...` folder is never looked at, moved or changed by them, and their own deletes go on
+as before beside it. An item restored by hand (moved back with Grimoire closed) is an ordinary file to every
+version. 2.2 reads the entries older versions wrote (`<id>-<time>`, `<id>-p<page id>-<time>`), and lists any
+other name as an entry it does not know (not restorable).
+
 ## Where new data goes
 
 - Data about one page: the stroke's ext bytes, an erase stroke's seed bits, the page's paper
@@ -1734,6 +1803,15 @@ rule for the lines of `source.ini` a version does not know):
 | a notebook of a book's key with no `source=` and no `book=` (the second notebook of a key) | an ordinary notebook of document pages: not the book's notebook for KOReader's Open this book, for the plugin or for the import. If the book's first notebook is deleted, they import the file again (or make a new notebook for the book); this version still finds the second notebook by its record |
 | `src` with a tab or another control character in a mark or in `pdf-import.ini` | read as any other path (their readers take the line as it is): the import goes on with that file. They wrote such a path without those characters; this version reads what they wrote as before, and where the path so written names no file the work folder is not kept and the import starts over from the scan |
 | an import this version began and they finish | the notebook is made with `source=` and `book=` and no record, as they always made it |
+
+What 2.1.0 and the versions before it do with what 2.2's storage layer writes (The trash):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/` holding a file or folder and `.grimoire-trash` | never read: no version before 2.2 lists or reads `trash/`. The folder stays as it is, and their own deletes (`<id>-<time>`, `<id>-p<page id>-<time>`) go in beside it |
+| a notebook 2.2 put back from the trash | an ordinary notebook in `notebooks/<id>`, as one moved back by hand always was |
+| a file or folder 2.2 put back, or renamed (" 2" on a name taken) | an ordinary file of `import/`, `templates/`, `photos/` or `fonts/`: imported, listed or used by its new name |
+| `.grimoire-copy-<pid>.part` in `templates/`, `photos/` or `fonts/` (a copy cut off) | a dot-name: no listing of theirs shows it or uses it; 2.2 removes it at the next copy into that folder |
 
 ## Highlighter rendering in 1.2.0
 
@@ -1971,7 +2049,8 @@ offset  size  field
 112     ...   the zlib stream
 ```
 
-All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
+All integers little endian. A record is used only when it reads (from 2.1.1 on, a plain file at its name of
+at most 112 bytes and 128 MiB, its header and the largest stream), its length and CRC-32 are right, its stamp
 (bytes 4 to 47, the inode and the notebook's paper) is the page's today, taken before the page was read, and
 its picture's (channels, size, time) is the picture file's today, taken before any page on it was drawn: a
 changed page, a picture made, replaced or gone, another dpi, page size or notebook paper, a newer Grimoire or

@@ -163,9 +163,20 @@ macro_rules! scheme_zoom_pages_graph {
         )
     };
 }
-// The starter map below its first line, which names the menu (a macro, as concat! reads only literals).
-macro_rules! starter_body {
+// The size keys (2.2): on a page, Shift+[ and Shift+] take the pen in use to its next quick size down and up. The
+// starters before 2.2 had no such lines.
+macro_rules! scheme_size_keys {
     () => {
+        concat!(
+            "# Shift+[ and Shift+]: the pen's next size down and up (its quick sizes).\n",
+            "key.Shift+code26=size-smaller\nkey.Shift+code27=size-larger\n",
+        )
+    };
+}
+// The starter map below its first line, which names the menu (a macro, as concat! reads only literals). A page's
+// lines that a later starter adds come after the page's own: `page` (none for the starters before 2.2).
+macro_rules! starter_body {
+    ($($page:tt)*) => {
         concat!(
             "# key.NAME or key.Ctrl+NAME=ACTION (an Apple keyboard's Cmd is Ctrl here); codeN is a Linux evdev key code;\n",
             "# pad.NUMBER is a Linux evdev gamepad button code.\n",
@@ -173,6 +184,7 @@ macro_rules! starter_body {
             "# Pen feel): each action acts in its own places (docs/SHORTCUTS.md).\n",
             scheme_everywhere!(),
             scheme_library_and_page!(),
+            $($page)*
             scheme_zoom_pages_graph!(),
             "# Generic evdev gamepad defaults; controllers may report different codes.\n",
             "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n",
@@ -182,13 +194,15 @@ macro_rules! starter_body {
         )
     };
 }
+// Its first line, naming the menu as 2.0.0-beta.2 has it, Settings > Shortcuts (the owner's ruling of 2026-11-04).
+macro_rules! starter_head {
+    () => {
+        "# Grimoire shortcuts. Enable in Settings > Shortcuts; after editing, Reload shortcuts.ini there.\n"
+    };
+}
 /// The Kindle's starter shortcuts.ini (written when shortcuts are first enabled, and read in memory with no
-/// file): the scheme for a paired keyboard, and the controller's lines. Its first line names the menu as
-/// 2.0.0-beta.2 has it, Settings > Shortcuts (the owner's ruling of 2026-11-04).
-const DEFAULTS: &str = concat!(
-    "# Grimoire shortcuts. Enable in Settings > Shortcuts; after editing, Reload shortcuts.ini there.\n",
-    starter_body!(),
-);
+/// file): the scheme for a paired keyboard with the size keys (2.2), and the controller's lines.
+const DEFAULTS: &str = concat!(starter_head!(), starter_body!(scheme_size_keys!(),));
 
 /// The starter map: what a missing shortcuts.ini reads as, and what Enable shortcuts writes.
 pub fn shortcuts_starter() -> &'static str {
@@ -197,10 +211,11 @@ pub fn shortcuts_starter() -> &'static str {
 
 /// Every starter shortcuts.ini an earlier Grimoire wrote, byte for byte (from the history of src/shortcuts.c
 /// and rust/src/shortcuts.rs): the Kindle's of 1.1.0, of 1.2.0 (the D-pad), of 2.0.0 (Settings >
-/// Controller, the picker's order) and of the 2.0.0-beta.2 builds before Settings > Shortcuts (the keyboard
-/// scheme, its first line naming "Settings > Controller and keys"). Such a file nobody edited is replaced by
-/// this build's starter map at the next start (shortcuts_upgrade_starter); any other is kept.
-const OLD_STARTERS: [&str; 4] = [
+/// Controller, the picker's order), of the 2.0.0-beta.2 builds before Settings > Shortcuts (the keyboard
+/// scheme, its first line naming "Settings > Controller and keys") and of the builds from then to 2.1 (before
+/// the size keys). Such a file nobody edited is replaced by this build's starter map at the next start
+/// (shortcuts_upgrade_starter); any other is kept.
+const OLD_STARTERS: [&str; 5] = [
     concat!(
         "# Grimoire shortcuts. Enable in Settings > Shortcuts. Reload there after editing.\n",
         "# key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n",
@@ -230,7 +245,11 @@ const OLD_STARTERS: [&str; 4] = [
         "# Grimoire shortcuts. Enable in Settings > Controller and keys; after editing, Reload shortcuts.ini there.\n",
         starter_body!(),
     ),
+    OLD_KINDLE_STARTER_2_1,
 ];
+/// The Kindle's starter map from Settings > Shortcuts (2.0.0-beta.2) to 2.1, before the size keys (live-keys.ini's
+/// starter of those builds came from it).
+pub(crate) const OLD_KINDLE_STARTER_2_1: &str = concat!(starter_head!(), starter_body!());
 /// The Kindle's starter map from 2.0.0-beta.1 until this build (live-keys.ini's earlier starter came from it).
 pub(crate) const OLD_KINDLE_STARTER_2_0: &str = concat!(
     "# Grimoire shortcuts. Enable in Settings > Controller. Reload there after editing.\n",
@@ -440,24 +459,19 @@ fn parse(map: &mut Shortcuts, text: &[u8], allow_key: bool, allow_pad: bool) {
         );
     }
 }
-/// A small file of lines read whole (shortcuts.ini, controller.ini, gestures.ini): None when it is
-/// not there; Err when it is not a file, is over cap bytes, or cannot be read; else its text up to
-/// its first NUL.
+/// A small file of lines read whole (shortcuts.ini, controller.ini, gestures.ini): None when nothing
+/// is at its name; Err when what is there is no plain file (a link, to a file or to nothing, is not
+/// followed, and the open never waits: util::open_read_nofollow), is over cap bytes, or cannot be read;
+/// else its text up to its first NUL.
 pub(crate) fn ini_read_bounded(path: &str, cap: u64) -> Result<Option<Vec<u8>>, ()> {
-    match std::fs::metadata(path) {
-        Ok(st) if st.is_file() && st.len() <= cap => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // A dangling symlink is an existing unreadable mapping, not a missing file.
-            return match std::fs::symlink_metadata(path) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                _ => Err(()),
-            };
-        }
+    let f = match open_read_nofollow(path) {
+        Ok((f, st)) if st.len() <= cap => f,
+        // (only nothing at the name is a missing file: a link there, even one to nothing, fails the open with
+        // ELOOP and is an existing unreadable mapping)
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         _ => return Err(()),
-    }
-    // Bound the read too, including a file changed since stat.
-    let Ok(f) = std::fs::File::open(path) else { return Err(()) ;
     };
+    // Bound the read too, including a file changed since the open.
     let mut text = Vec::new();
     let failed = std::io::Read::read_to_end(&mut std::io::Read::take(f, cap + 1), &mut text).is_err() || text.len() as u64 > cap;
     if failed {

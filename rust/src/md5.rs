@@ -126,14 +126,26 @@ pub fn partial_offsets() -> impl Iterator<Item = u64> {
 
 /// KOReader's partial MD5 of a file of any size, given a positional read (`read_at(buf, offset)`: the bytes
 /// it could read, 0 at or past the end). Twelve reads of 1 KiB at fixed offsets and no parsing: safe for the
-/// UI process and the writer to compute. An error reading counts as the end, as a nil from Lua's `read` does.
+/// UI process and the writer to compute. This `read_at` cannot fail: one that answers 0 for an error ends the
+/// samples there, as a nil from Lua's `read` does. A read that can fail goes through partial_md5_try.
 pub fn partial_md5(mut read_at: impl FnMut(&mut [u8], u64) -> usize) -> String {
+    partial_md5_try(|buf, off| Ok(read_at(buf, off))).unwrap_or_default()
+}
+
+/// partial_md5 given a positional read that can fail: a read interrupted by a signal (EINTR) is tried again,
+/// and any other failed read fails the key (None). It is never taken as the end of the samples: the key of the
+/// samples read before it would be another file's.
+pub fn partial_md5_try(mut read_at: impl FnMut(&mut [u8], u64) -> std::io::Result<usize>) -> Option<String> {
     let mut m = Md5::new();
     let mut buf = [0u8; PARTIAL_SAMPLE];
     for off in partial_offsets() {
         let mut got = 0;
         while got < PARTIAL_SAMPLE {
-            let n = read_at(&mut buf[got..], off + got as u64);
+            let n = match read_at(&mut buf[got..], off + got as u64) {
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => return None,
+            };
             if n == 0 {
                 break;
             }
@@ -144,18 +156,19 @@ pub fn partial_md5(mut read_at: impl FnMut(&mut [u8], u64) -> usize) -> String {
         }
         m.update(&buf[..got]);
     }
-    md5_hex(&m.finish())
+    Some(md5_hex(&m.finish()))
 }
 
-/// The partial MD5 of an open file (pread at each offset).
-pub fn partial_md5_fd(fd: i32) -> String {
-    partial_md5(|buf, off| {
+/// The partial MD5 of an open file (pread at each offset), or None when a read fails (partial_md5_try: EINTR is
+/// tried again, as file_sha256 does). The end of a short file is the end of its samples, as before.
+pub fn partial_md5_fd(fd: i32) -> Option<String> {
+    partial_md5_try(|buf, off| {
         // SAFETY: pread writes at most buf.len() bytes into buf; fd is the caller's open descriptor.
         let n = unsafe { libc::pread(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), off as libc::off_t) };
         if n < 0 {
-            0
+            Err(std::io::Error::last_os_error())
         } else {
-            n as usize
+            Ok(n as usize)
         }
     })
 }
@@ -239,6 +252,53 @@ mod tests {
         // the sample at 0 (one read of 1024), the sample at 1 KiB (a read of 1 byte, then the next read for
         // the rest: nothing), and then the sample at 4 KiB finds nothing: sampling stops there
         assert_eq!(offs, vec![0, 1024, 1025, 4096]);
+    }
+
+    // A read interrupted by a signal (EINTR) is tried again, and the key is the file's. Any other failed read
+    // fails the key (None): it is never taken as the end of the samples, which would give the key of fewer
+    // samples, another file's.
+    #[test]
+    fn an_interrupted_read_is_tried_again_and_a_failed_one_fails_the_key() {
+        let size = 5 * 1024;
+        let want = partial_md5(pattern(size));
+        let mut file = pattern(size);
+        let mut interrupted = 0;
+        let got = partial_md5_try(|buf, off| {
+            if off == 4096 && interrupted == 0 {
+                interrupted += 1;
+                return Err(std::io::Error::from_raw_os_error(libc::EINTR));
+            }
+            Ok(file(buf, off))
+        });
+        assert_eq!(interrupted, 1);
+        assert_eq!(got.as_deref(), Some(want.as_str()), "the sample at 4 KiB, read again after EINTR");
+        let mut file = pattern(size);
+        let got = partial_md5_try(|buf, off| if off == 4096 { Err(std::io::Error::from_raw_os_error(libc::EIO)) } else { Ok(file(buf, off)) });
+        assert_eq!(got, None, "a read that fails at 4 KiB");
+    }
+
+    // partial_md5_fd on files of the file system: a short file gives the key of the samples it has, as before
+    // (the end of the file is the end of the samples, not a failure), and a descriptor that cannot be read gives
+    // none.
+    #[test]
+    fn partial_md5_fd_reads_short_files_and_fails_on_a_failed_read() {
+        use std::os::fd::AsRawFd;
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let dir = base.join(format!("grimoire-md5-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for size in [0u64, 1, 1024, 1025, 4096, 5 * 1024 + 7] {
+            let mut bytes = vec![0u8; size as usize];
+            pattern(size)(&mut bytes, 0);
+            let path = dir.join(format!("{size}.pdf"));
+            std::fs::write(&path, &bytes).unwrap();
+            let f = std::fs::File::open(&path).unwrap();
+            assert_eq!(partial_md5_fd(f.as_raw_fd()), Some(partial_md5(pattern(size))), "{size} bytes");
+        }
+        // (open for writing only: every read fails, EBADF)
+        let w = std::fs::OpenOptions::new().write(true).open(dir.join("1025.pdf")).unwrap();
+        assert_eq!(partial_md5_fd(w.as_raw_fd()), None, "a descriptor that cannot be read");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

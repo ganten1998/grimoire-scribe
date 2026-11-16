@@ -1241,7 +1241,7 @@ impl Browser {
         if unsafe { libc::fstat(fd.as_raw_fd(), &mut md) } != 0 {
             return (String::new(), 0);
         }
-        (crate::md5::partial_md5_fd(fd.as_raw_fd()), md.st_size as u64)
+        (crate::md5::partial_md5_fd(fd.as_raw_fd()).unwrap_or_default(), md.st_size as u64)
     }
 
     /// What the Import place says of row `i`, from the marks, the queue and the attempts.
