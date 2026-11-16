@@ -452,6 +452,7 @@ shows what the app holds.
 | `settings.TOOL.PARAM` | a tool's pen feel as settings.ini stores it, four decimals: TOOL as for `editor.tool`, PARAM a slider's settings.ini name (`size_min_mm`, `size_max_mm`, `opacity_min`, `opacity_max`, `pressure_floor`, `pressure_ceiling`, `pressure_gamma`, `tilt_min_deg`, `tilt_max_deg`, `tilt_size`, `tilt_opacity`, `grain`, `smoothing`), e.g. `settings.fountain.pressure_gamma` |
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
 | `editor.page`, `editor.pages` | the open page (from 1) and the page count, 0 with no notebook open |
+| `editor.page_chip` | the panel's page chip as it draws it now: the page and the count (`12 / 40`), or the page alone (`1995`) on every page of a notebook where the page and the count would not fit it on some page (#119); empty with no notebook open |
 | `editor.tool` | the pen's tool by its settings.ini name: `pencil`, `mech`, `ballpoint`, `eraser`, `highlighter`, `fountain`, `fineliner`, `marker`, `charcoal` or `calligraphy` |
 | `editor.view` | the view: the zoom as `editor.zoom`, then the page point at the screen's top left, `2.25 517 667` (2.0.0-beta.2) |
 | `editor.notebook_back` | how many notebooks Back returns through (links followed into another notebook) and the newest one's id, `1 A`; `0` for none (2.0.0-beta.2) |

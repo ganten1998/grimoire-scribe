@@ -146,7 +146,7 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   Only if the sandbox ever fails on a device: a quiet "no worker" ending the UI does not toast would stop it.
 - **Links and the outline (lane L6)**: DONE in 2.1.0-beta.2 (FORMAT.md, "Imports: PDFs"). Left for later: web links
   are counted and left out (the optional QR card, 8.I of the plan, is the way to keep them); the outline names
-  only new notebooks' pages (a page's own name would keep it, which matters only when a fill comes in 2.2);
+  a new notebook's pages, and a fill only the pages it adds (#123, below);
   a worker caps at 60,000 links a PDF (after the water level a notebook keeps 14,400 at most, but a PDF past the
   cap loses its later pages' links before the densest-first trim sees them); `/Next` action chains, JavaScript
   and `/GoToR` are ignored; a Link that is hidden (`/F` bit 2) or not viewed (bit 6) is skipped (a choice the plan
@@ -246,6 +246,39 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
   which other sections now follow.
 
+## The same PDF again fills its notebook (2.2, #123): what waits, and what is for the owner
+
+- **The Scribe check has not run** (docs/TESTING.md, "2.2, the same PDF again fills its notebook"): whether the
+  book key Grimoire computes for a PDF KOReader opened is the key KOReader wrote, and whether KOReader's link boxes
+  and the import's agree within 2 px. A fill adds no link between the pages KOReader sent, but a later Open this
+  book whose plugin sends links again would add a second copy of a link to a page the fill added if they do not.
+  The tests can only stand KOReader's side in.
+- **A notebook without a record goes by its key alone**, so another file with the same key and the same page count
+  (an edited copy that kept the sampled bytes) fills it with that file's pages, their links and their outline
+  names; the pages the notebook had are not touched, and deleting the added pages takes all of it. A notebook
+  with a record is filled only by its own file (SHA-256 and size). Notebooks KOReader made never have a record
+  (the file record on the KOReader route, in the hardening entries below, would give them one). Two notebooks
+  without a record that hold one key (an earlier version's import and KOReader's, say): a fill goes to the first
+  the key match finds, the one changed last.
+- **Not built: a card for the notebook being made**, and `links=` carrying the held pages' count (the latter a
+  format change the owner has not asked for). A fill shows the staying notice's count, and the toast at its end.
+- **The toast of a fill with unreadable pages** says "Added N book pages." only: the blank pages are in the log.
+  A string of its own ("Added N book pages. Some pages couldn't be read.") would be one more msgid.
+- **The commit holds the input** while it runs, as KOReader's book job does, and begins only with the Library at
+  rest. It writes one page file a page added, each with an fsync (util.rs notes 15 to 25 ms for one on the
+  Kindle), so a fill of many pages holds the Library for that many writes; its time has not been measured on a
+  Scribe.
+- **A notebook deleted while its fill was made** is not filled, and its PDF, still in `import/`, becomes a
+  notebook of its own at the next scan (a renamed or moved one is filled at the next scan as it is now). The
+  owner may prefer the PDF to wait instead.
+- **A commit that fails before its notebook.ini** (the storage full) leaves the pictures it moved into the
+  notebook's `bg/`, listed by its index and shown by no page; a later fill of the same PDF shares them.
+- **Pages a fill made blank stay blank**: the same PDF dropped again finds them present and says "already". Delete
+  them to have them made again.
+- **The picker** offers no import for a PDF whose notebook (without a record) holds its key (the hardening entry
+  below), so a fill from Files needs the file dropped in `import/`. KOReader's hand-over by path, in its own issue,
+  will start the same job on the book's notebook.
+
 ## Hardening round (2026-11), import: what waits
 
 - **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), import"). Its
@@ -260,7 +293,9 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
 - **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
   key; let it confirm with the record where one exists.
 - **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
-  owner decides whether a pick should import it as a notebook of its own.
+  owner decides whether a pick should import it as a notebook of its own. (Since #123 such a PDF fills that
+  notebook when the notebook lacks pages; the picker's card for it still offers Open its notebook only, so a
+  fill from Files needs the file dropped in `import/`.)
 - **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
   its record alone. If the first is then deleted and the book's file is imported again, another notebook still
   holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
@@ -270,7 +305,8 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   owner decides whether the import should give the bare key (`source=`, `book=`) to a new notebook when no
   notebook has those two lines (the book's file, imported again, would then be the notebook KOReader opens,
   with a record); the entry above, on a pick whose key a notebook without a record holds, is the other half
-  of the same question.
+  of the same question. Since #123 the notebook that holds the bare key is also the one a fill goes to by the
+  key alone (KOReader's, then), and any file of that key and page count fills it.
 - **The import's whole-file read.** Measured on the Scribe at the owner's check; if its time or its use of
   memory asks for it, spread it over the slices or release its cached pages as it goes.
 - **Endings without a test.** A file that cannot be read whole (at the start, where it then counts as another
@@ -681,7 +717,6 @@ Writing stayed fast at any size (median pen to screen 0.6 to 0.9 ms); the costs 
   a lighter page minutes later had none. Not explained yet.
 - **A stroke-eraser move on STRESS TEST 2 took 2.1 s** at 2.38 MB, its screen update 2 s late (as the CHANGELOG's
   about 3 s for a page-wide marker stroke on the first stress page).
-- **"Loading page..." and undo are not logged**, so a record cannot say whether the notice showed or undo ran.
 - **Limits, by extrapolation only**: nothing caps strokes or points on a page; the nearest limit is the 120 s
   heartbeat for a page drawn whole, reached at roughly 13 to 15 MB of STRESS TEST 3's mix (about 35 minutes
   of pen contact on one page). Points are kept at the pen's full rate, about 6.3 KB a second of contact.
@@ -845,13 +880,6 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## In progress
 
-- **The panel's page count does not fit four-digit pages** (b3-padd2 agent, 2026-11-03, found by the fit check):
-  "1995 / 2000" needs 162 px and the toolbar's page chip has 112, so it is cut short in a notebook of 1000 pages
-  or more (z_pages_add_6_toolbar_limit stays on page 1 for that reason). A smaller size for long counts, or the
-  current page alone, would fit.
-- **Pages: the count pad's - and + do not repeat when held** (b3-padd agent, 2026-11-03; the brief made it
-  optional): one step per tap, and Up and Down on a keyboard repeat only as the keyboard sends repeats
-  (Grimoire ignores key repeats).
 - **Pages: drag shows the gap bar only, never makes room** (b2-pv agent, 2026-11-02): the tiles do not
   shift aside while a page is dragged (each shift would redraw the grid on e-ink); the bar between two
   tiles says where it lands. Revisit after trying it on a Scribe.
@@ -1133,6 +1161,42 @@ items of Document links. Left:
 
 ## Done
 
+- 2.1.1 (unreleased, 119-editor-page-count-pad; issue #119): three items that touch the editor.
+  - The panel's page chip fits any count (In progress since 2026-11-03, found by the fit check), and keeps one
+    form in a notebook: the page and the count on every page when every page's label fits the chip at its size,
+    else the page alone on every page (panel.rs, panel_chip_whole and panel_page_label), decided once for each
+    page count, font and size, and again when one of them changes. The labels cut short with "..." were most of
+    those of 1000 pages or more ("1995 / 2000" needs 142 to 172 px by the font upright, the chip has 112, while
+    "1 / 2000" fits in Gothic) and some of 100 or more in every font at full size (in Gothic "100 / 100" and
+    "20 / 200", in Classic "10 / 100" in Terminess and Atkinson, "100 / 100" in Noto Sans, "100 / 200" in
+    Literata). In Gothic, Atkinson and Literata those fall on scattered pages, so a rule by the label made the
+    chip change form while paging ("99 / 150", "100", "101 / 150", "102" in Gothic). By the notebook, every
+    count under 100 shows the page and the count as before, and no count of 1000 or more does in any built-in
+    font; between, it depends on the font and the size (in Gothic 101 and 111 pages show both, 100 and 112 do
+    not; in Literata at full size every count up to 199 and 101 more under 1000 show both; sideways on the
+    2022/2024 Scribes' screen with 3 pens pinned every count under 1000 shows both in Noto Sans and Literata).
+    Of the two ways this entry offered, the page alone keeps the chip's size, readable at arm's length on the
+    panel; the whole count made small enough to fit would be two thirds to three quarters of it at
+    "9999 / 9999". test_panel checks every count from 1 to 9999 in Gothic and in Classic with each font, at the
+    chip's three sizes (both Scribes' screens, upright and sideways, with 0 to 3 pens pinned);
+    z_pages_add_6_toolbar_limit (now on the last page too, upright and sideways, and on a small notebook) and
+    z_pages_add_7_toolbar_full (now with the fit check) read the chip (`editor.page_chip`, docs/SIM.md).
+  - The count pad's - and + repeat when held (In progress since 2026-11-03), on the toolbar's pad and the Pages
+    view's: with delete's timing on every keyboard (KB_HOLD_MS 400 ms, then every KB_REPEAT_MS 65 ms, at most
+    KB_REPEAT_BATCH 3 at once for a late tick, none saved up), so a hold makes no more steps than its time by
+    the clock, and stopping at the pad's limits (1, and the pages the notebook still holds). Left as it was: Up
+    and Down on a keyboard step once a press, as Grimoire drops the kernel's key repeats for every key. Unit test
+    the_count_pads_minus_and_plus_repeat_to_its_limits (keyboard.rs); z_pages_add_9_hold holds them by the
+    script's clock (GRIMOIRE_SIM_CLOCK=script) in waits of 100 ms: one long wait's ticks can come bunched at its
+    end on a busy machine (its time spent drawing is not on that clock), and a tick more than three repeats late
+    skips the rest, by design.
+  - "Loading page..." and undo are written to grimoire.log (found on the owner's stress pages, 2026-11-05): one
+    line when the notice shows, with the page's id, its file's size and why (no current kept drawing, or changes
+    not written yet), and one when an undo of a page runs, with what it undid in a few words (history_step_words:
+    its kind and how many strokes, never the ink) and the page's id; each at most once a frame (App.frames, which
+    app_tick counts). docs/KINDLE.md lists both. test_editor_log runs the headless runner and reads the lines:
+    the notice, a stroke, Clear page, a lasso move, and two undos in one batch, which say one line. Not logged:
+    redo, and the Pages view's own Undo of page moves and batches.
 - 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
   day after): four checks no longer depend on the speed of the machine or on an earlier run.
   - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),

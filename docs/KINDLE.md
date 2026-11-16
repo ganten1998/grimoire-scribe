@@ -507,6 +507,25 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
 - `import: <id>: a copy of this PDF is being imported; this one waits for its notebook`, `import: N pick(s) that
   waited for the lock queued`, `import: PDF import <id> was dropped from the queue; ...`, `import: the import
   from an earlier run has ended`.
+- A fill (2.2: the same PDF again adds the pages its notebook lacks): `import: <id>: notebook <nb> lacks N of the
+  book's M page(s): they are added to it` (slice 0; the slices then count the pages made, `pages A to B of N`),
+  then `import: <id>: the pages for notebook <nb> are made; they go in once the Library is in front` (said once,
+  by the UI, when it takes them: also at the start after the child that finishes the queue made them), then, as
+  the UI puts them in, `import: <id>: notebook <nb>: D document link(s) (A added, S already there, R refused, L
+  left out for room)` (only when a link starts or ends on a page it adds) and `import: notebook <nb> filled: N
+  page(s) added (T now), B blank`. S counts the PDF's links to or from those pages that the notebook had already
+  (the same target, the area within 2 px): for a notebook KOReader made, its links found again, none added twice.
+  `import: <id>: the PDF has N page(s) and the book of notebook <nb> M: it becomes a notebook of its own`: the
+  page counts differ (the PDF's and the one the notebook's pages name). `import: <id>: its notebook <nb> cannot be
+  filled (<why>)`, then `this PDF was imported before`: its pages name no page count or more than one, or its
+  files do not read. `import: <id>: its notebook was renamed, moved or deleted while the pages were made; nothing
+  added to notebook <nb>`: not filled (or the notebook no longer holds the key); the PDF stays in `import/` and the
+  next scan takes it again. `import: <id>: <why>; nothing added to notebook <nb>`: a fill that failed (`the
+  notebook is gone`, `the PDF changed under the import`, `its book key could not be read (the storage failed a
+  read)`, a storage failure), the notebook as it was. `import:
+  <id>: its commit was cut off (K of 3)`: a commit taken up again at a start after Grimoire stopped half way
+  through it; at the third, `its commit stopped 3 times without finishing; notebook <nb> is as its last cut left
+  it`.
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
   Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;
@@ -909,6 +928,12 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   and each gesture's outcome to `grimoire/touch-trace.txt` (4 MB at most; each start, and each turn
   of the screen, adds a line naming the rotation, the screen and its dpi). It stays in the data folder: no export, share page or raw ZIP
   carries it. Delete `grimoire/touch-trace` to stop, and send the two files when asked.
+- **A slow page, and undo** (#119): when "Loading page..." shows, grimoire.log says `editor: "Loading
+  page..." for page id N: its file is K KB, with no current kept drawing` (or `with changes not written yet`),
+  and when an undo of a page runs, `editor: undo of W on page id N`, W one of `a stroke`, `an erase of N
+  strokes`, `a paper change`, `a page clear (N strokes)`, `a link change (N)`, `a shape snap` and `a lasso step
+  (N strokes off the page, M on)`: ids, sizes and counts, never the ink. Each at most once a frame (a round of
+  the main loop): a second undo in the same round, from keys that came together, adds no line.
 - **The startup log** starts with a diagnostics block. `device:` lines give the model code (the
   first 6 characters of /proc/usid, never the serial), memory, CPU part and hardware. `display:`
   lines give the FBInk device id, platform, pixel format, color panel flag, raw vinfo and finfo,

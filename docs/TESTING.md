@@ -2801,6 +2801,66 @@ docs/KINDLE.md (How it fits in).
 
 Tidy: `cd /; rm -rf /mnt/us/grimoire/.probe`.
 
+## 2.2, the same PDF again fills its notebook (issue #123): device checks
+
+A PDF whose notebook lacks some of the book's pages (pages deleted since, or a notebook KOReader made, which holds
+only the pages KOReader sent) fills that notebook when it is dropped in `grimoire/import` again: the missing pages
+in book order, with the links that start or end on them and the outline's names for them. The pages it had keep
+their files, their names and their links: a fill adds no link between two of them and names none of them. A
+notebook with every page says "PDF already imported."; a PDF of another page count becomes a notebook of its own.
+The pages go in once the notebook is closed and the Library is in front ("Adding book pages: N of M", taps and keys
+waiting meanwhile); until then the notebook opens as it is, and KOReader's Open this book in Grimoire is not held up.
+Automated: `rust/tests/test_pdf_fill.rs` (a notebook with its file record, one without, one KOReader made with
+KOReader's links a pixel off the import's, and 3 px off, a full one, another page count, the files of the pages it
+had byte for byte, the writer that never writes the notebook, a notebook renamed, moved or deleted while its pages
+were made, what writes the notebook between two ticks of the commit, a job running on the notebook when its pages
+are made, a worker that cannot start, KOReader's job while a fill waits, a stop in the middle, a fill whose PDF goes
+away, a commit cut off after each of its steps and three times, the key checked again, two copies dropped together,
+the water level that keeps a notebook's own links, the state's grammar) and the scenarios
+`tests/scenarios/z_pdf_11_fill_1_book.qs` (KOReader's book of the
+tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's tabs
+not doubled, no name given to KOReader's pages), `z_pdf_13_fill_3_open.qs` (the notebook opened while its fill is
+made, the pages going in back in the Library), `z_pdf_14_fill_4_held.qs` and `z_pdf_15_fill_5_koreader.qs`
+(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after),
+`z_pdf_16_fill_6_book_job.qs` (KOReader's job adds one of the pages a waiting fill made, looking at one page a tick
+by `GRIMOIRE_BOOK_STEP_PAGES`: no commit begins while it runs, and the fill then adds only the page still missing)
+and `z_pdf_17_fill_7_input.qs` (a key and a tap while the commit runs, slowed to a file a tick by
+`GRIMOIRE_FILL_STEP_PAGES`, do nothing).
+
+**Not run on a Scribe.** Two things only the Scribe can say: whether the book key Grimoire computes for a PDF is
+the key KOReader wrote for it (KOReader's own partial MD5 of the file it opened), and whether KOReader's link boxes
+and the import's agree within 2 px (a fill adds no link between the pages KOReader sent, but a later Open this book
+that sends links again would add a second copy of a link to a page the fill added). The owner's check, on a build
+of this branch:
+
+1. **KOReader's notebook.** In KOReader, open a planner PDF with tabs that Grimoire never imported (one of more
+   than ten pages), go to its third page and use Open this book in Grimoire. Write a line on that page. Note the
+   notebook's page count on its card (the pages KOReader sent), and leave Grimoire for KOReader.
+2. **The same file dropped.** Over USB, copy that very file (from where KOReader opened it, unchanged) into
+   `grimoire/import`, and start Grimoire. Within about 10 s the notice counts the missing pages ("Importing: page
+   N of M", M the book's pages less the notebook's), then "Adding book pages: N of M" for a moment, and the end
+   says "Added M book pages."; the Library has no second card. `grimoire.log` has `import: <id>: notebook <nb>
+   lacks M of the book's P page(s): they are added to it`, `the pages for notebook <nb> are made`, then
+   `import: <id>: notebook <nb>: D document link(s) (A added, S already there, ...)` and `import: notebook <nb>
+   filled: M page(s) added`. S is 0 here: the fill adds no link between the pages KOReader sent.
+3. **The pages and the tabs.** Open the notebook: the book's pages in order, the line written in step 1 on its
+   page. With the eye on, every tab of a page KOReader sent is drawn once (a tab drawn twice, slightly offset,
+   is a link added a second time: send `grimoire.log` and the notebook's `doclinks.ini`). A tab on a page KOReader
+   sent that goes to a page the fill added works, and the pages KOReader sent have no name they did not have.
+4. **The key.** If step 2 made a second notebook instead (a second card, and no `lacks` line in the log), the
+   two keys differ: compare the notebook's `source=` line (`grimoire/notebooks/<nb>/notebook.ini`, KOReader's key)
+   with the key of the file, which on a computer is
+   `python3 -c "import hashlib,sys;b=open(sys.argv[1],'rb').read();m=hashlib.md5();[m.update(b[o:o+1024]) for o in [0]+[1024<<(2*i) for i in range(11)] if o<len(b)];print(m.hexdigest())" planner.pdf`,
+   and send both with the log.
+5. **The notebook opens meanwhile.** Delete a few pages of that notebook in the Pages view, drop a copy of the
+   PDF again, and while the notice counts, tap the notebook's card: it opens, as it is. Go back to the Library:
+   "Adding book pages: N of M" shows for a moment, then "Added N book pages."; the card opens it, filled again.
+6. **KOReader while a fill waits.** Delete a few pages again, drop a copy of the PDF, and before its notice ends
+   leave Grimoire for KOReader; there, use Open this book in Grimoire: the book opens on the reader's page at once,
+   with no toast over it. Go back to the Library: the fill's pages go in ("Added N book pages.").
+7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
+   opens that page, adds no page, and no tab doubles.
+
 ## 2.2, Files (issue #124): device checks
 
 Not run on a Scribe yet. The headless scenarios `files_1_card` to `files_7_keys` cover the logic (the card hidden,

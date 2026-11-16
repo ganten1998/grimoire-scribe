@@ -361,6 +361,9 @@ pub struct EditorState {
     page_kept: bool,
     /// how many times "Loading page..." went up before a slow page was drawn (a probe, editor.loading_toasts)
     loading_toasts: u32,
+    /// the frames (App.frames) of grimoire.log's last "Loading page..." line and last undo line: one of each a
+    /// frame at most (#119)
+    said: [Option<u32>; 2],
     /// how many times "Adding N pages..." reached the panel before a batch of new pages was written, or a
     /// batch's Redo wrote them again (a probe, editor.add_notices)
     add_notices: u32,
@@ -1448,14 +1451,12 @@ fn draw_panel(a: &mut App) {
     }
     s.panel_cells.push(rp);
     y += btn_h() + gap();
-    let mut lab = String::new();
     // (a page the Links bar is looking at shows its own number)
-    csnprintf!(&mut lab, 32, "%d / %d", if s.peek.active { s.peek.index } else { s.index } + 1, s.nb.npages());
-    let lr = Rect { x: x - ui_px(6.0), y, w: w + ui_px(12.0), h: label_h() ,
+    let lab = panel_page_label(if s.peek.active { s.peek.index } else { s.index } + 1, s.nb.npages(), g_fit());
+    let lr = Rect { x: x - ui_px(6.0), y, w: panel_chip_w(), h: label_h() ,
     };
     ui_frame(c, lr, ui_px(10.0), 0, false, ui_px(2.0)); // a tappable chip: opens Pages
-    let fit = g_fit();
-    font_draw_centered(c, FontFace::Bold, ui_small_size() * (if fit.scale < 1.0 { fit.scale } else { 1.0 }), lr, &lab, 0,
+    font_draw_centered(c, FontFace::Bold, panel_chip_px(g_fit()), lr, &lab, 0,
     );
     hits_add(&mut s.hits, lr, P_PAGES, 0);
     s.panel_cells.push(lr);
@@ -3160,11 +3161,18 @@ const K_LOADING_PAGE: &str = n_("Loading page...");
 /// back says "Loading page..." first, on the panel before the drawing starts, and the toast goes once the page
 /// is drawn. Never for a page that draws quickly.
 fn render_page_open(a: &mut App) {
-    let toast = loading_toast_due(a);
-    if toast {
+    let why = loading_toast_due(a);
+    let toast = why.is_some();
+    if let Some(why) = why {
         app_toast(a, tr(K_LOADING_PAGE), 120_000);
         app_flush(a); // (on the panel now: the drawing holds the main loop)
         ed(a).loading_toasts += 1;
+        // grimoire.log says so (#119), one line a frame at most: the page's id, its file's size and why
+        if say_once(a, 0) {
+            let s = ed_ref(a);
+            let kb = store_page_file_bytes(&s.nb, s.open_pid()).unwrap_or(0).div_ceil(1024);
+            qlog!("editor: \"Loading page...\" for page id %u: its file is %u KB, %s", s.open_pid(), kb as u32, why);
+        }
     }
     render_page_full(a);
     // (another toast that took its place stays)
@@ -3174,15 +3182,45 @@ fn render_page_open(a: &mut App) {
 }
 
 // Whether the open page takes seconds to draw and has no current kept drawing to come up from (page_is_its_file;
-// a pen held on an action holds the panel, so no toast could show before the drawing: none then).
-fn loading_toast_due(a: &App) -> bool {
+// a pen held on an action holds the panel, so no toast could show before the drawing: none then): why, for
+// grimoire.log, or None.
+fn loading_toast_due(a: &App) -> Option<&'static str> {
     let s = ed_ref(a);
     if a.pen_action_down || s.page_ix().is_none() || s.page_canvas.px.is_empty() {
-        return false;
+        return None;
     }
     let pid = s.open_pid();
     let layered = s.open_page().is_some_and(page_layered);
-    !(page_is_its_file(s) && store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered)) && store_page_slow(&s.nb, pid)
+    if !store_page_slow(&s.nb, pid) {
+        None
+    } else if !page_is_its_file(s) {
+        Some("with changes not written yet")
+    } else if !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) {
+        Some("with no current kept drawing")
+    } else {
+        None
+    }
+}
+
+// Whether grimoire.log may have line `which` (0 "Loading page...", 1 an undo) now: once a frame (App.frames).
+fn say_once(a: &mut App, which: usize) -> bool {
+    let frame = a.frames;
+    let said = &mut ed(a).said[which];
+    let first = *said != Some(frame);
+    *said = Some(frame);
+    first
+}
+
+// grimoire.log's line for an undo of the open page (#119), once a frame at most: what it undid in a few words
+// (history_step_words: its kind and how many strokes, never what they are) and the page's id.
+fn say_undo(a: &mut App, ih: usize) {
+    if !say_once(a, 1) {
+        return;
+    }
+    let e = &ed_ref(a).hist[ih];
+    if let Some(step) = e.h.redo.last() {
+        qlog!("editor: undo of %s on page id %u", &history_step_words(step), e.page_id);
+    }
 }
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
@@ -3518,6 +3556,14 @@ fn close_notebook(a: &mut App) {
 
 /// loads, switches to SCR_EDITOR
 pub fn editor_open_notebook(a: &mut App, id: &str) {
+    // A PDF fill's pages going into this notebook now (2.2: the UI's commit, a few ticks with input held): it opens
+    // once they are in. Nothing in the app can ask meanwhile; this says why if it does.
+    if let Some((done, total)) = crate::pdfimport::fill_busy().filter(|_| crate::pdfimport::fill_holds(id)) {
+        let mut msg = String::new();
+        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), done as i32, total as i32);
+        app_toast(a, &msg, 3000);
+        return;
+    }
     let requested=ed(a).requested_page.take();
     ed(a).notebook_back.clear();
     ed(a).from_graph = false;
@@ -4586,6 +4632,9 @@ fn undo_redo(a: &mut App, undo: bool) {
     let (hh, page) = hist_page(&mut s.hist, h, ip);
     if !(if undo { history_undo(hh, page, &mut d) } else { history_redo(hh, page, &mut d) }) {
         return;
+    }
+    if undo {
+        say_undo(a, h);
     }
     ed(a).boxes.stale = true;
     // The step's own pixels swapped back where it kept them (history.rs Patch): a copy of what it
@@ -6641,6 +6690,10 @@ fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
         repaint_panel(a, RefreshMode::Ui);
         return;
     }
+    if undo {
+        say_undo(a, ih);
+    }
+    let s = ed(a);
     s.links_dirty = false;
     s.changed = true; // (the notebook changed: the PDF mirror runs at close)
     if lasso {
@@ -11706,6 +11759,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.open { s.hist.len() as i32 } else { 0 });
     } else if key == "pages" {
         csnprintf!(out, cap, "%d", if s.open { s.nb.npages() } else { 0 });
+    } else if key == "page_chip" {
+        // The panel's page chip as drawn now (draw_panel), empty with no notebook open.
+        let page = if s.peek.active { s.peek.index } else { s.index } + 1;
+        csnprintf!(out, cap, "%s", &if s.open { panel_page_label(page, s.nb.npages(), g_fit()) } else { String::new() });
     } else if key == "notebook_last_page" {
         // (app_probe's "notebook.last_page": what a reopen lands on, kept apart from the open page)
         csnprintf!(out, cap, "%d", if s.open { s.nb.last_page + 1 } else { 0 });
@@ -12937,7 +12994,7 @@ mod tests {
         };
         keep(&mut a);
         // The page as its file is comes up from the drawing kept of it, with no "Loading page..."
-        assert!(!loading_toast_due(&a));
+        assert_eq!(loading_toast_due(&a), None);
         render_page_full(&mut a);
         assert!(ed_ref(&a).page_kept && canvas_is_the_page(&a));
         // A change not yet written: drawn from the strokes, and "Loading page..." would go up
@@ -12945,7 +13002,7 @@ mod tests {
         let gone = s.open_page_mut().unwrap().strokes.pop().unwrap();
         stroke_free(gone);
         mark_changed(s);
-        assert!(loading_toast_due(&a));
+        assert_eq!(loading_toast_due(&a), Some("with changes not written yet"));
         render_page_full(&mut a);
         assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
         // A new paper
