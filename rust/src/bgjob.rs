@@ -40,7 +40,9 @@ pub enum BgKind {
     // (9 is kept for 2.2's file previews, not built yet: K_KIND_NAMES holds its name)
     /// id: the folder it goes into ("templates", "photos" or "fonts"), path: "<dev>.<ino>.<size>.<mtime>:<StoragePath>",
     /// the source as listed; a copy of a file into one of Grimoire's folders for the user's files, under the free
-    /// space floor, to a temporary name and then a rename that replaces nothing (bgwork_copy.rs, 2.2). Ends 0 or 1.
+    /// space floor, to a temporary name and then a rename that replaces nothing (bgwork_copy.rs, 2.2). Ends 0, 1
+    /// (not copied), or not copied for a cause the screen has a sentence for, bgwork_copy.rs's CopyFail: 2 (bigger
+    /// than its folder takes), 3 (no longer the file listed) or 4 (a path or name too long).
     CopyFile = 10,
 }
 
@@ -705,8 +707,12 @@ fn start_job(j: Job, extra: bool) -> bool {
         let rc = run_job_guarded(&j);
         // SAFETY: the child ends here without running the parent's exit handlers or flushing its
         // buffers. (A PDF import slice's 2 and 3 mean done with blank pages, and more to do; a font check's 3,
-        // 4, 5 and 6, some files wait, no worker can be had, more fonts are left, and what it finds cannot be kept.)
-        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3)) || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4 || rc == 5 || rc == 6));
+        // 4, 5 and 6, some files wait, no worker can be had, more fonts are left, and what it finds cannot be kept;
+        // a copy's 2, 3 and 4, the file is bigger than its folder takes, is no longer the one listed, and has too
+        // long a path.)
+        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3))
+            || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4 || rc == 5 || rc == 6))
+            || (j.kind == BgKind::CopyFile && (rc == 2 || rc == 3 || rc == 4));
         unsafe { libc::_exit(if rc == 0 { 0 } else if says_more { rc } else { 1 }) };
     }
     let beside = with(|s| {

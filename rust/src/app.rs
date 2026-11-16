@@ -2186,7 +2186,10 @@ fn poll_jobs(a: &mut App) -> i32 {
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
-        // (a file copied into templates, photos or fonts: its screens, 2.2, read its end here; never the PDF's toast)
+        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo, a sheet's From a file...):
+        // a copy that failed is said wherever the user is (by its cause where a sentence names it), one that went in
+        // by its folder's name (unless its sheet is in front, which shows it). Never the PDF's toast.
+        copy_told(a, crate::bgwork_copy::CopyTo::of(done_id.as_str()), r);
         return 0;
     }
     if done == BgKind::FontCheck as i32 {
@@ -2219,6 +2222,32 @@ fn poll_jobs(a: &mut App) -> i32 {
         app_toast(a, &msg, 8000);
     }
     0
+}
+
+// The end of a copy job (bg_poll's result `r`: 1 done, -1 failed) into folder `to`.
+fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
+    use crate::bgwork_copy::{copy_failed, copy_refusal, CopyFail, CopyTo};
+    if r < 0 {
+        // (why, where the job's exit status says it; a job that names no folder of Grimoire's ends before it knows)
+        let msg = to.map_or_else(|| copy_failed().to_string(), |to| copy_refusal(CopyFail::of_exit(bg_last_exit()), to));
+        app_toast(a, &msg, 4000);
+        return;
+    }
+    let Some(to) = to.filter(|_| r > 0) else { return };
+    // (the sheet of that folder in front shows the new picture itself: its From a file... tile)
+    if crate::library::library_sheet_folder(a) == Some(to) || crate::editor::editor_sheet_folder(a) == Some(to) {
+        return;
+    }
+    let place = match to {
+        CopyTo::Templates => tr("Templates"),
+        CopyTo::Photos => tr("Photos"),
+        CopyTo::Fonts => tr("Fonts"),
+    };
+    let mut msg = String::new();
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders;
+    // %s is that folder's name as Files shows it (Templates, Photos).
+    csnprintf!(&mut msg, 256, tr("Copied to %s."), place);
+    app_toast(a, &msg, 3000);
 }
 
 // A minute of "Sleep after". In the simulator a scenario can make it shorter
@@ -2768,9 +2797,9 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
         return 0;
     }
-    // The file picker (the Library's mode, browser.rs): files.*
+    // The file picker (the Library's mode, browser.rs): files.*; over the page the editor's picture pick (2.2, #146)
     if key.starts_with("files.") {
-        return library_probe(a, key, out, cap);
+        return if a.scr == ScreenId::Editor && !crate::library::library_settings_active(a) { editor_probe(a, key, out, cap) } else { library_probe(a, key, out, cap) };
     }
     if let Some(k) = key.strip_prefix("penset.") {
         return pensettings_probe(a, k, out, cap);
