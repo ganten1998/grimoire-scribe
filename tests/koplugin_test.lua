@@ -2170,6 +2170,142 @@ do -- A PDF that needs a password: KOReader cannot draw it here; closed again, n
     check(s .. ": closed again, nothing drawn or sent", at("closeDocument") and not drew("drawPage") and not wrapped())
 end
 
+-- ---- a PDF by its path (request.ini version 2, the launcher's "pdf" capability, 2.2) ----
+
+local PDF_CAPS = "#!/bin/sh\n# Capabilities: guard hosted annotate book links pdf\n"
+-- KOReader's MuPDF, as the plugin asks it whether a PDF needs a password: a document of its own, opened and
+-- closed (W.calls), answering from W.password (a set of paths); W.mupdf_error makes it fail.
+package.loaded["ffi/mupdf"] = {
+    openDocument = function(path)
+        table.insert(W.calls, "mupdf open")
+        if W.mupdf_error then error("mupdf: no such document", 0) end
+        return {
+            needsPassword = function() return W.password ~= nil and W.password[path] == true end,
+            close = function() table.insert(W.calls, "mupdf close") end,
+        }
+    end,
+}
+
+do -- From the reader, in a 3-page PDF on page 2 whose notebook holds page 2, to a launcher that says pdf: the
+    -- request names the file by its path (version 2); nothing is drawn, no link asked, no picture or links.txt.
+    world("book-pdf-reader")
+    W.unpack_writes = PDF_CAPS
+    W.book.pages, W.book.page, W.book.whole = 3, 2, true
+    W.book.file = W.us .. "/documents/Hanon.pdf"
+    W.book.links = { [1] = {}, [2] = {}, [3] = {} }
+    notebook_of(W.book.md5, 3, { 2 })
+    local g = koreader(true)
+    local items = {}
+    g:addToMainMenu(items)
+    items.grimoire.sub_item_table[3].callback({ closeMenu = function() end })
+    local s = "a PDF by its path"
+    check(s .. ": nothing drawn, no progress, no link asked", not drew("drawPage") and calls_of("trapper") == 0
+        and link_calls() == "")
+    check(s .. ": the request alone in the folder", book_files() == "request.ini")
+    local r = book_request() or {}
+    check(s .. ": version 2, the file by its path, the book, its pages and the page to open", r.version == "2"
+        and r.file == W.book.file and r.book == W.book.md5 and r.pages == "3" and r.page == "2" and r.kind == "paged"
+        and r.title == "Le Petit Prince" and #r.pictures == 0)
+    check(s .. ": when it was written", tonumber(r.time) and math.abs(tonumber(r.time) - os.time()) <= 5)
+    check(s .. ": a document of its own asked about a password, and closed", at("mupdf open") and at("mupdf close"))
+    check(s .. ": the book's own settings untouched", g.ui.document.configurable.text_wrap == 1
+        and g.ui.document.configurable.white_threshold == 200)
+    check(s .. ": Preparing Grimoire... up, the hand-over on the next tick", at("show Preparing Grimoire...")
+        and wrapped() and is_file(W.marker))
+    run_ticks()
+    W.calls = {}
+    Device:exit()
+    check(s .. ": KOReader's own exit, then grimoire.sh --hosted koreader --book",
+        at("exit") == 1 and at("execute sh '" .. W.app_sh .. "'" .. BOOK_CMD) == 2)
+    logs_name_no_book(s)
+end
+
+do -- The same PDF to a launcher of 2.1 (no "pdf" in its Capabilities line): version 1, its pages drawn, as before.
+    world("book-pdf-older")
+    W.unpack_writes = LINKS_CAPS
+    W.book.pages, W.book.page, W.book.whole = 2, 1, true
+    W.book.file = W.us .. "/documents/Hanon.pdf"
+    koreader(true):onOpenBookInGrimoire()
+    local r = book_request() or {}
+    check("a PDF, an older launcher: version 1, its pages drawn", r.version == "1" and r.file == nil
+        and table.concat(r.pictures, " ") == "1=page-1.png 2=page-2.png" and drew("drawPage 0 36 1860x2407 2 "))
+    check("a PDF, an older launcher: no password asked", not at("mupdf open"))
+end
+
+do -- A DjVu (as a comic or an XPS), to a launcher that says pdf: version 1, KOReader drawing its pages, as before.
+    world("book-pdf-djvu")
+    W.unpack_writes = PDF_CAPS
+    W.book.pages, W.book.page, W.book.whole = 2, 1, true
+    W.book.file = W.us .. "/documents/Etudes.djvu"
+    koreader(true):onOpenBookInGrimoire()
+    local r = book_request() or {}
+    check("a DjVu, a launcher that says pdf: version 1, its pages drawn", r.version == "1" and r.file == nil
+        and table.concat(r.pictures, " ") == "1=page-1.png 2=page-2.png" and drew("drawPage 0 36 1860x2407 1 "))
+    check("a DjVu, a launcher that says pdf: no password asked", not at("mupdf open"))
+    check("a DjVu, a launcher that says pdf: the hand-over", wrapped())
+end
+
+do -- Annotate this page in a PDF, to a launcher that says pdf: one page, version 1, as before.
+    world("annotate-pdf-caps")
+    W.unpack_writes = PDF_CAPS
+    W.book.file = W.us .. "/documents/Hanon.pdf"
+    koreader(true):onAnnotateInGrimoire()
+    local r = request() or {}
+    check("annotate, a launcher that says pdf: version 1, its picture", r.version == "1" and r.picture == "page.png"
+        and r.file == nil and annotate_files() == "page.png request.ini")
+end
+
+do -- The file browser's Open with... > Grimoire on a PDF (its name in capitals), to a launcher that says pdf: by its
+    -- path, at the page it was left at, the document closed before the hand-over, nothing drawn.
+    world("book-pdf-open-with")
+    W.unpack_writes = PDF_CAPS
+    local file = W.us .. "/documents/Czerny Op 299.PDF"
+    W.files = { [file] = { file = file, pages = 2, md5 = "0123456789abcdef0123456789abcdef", last_page = 2,
+        title = "School of Velocity", native = { w = 612, h = 792 } } }
+    koreader(false):openFile(file)
+    local s = "open with, a PDF by its path"
+    local r = book_request() or {}
+    check(s .. ": version 2, the file, its key and the page it was left at", r.version == "2" and r.file == file
+        and r.book == "0123456789abcdef0123456789abcdef" and r.page == "2" and r.pages == "2"
+        and r.title == "School of Velocity" and #r.pictures == 0)
+    check(s .. ": opened, closed, nothing drawn", at("openDocument") and at("closeDocument") and not drew("drawPage"))
+    check(s .. ": the hand-over from the file browser", wrapped() and at("restart"))
+    logs_name_no_book(s)
+end
+
+do -- A PDF that needs a password, opened in the reader with it: Grimoire could not open it, so KOReader draws it.
+    world("book-pdf-password")
+    W.unpack_writes = PDF_CAPS
+    W.book.pages, W.book.page, W.book.whole = 2, 1, true
+    W.book.file = W.us .. "/documents/Locked.pdf"
+    W.password = { [W.book.file] = true }
+    koreader(true):onOpenBookInGrimoire()
+    local r = book_request() or {}
+    check("a PDF that needs a password: version 1, its pages drawn", r.version == "1" and #r.pictures == 2
+        and drew("drawPage 0 36 1860x2407 1 "))
+    check("a PDF that needs a password: its own document closed", at("mupdf open") and at("mupdf close"))
+end
+
+do -- A PDF outside the Kindle's storage, or with "..", an empty part or a line break in its path, goes by version 1;
+    -- MuPDF failing to say whether one needs a password is no reason not to send it by its path.
+    for _, c in ipairs({
+        { "outside", "/tmp/elsewhere/Book.pdf", "1" },
+        { "dots", "%s/documents/../documents/Book.pdf", "1" },
+        { "empty part", "%s/documents//Book.pdf", "1" },
+        { "line break", "%s/documents/Two\nLines.pdf", "1" },
+        { "mupdf failing", "%s/documents/Book.pdf", "2", true },
+    }) do
+        world("book-pdf-" .. c[1]:gsub(" ", "-"))
+        W.unpack_writes = PDF_CAPS
+        W.book.pages, W.book.page, W.book.whole = 1, 1, true
+        W.book.file = c[2]:format(W.us)
+        W.mupdf_error = c[4]
+        koreader(true):onOpenBookInGrimoire()
+        local r = book_request() or {}
+        check("a PDF, " .. c[1] .. ": version " .. c[3], r.version == c[3] and wrapped())
+    end
+end
+
 do -- Wi-Fi belongs to KOReader's network controls, not the Grimoire handoff plugin.
     world("wifi-left-alone")
     W.wifi_on,W.wifi_connected=false,false
