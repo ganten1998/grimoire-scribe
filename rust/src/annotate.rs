@@ -19,6 +19,8 @@ use std::os::unix::fs::MetadataExt;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
+use crate::fsview::StoragePath;
+
 // The folders' and files' names, as macros: the C joins them to its format strings by adjacent
 // string literals ("%s/" ANNOTATE_DIR), which only a literal can do here (concat!).
 macro_rules! annotate_dir {
@@ -781,6 +783,8 @@ struct State {
     j: Job,
     /// the pictures left to fit after a job (F)
     f: Fits,
+    /// the version of this start's book request (1, 2), 0 for none or one that did not read
+    book_version: i32,
 }
 
 thread_local! {
@@ -1278,7 +1282,7 @@ pub const BOOK_REQUEST: &str = book_request!();
 
 #[derive(Clone, Debug, Default)]
 pub struct BookRequest {
-    /// 1
+    /// 1 (KOReader drew the pages) or 2 (a PDF named by its path: Grimoire's PDF import draws them, 2.2)
     pub version: i32,
     /// as AnnotateRequest's
     pub book: FixedStr<STORE_SOURCE_LEN>,
@@ -1291,10 +1295,15 @@ pub struct BookRequest {
     /// pictures sent: page-<n>.png for each of these book pages, ascending, each once
     /// (picture.<n>=page-<n>.png lines): the C's n and sent
     pub sent: Vec<i32>,
+    /// version 2: the PDF's absolute path, as KOReader has it open (`file=`); never logged
+    pub file: String,
 }
 
 /// (the lines of up to 2000 pictures)
 const BOOK_REQUEST_MAX: usize = 128 << 10;
+/// A version 2 request's `file=` path is shorter than this, in bytes: the storage root and a StoragePath (shorter
+/// than FS_PATH_MAX) fit. Its line is read whole, never cut as another line is.
+pub const BOOK_FILE_MAX: usize = 1024;
 
 fn book_dir(buf: &mut String, cap: usize) {
     csnprintf!(buf, cap, concat!("%s/", book_dir_name!()), &store_root());
@@ -1304,22 +1313,47 @@ pub fn book_request_free(r: &mut BookRequest) {
     r.sent = Vec::new();
 }
 
-/// Reads a request's text. 0, or -1 and why (never the title). book_request_free frees it either way.
+/// Reads a request's text. 0, or -1 and why (never the title or the file). book_request_free frees it either way.
+/// Version 1 names the pictures KOReader drew; version 2 (2.2) names a PDF by its absolute path (`file=`, once, its
+/// line read whole and never cut, no carriage return in it, UTF-8) and no picture. Where the path leads is checked
+/// at the start, through the storage walk (book_start), never here.
 pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i32 {
     *r = BookRequest::default();
     r.version = 1;
     *why = "no request";
     let text = cstr(text);
     let (mut page, mut pages): (i64, i64) = (-1, -1);
+    let mut files = 0;
+    let mut file_bad: Option<&'static str> = None;
     let mut p = 0;
     while p < text.len() {
         let (n, step) = next_line(&text[p..]);
+        let whole = &text[p..p + n];
         let k = n.min(LINE_MAX - 1);
         let mut line = &text[p..p + k];
         if let Some((&b'\r', head)) = line.split_last() {
             line = head;
         }
         p += step;
+        if whole.starts_with(b"file=") {
+            // (a path is taken whole or not at all: a cut one would name another file)
+            let mut v = &whole[5..];
+            if let Some((&b'\r', head)) = v.split_last() {
+                v = head;
+            }
+            // (judged once the version is known: a version 1 request leaves the line to a newer plugin, as before)
+            files += 1;
+            if v.len() >= BOOK_FILE_MAX {
+                file_bad = Some("its file's path is too long");
+            } else if v.contains(&b'\r') {
+                file_bad = Some("its file's path holds a line break");
+            } else if let Ok(s) = std::str::from_utf8(v) {
+                r.file = s.to_string();
+            } else {
+                file_bad = Some("its file's path is not UTF-8");
+            }
+            continue;
+        }
         let Some(eq) = line.iter().position(|&c| c == b'=') else { continue };
         if line[0] == b'#' {
             continue;
@@ -1362,9 +1396,26 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
             r.sent.push(b as i32);
         } // (a key this version does not know: a newer plugin's, left to it)
     }
-    if r.version != 1 {
+    if r.version != 1 && r.version != 2 {
         *why = "a version of request this Grimoire does not know (from a newer plugin)";
         return -1;
+    }
+    if r.version == 1 {
+        // (a version 1 request's file= line is a key it does not know, as before 2.2)
+        r.file.clear();
+    } else {
+        if let Some(bad) = file_bad.filter(|_| files == 1) {
+            *why = bad;
+            return -1;
+        }
+        if files != 1 || !r.file.starts_with('/') {
+            *why = if files > 1 { "a file named twice" } else if files == 0 { "no file named" } else { "its file's path is not absolute" };
+            return -1;
+        }
+        if !r.sent.is_empty() {
+            *why = "a version 2 request names a picture";
+            return -1;
+        }
     }
     if r.book.is_empty() {
         *why = "no book key";
@@ -1423,6 +1474,8 @@ pub struct BookStatus {
     /// DONE: some of the links the plugin sent are not in doclinks.ini (a file that did not read, links over
     /// the water level or a cap, one that could not be written)
     pub links_out: bool,
+    /// DONE (version 2, a new notebook): pages the PDF import could not read, made blank
+    pub blank: i32,
 }
 
 /// The job: one at a time, from book_start to DONE or FAILED.
@@ -1459,6 +1512,17 @@ struct Job {
     links: Option<BookLinks>,
     /// some of those links did not make it into doclinks.ini
     links_out: bool,
+    /// version 2: the PDF import makes the pages (`src`: the PDF as a StoragePath's text; `key`: its book key, read
+    /// from the file at the start; `size`: the file's size then); `ended`: how that import ended, told by the app
+    /// (book_pdf_end), taken by the next step; `quiet_since`: when the import was last seen queued, waiting or being
+    /// put in (book_pdf_step looks again after PDF_LOST_MS)
+    pdf: bool,
+    src: String,
+    key: String,
+    size: u64,
+    ended: Option<(String, crate::pdfimport::Finished)>,
+    quiet_since: Option<u32>,
+    looked: Option<u32>,
 }
 
 /// Pictures left to fit after a job (book_fits_tick), in their notebook.
@@ -1552,6 +1616,7 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
         qlog!("book: a request too old (or from the future); deleted unopened");
         st.state = BookState::Stale;
     }
+    with(|s| s.book_version = if parsed && asked { j.r.version } else { 0 });
     if st.state != BookState::None {
         job_end(j, st);
         return;
@@ -1560,6 +1625,10 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
         qlog!("book: a book of %d pages, more than a notebook holds (%d); nothing opened", j.r.pages, STORE_MAX_PAGES as i32);
         st.too_many = true;
         job_fail(j, st, AnnotateWhy::Log);
+        return;
+    }
+    if j.r.version == 2 {
+        start_pdf(j, st, &dir);
         return;
     }
     let mut all: Vec<NotebookInfo> = Vec::new();
@@ -1675,6 +1744,253 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
         j.r.pages,
         if j.made { "new" } else { "existing" }
     );
+}
+
+// ---- version 2: a PDF handed over by its path (2.2) ----
+//
+// KOReader's plugin names the PDF it has open (`file=`) and draws nothing, to a launcher that says `pdf`. The path is
+// checked through the storage walk, as a picked file is (fsview: no link followed, a plain file on the storage's
+// device, none of Grimoire's own folders), and the PDF goes to the PDF import as a pick (pdfimport.rs: the same job,
+// sandboxed worker, key, file record and fill rules, read in place). The book job then waits for that import to end,
+// with pen and touch waiting and the book's notice saying how far it got, and opens the notebook the import made,
+// filled or found whole at the page the reader was on. The request is taken once the import is queued.
+
+/// After this long with the PDF's import neither queued, waiting for the lock nor being put in, and no end told,
+/// the job decides from the notebooks as they are.
+const PDF_LOST_MS: u32 = 3000;
+
+/// `file`, an absolute path, as a StoragePath inside the storage root (pdfimport::storage_root): None for a path
+/// elsewhere, or one a StoragePath cannot be ("." or ".." in it, an empty component, 600 bytes or more). A root
+/// that is not absolute (the headless runner's) is taken from the working folder.
+fn storage_path_of(file: &str) -> Option<StoragePath> {
+    use std::path::{Component, PathBuf};
+    let root = crate::pdfimport::storage_root()?;
+    let base = if root.starts_with('/') { PathBuf::from("/") } else { std::env::current_dir().ok()? };
+    let mut abs = PathBuf::new();
+    for c in base.join(&root).components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                abs.pop();
+            }
+            c => abs.push(c),
+        }
+    }
+    let root = abs.to_str()?.trim_end_matches('/');
+    let rel = file.strip_prefix(root)?.strip_prefix('/')?;
+    StoragePath::new(rel.as_bytes())
+}
+
+/// The notebook that holds the book of key `key` and a file of `size` bytes, as the PDF import decides it without
+/// the whole file's hash (never read in the UI process): one whose record has that size, else the first without a
+/// record (pdfimport::key_match).
+fn pdf_notebook(key: &str, size: u64) -> Option<String> {
+    use crate::pdfimport::{key_holders, key_match, KeyMatch};
+    let mut all: Vec<NotebookInfo> = Vec::new();
+    if store_list(&mut all) != 0 {
+        return None;
+    }
+    match key_match(&key_holders(&all, Some(key)), size, None) {
+        KeyMatch::Same(nb) | KeyMatch::KeyOnly(nb) | KeyMatch::SizeOnly(nb) => Some(nb),
+        KeyMatch::None => None,
+    }
+}
+
+/// The notice's count until the import says its own: the pages the book's notebook lacks, 0 when it holds them all
+/// (or cannot say, which the import takes as "already imported"), the book's page count when there is none.
+fn pdf_total_guess(key: &str, size: u64, pages: i32) -> i32 {
+    match pdf_notebook(key, size) {
+        Some(nb) => crate::pdfimport::fill_plan(&nb).ok().flatten().map_or(0, |p| p.todo.len() as i32),
+        None => pages,
+    }
+}
+
+/// The page of notebook `id` that holds book page `page` of `pages` (its source.ini), and its index; with no such
+/// line, book page `page` of the one count the notebook's pages name (two engines may count a broken PDF's pages
+/// differently), else the page the notebook would open at.
+fn pdf_reader_page(id: &str, page: i32, pages: i32) -> (u32, i32) {
+    let mut nb = NotebookInfo::default();
+    if store_load_info(id, &mut nb) != 0 || nb.npages() == 0 {
+        return (0, 0);
+    }
+    let (mut dir, mut m) = (String::new(), AnnotateMap::default());
+    let mut pid = 0;
+    if store_notebook_dir(id, &mut dir, 600) == 0 && map_load(&dir, &mut m) == 0 {
+        pid = annotate_map_find(&m, &nb, page, pages);
+        if pid == 0 {
+            let mut counts: Vec<i32> = m.e.iter().map(|e| e.pages).collect();
+            counts.sort_unstable();
+            counts.dedup();
+            if let [n] = counts[..] {
+                if page <= n {
+                    pid = annotate_map_find(&m, &nb, page, n);
+                }
+            }
+        }
+        annotate_map_free(&mut m);
+    }
+    if pid == 0 {
+        pid = nb.page_ids[(if nb.last_page >= 0 && nb.last_page < nb.npages() { nb.last_page } else { 0 }) as usize];
+    }
+    let mut at = 0;
+    in_notebook(&nb, pid, Some(&mut at));
+    (pid, at)
+}
+
+/// A version 2 request read and fresh: its file walked to, its key read, and the PDF queued as a pick.
+fn start_pdf(j: &mut Job, st: &mut BookStatus, dir: &str) {
+    use crate::fsview::{FsErr, FsStorage};
+    use crate::pdfimport::Queued;
+    use std::os::fd::AsRawFd;
+    j.pdf = true;
+    let Some(sp) = storage_path_of(&j.r.file) else {
+        qlog!("book: the PDF KOReader named is not in the Kindle's storage; nothing opened");
+        job_fail(j, st, AnnotateWhy::Log);
+        return;
+    };
+    let src = String::from_utf8_lossy(sp.as_bytes()).into_owned();
+    let opened = crate::pdfimport::storage_root().ok_or(FsErr::NotFound).and_then(|root| FsStorage::open(&root, &store_root())).and_then(|fs| fs.open_file(&sp, true));
+    let fd = match opened {
+        Ok(fd) => fd,
+        Err(e) => {
+            let what = match e {
+                FsErr::Link => "is reached through a link",
+                FsErr::OtherDevice => "is on another device",
+                FsErr::Refused => "lies where Grimoire does not read (a hidden or system folder, or one of its own)",
+                FsErr::NotFound | FsErr::NotDir => "is not there",
+                FsErr::NotFile => "is no plain file",
+                FsErr::Io(_) => "could not be opened",
+            };
+            qlog!("book: the PDF KOReader named %s; nothing opened", what);
+            job_fail(j, st, AnnotateWhy::Log);
+            return;
+        }
+    };
+    // its key and size from the file, as the import reads them: the notebook opened at the end is that key's
+    // SAFETY: md is written by fstat before it is read; the descriptor is this function's.
+    let mut md: libc::stat = unsafe { std::mem::zeroed() };
+    let size = if unsafe { libc::fstat(fd.as_raw_fd(), &mut md) } == 0 { md.st_size as u64 } else { 0 };
+    let Some(key) = crate::md5::partial_md5_fd(fd.as_raw_fd()) else {
+        qlog!("book: the PDF KOReader named could not be read; nothing opened");
+        job_fail(j, st, AnnotateWhy::Log);
+        return;
+    };
+    drop(fd);
+    if key.as_bytes() != j.r.book.as_bytes() {
+        qlog!("book: the book key KOReader sent is not its file's; the file's is used");
+    }
+    st.total = pdf_total_guess(&key, size, j.r.pages);
+    let mut name = String::new();
+    annotate_name(j.r.title.as_bytes(), &mut name, STORE_NAME_LEN);
+    let q = crate::pdfimport::pdf_import_queue(&sp, (!name.is_empty()).then_some(name.as_str()), None, store_dpi());
+    empty_folder(dir); // (the request is taken: no later start opens it again)
+    match &q {
+        Queued::Started(id) => qlog!("book: the PDF KOReader named goes to the PDF import (%s); its page %d of %d opens once that ends", id, j.r.page, j.r.pages),
+        Queued::AlreadyRunning => qlog!("book: the PDF KOReader named is being imported already; its page %d of %d opens once that ends", j.r.page, j.r.pages),
+        Queued::Waiting => qlog!("book: the PDF KOReader named waits for an import of an earlier run; its page %d of %d opens once it is done", j.r.page, j.r.pages),
+        Queued::Refused(why) => {
+            qlog!("book: the PDF KOReader named could not go to the PDF import (%s); nothing opened", *why);
+            job_fail(j, st, AnnotateWhy::Log);
+            return;
+        }
+    }
+    j.src = src;
+    j.key = key;
+    j.size = size;
+    j.on = true;
+    st.state = BookState::Running;
+}
+
+/// The import ended with notebook `nb`: open it at the reader's page.
+fn pdf_open(j: &mut Job, st: &mut BookStatus, nb: &str, made: bool, added: u32, links_out: bool, blank: u32) {
+    let (pid, at) = pdf_reader_page(nb, j.r.page, j.r.pages);
+    st.nb.set(nb);
+    st.pid = pid;
+    st.made = made;
+    st.added = added as i32;
+    st.links = false;
+    st.links_out = links_out;
+    st.blank = blank as i32;
+    st.state = BookState::Done;
+    with(|s| {
+        s.last_nb.set(nb);
+        s.book_added = added as i32;
+    });
+    qlog!("book: %s: %d page(s) added by the PDF import (%s), opens at its page %d", nb, added as i32, if made { "a new notebook" } else { "its notebook" }, at + 1);
+    job_end(j, st);
+}
+
+/// A version 2 job's step: how its import ended (book_pdf_end), else how far it got, for the notice.
+fn step_pdf(j: &mut Job, st: &mut BookStatus) {
+    use crate::pdfimport::{FailWhy, Finished, ImportStatus};
+    if let Some((id, fin)) = j.ended.take() {
+        match fin {
+            Finished::Imported { pages, blank, trimmed } => return pdf_open(j, st, &id, true, pages, trimmed > 0, blank),
+            Finished::Filled { nb, added, trimmed, .. } => return pdf_open(j, st, &nb, false, added, trimmed > 0, 0),
+            Finished::Already => {
+                if let Some(nb) = pdf_notebook(&j.key, j.size) {
+                    return pdf_open(j, st, &nb, false, 0, false, 0);
+                }
+                qlog!("book: the PDF import found the PDF imported before, but no notebook holds its key; nothing opened");
+                return job_fail(j, st, AnnotateWhy::Log);
+            }
+            Finished::Failed(why) => {
+                qlog!("book: the PDF import failed (the lines above say why); nothing opened");
+                st.too_many = matches!(why, FailWhy::TooLong(_));
+                return job_fail(j, st, if why == FailWhy::Storage { AnnotateWhy::Storage } else { AnnotateWhy::Log });
+            }
+            Finished::Nothing => {}
+        }
+    }
+    let now = now_ms();
+    if crate::pdfimport::is_queued(&j.src) {
+        j.quiet_since = None;
+        if let ImportStatus::Importing(p, n) = crate::pdfimport::import_status(&j.src, 0, 0) {
+            st.added = p as i32;
+            st.total = n as i32;
+        }
+        return;
+    }
+    // (not queued: waiting for the lock, its pages made and waiting to go in, or going in; looked at twice a second)
+    if j.looked.is_some_and(|t| now.wrapping_sub(t) < 500) {
+        return;
+    }
+    j.looked = Some(now);
+    if crate::pdfimport::in_flight(&j.src) {
+        j.quiet_since = None;
+        return;
+    }
+    let since = *j.quiet_since.get_or_insert(now);
+    if now.wrapping_sub(since) < PDF_LOST_MS {
+        return;
+    }
+    // It ended and nothing was told (a fill its notebook's change stopped, say): the notebook of its key as it is.
+    match pdf_notebook(&j.key, j.size) {
+        Some(nb) => {
+            qlog!("book: the PDF import ended without a word; the book's notebook opens as it is");
+            pdf_open(j, st, &nb, false, 0, false, 0);
+        }
+        None => {
+            qlog!("book: the PDF import ended without a notebook; nothing opened");
+            job_fail(j, st, AnnotateWhy::Log);
+        }
+    }
+}
+
+/// The PDF a version 2 book job waits on (the text of its StoragePath), while that job runs: app.rs gives that
+/// import's end to book_pdf_end, not to the import's own toasts, and lets a fill's pages go in meanwhile.
+pub fn book_pdf_src() -> Option<String> {
+    with(|s| (s.j.on && s.j.pdf).then(|| s.j.src.clone()))
+}
+
+/// How the import of a version 2 book job's PDF ended (`id`: its job; a fill's commit has none): the next
+/// book_step opens the reader's page, or fails as a book does.
+pub fn book_pdf_end(id: &str, fin: crate::pdfimport::Finished) {
+    with(|s| {
+        if s.j.on && s.j.pdf {
+            s.j.ended = Some((id.to_string(), fin));
+        }
+    });
 }
 
 /// The links the plugin sent (links.txt, strictly: a file is taken whole or not at all). None for no file or one
@@ -1956,6 +2272,9 @@ fn step(j: &mut Job, budget_ms: u32, st: &mut BookStatus) {
     if !j.on || st.state != BookState::Running {
         return;
     }
+    if j.pdf {
+        return step_pdf(j, st);
+    }
     let t0 = now_ms();
     let (most, mut n) = (book_step_pages(), 0usize);
     while j.next < j.r.sent.len() && n < most && now_ms().wrapping_sub(t0) < budget_ms {
@@ -2026,7 +2345,8 @@ fn count_files(dir: &str) -> i32 {
 /// "result" (none, stale, opened, made, failed: what this start's request came to), "leftover"
 /// (files left in the requests' folder), "book_page" ("12/300": the book page held by page index
 /// open_page of the notebook this start's request opened; "" for a page that holds none, or no such
-/// notebook). 0, or -1 for a key it lacks.
+/// notebook), "book_version" (the version of this start's book request: 1, 2, or 0 for none or one that
+/// did not read). 0, or -1 for a key it lacks.
 pub fn annotate_probe(key: &str, open_page: i32, out: &mut String, cap: usize) -> i32 {
     const OUTCOMES: [&str; 5] = ["none", "stale", "opened", "made", "failed"];
     const BOOKS: [&str; 5] = ["none", "stale", "running", "done", "failed"];
@@ -2042,6 +2362,10 @@ pub fn annotate_probe(key: &str, open_page: i32, out: &mut String, cap: usize) -
         "book_added" => {
             let n = with(|s| s.book_added);
             csnprintf!(out, cap, "%d", n);
+        }
+        "book_version" => {
+            let v = with(|s| s.book_version);
+            csnprintf!(out, cap, "%d", v);
         }
         "book_leftover" => {
             let mut dir = String::new();

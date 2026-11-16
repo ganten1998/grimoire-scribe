@@ -1064,6 +1064,19 @@ pub fn is_queued(src: &str) -> bool {
     ui(|u| u.queued.iter().any(|q| q == src) || u.ready.iter().any(|r| r.1 == src))
 }
 
+/// The PDF (its StoragePath's text) of import `id`, while this process holds it as queued or running.
+pub fn queued_src(id: &str) -> Option<String> {
+    ui(|u| u.pending.iter().position(|p| p == id).and_then(|i| u.queued.get(i).cloned()))
+}
+
+/// Whether the PDF at `src` is still on its way to a notebook in this process: queued or running, its pages made
+/// and waiting to go in, going in now, or a pick that waits for the lock (its mark in import/.marks).
+pub fn in_flight(src: &str) -> bool {
+    is_queued(src)
+        || COMMIT.with(|c| c.borrow().as_ref().is_some_and(|c| c.src == src))
+        || mark_read(src).is_some_and(|m| m.state == MarkState::Waiting)
+}
+
 /// Resets what the UI side remembers (tests: as a new start), the shared record and a fill's commit with it.
 pub fn ui_reset() {
     ui(|u| *u = Ui::default());
@@ -3586,6 +3599,7 @@ pub fn fill_holds(nb: &str) -> bool {
 /// (Nothing until then, and for a fill that was not put in: the log says why).
 pub fn fill_tick(free: bool, dpi: f32) -> Finished {
     let t0 = mono_ms_now();
+    TOLD.with(|t| *t.borrow_mut() = None);
     let mut c = match COMMIT.with(|c| c.borrow_mut().take()) {
         Some(c) => c,
         None => {
@@ -3598,17 +3612,35 @@ pub fn fill_tick(free: bool, dpi: f32) -> Finished {
             ui(|u| u.ready.retain(|r| r.0 != id));
             match commit_begin(&id, &src) {
                 Ok(c) => c,
-                Err(f) => return f,
+                Err(f) => return told(&src, f),
             }
         }
     };
     match commit_step(&mut c, t0, dpi) {
-        Some(f) => f,
+        Some(f) => told(&c.src, f),
         None => {
             COMMIT.with(|x| *x.borrow_mut() = Some(c));
             Finished::Nothing
         }
     }
+}
+
+thread_local! {
+    /// The PDF whose fill the last fill_tick told of (`fill_told_src`).
+    static TOLD: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+fn told(src: &str, f: Finished) -> Finished {
+    if f != Finished::Nothing {
+        TOLD.with(|t| *t.borrow_mut() = Some(src.to_string()));
+    }
+    f
+}
+
+/// The PDF (its StoragePath's text) of the fill the last fill_tick ended, when it said anything: so a fill that
+/// KOReader's hand-over by path started is told by the book job (annotate.rs), not by the import's own toast.
+pub fn fill_told_src() -> Option<String> {
+    TOLD.with(|t| t.borrow().clone())
 }
 
 /// A fill that ends without its pages going in (or, past its notebook.ini, without the rest): the log says why once,

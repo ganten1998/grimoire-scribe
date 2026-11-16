@@ -553,7 +553,13 @@ fn book_tick(a: &mut App) {
         let added = a.book.made || a.book.added > 0 || a.book.links;
         app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
         editor_open_notebook_at(a, nb.as_str(), a.book.pid, added);
-        if a.book.added != 0 {
+        if a.book.blank > 0 && a.book.made {
+            // (a PDF KOReader handed over by its path became a new notebook, some of its pages blank: the PDF
+            // import's own words for that, 2.2)
+            let mut msg = String::new();
+            csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", a.book.added as i64), a.book.added);
+            app_toast(a, &msg, 5000);
+        } else if a.book.added != 0 {
             let mut msg = String::new();
             if a.book.links_out {
                 // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook, but some of
@@ -586,7 +592,8 @@ fn book_tick(a: &mut App) {
 // The notice redraws only when its text changes, at most once every 2 s, outside the count whose 30th Ui
 // is a Full: a long book no longer flashes the panel about every 18 s (2.1, DESIGN.md "One notice").
 fn book_progress(a: &mut App, now: u32) {
-    if now.wrapping_sub(a.book_told) < 600 {
+    // (a PDF KOReader handed over by its path, whose notebook holds every page already: no count to show)
+    if now.wrapping_sub(a.book_told) < 600 || a.book.total == 0 {
         return;
     }
     a.book_told = now;
@@ -2056,8 +2063,13 @@ fn pdf_import_tick(a: &mut App, now: u32) {
     // A PDF fill whose pages are made goes into its notebook here, in the UI process (2.2), as KOReader's book
     // job's pages do: it begins only with the Library in front and at rest (so no notebook is open, and no dialog
     // is half way) and no book job running, takes a few ticks with input held (pen, touch and keys, the Live view's
-    // too), and says how far it got in the book's notice.
-    let free = a.scr == ScreenId::Library && !a.asleep && a.book.state != BookState::Running && crate::library::library_at_rest(a);
+    // too), and says how far it got in the book's notice. A book job that waits on a PDF import (KOReader's hand-over
+    // by path) writes no notebook itself: a fill goes in during it, and the one of its own PDF ends it.
+    let book = book_pdf_src();
+    let free = a.scr == ScreenId::Library
+        && !a.asleep
+        && (a.book.state != BookState::Running || book.is_some())
+        && crate::library::library_at_rest(a);
     let fin = crate::pdfimport::fill_tick(free, a.dpi);
     if let Some((done, total)) = crate::pdfimport::fill_busy() {
         let mut msg = String::new();
@@ -2066,7 +2078,11 @@ fn pdf_import_tick(a: &mut App, now: u32) {
     } else if fin != crate::pdfimport::Finished::Nothing {
         app_notice_clear(a, NoticeKey::Book);
     }
-    pdf_import_told(a, "", fin);
+    if fin != crate::pdfimport::Finished::Nothing && book.is_some() && crate::pdfimport::fill_told_src() == book {
+        book_pdf_end("", fin);
+    } else {
+        pdf_import_told(a, "", fin);
+    }
     if a.scr == ScreenId::Library {
         app_import_rescan(a, false);
     }
@@ -2096,8 +2112,14 @@ fn poll_jobs(a: &mut App) -> i32 {
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
     }
     if done == BgKind::PdfImport as i32 {
+        // (the PDF KOReader handed over by its path, 2.2: its end opens the reader's page, through the book job)
+        let src = crate::pdfimport::queued_src(done_id.as_str());
         let fin = crate::pdfimport::finished(done_id.as_str(), r > 0);
-        pdf_import_told(a, done_id.as_str(), fin);
+        if src.is_some() && src == book_pdf_src() {
+            book_pdf_end(done_id.as_str(), fin);
+        } else {
+            pdf_import_told(a, done_id.as_str(), fin);
+        }
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
