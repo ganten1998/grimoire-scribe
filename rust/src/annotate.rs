@@ -1505,6 +1505,9 @@ pub struct BookStatus {
     /// import lock, or imports queued ahead of it in this one. It starts after them, as a picked PDF does, and the
     /// app says so (app_init)
     pub waits: bool,
+    /// RUNNING (version 2), set by the app: the user has left the Library since the hand-over (opened a notebook,
+    /// Pen feel, Share). The end then opens nothing, though the Library be in front again (app.rs, book_tick)
+    pub left: bool,
 }
 
 /// The job: one at a time, from book_start to DONE or FAILED.
@@ -1788,7 +1791,7 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
 // is kept as the one the notebook opens at (book_pdf_keep_page). The request is taken once the import is queued.
 
 /// After this long with the PDF's import neither queued, waiting for the lock nor being put in, and no end told,
-/// the job decides from the notebooks as they are.
+/// the job ends by itself: on the notebook a fill of the PDF was for, as it is, else as a failure.
 const PDF_LOST_MS: u32 = 3000;
 
 /// `file`, an absolute path, as a StoragePath inside the storage root (pdfimport::storage_root): None for a path

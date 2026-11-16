@@ -2306,20 +2306,22 @@ import's job, a fill's commit holds the input itself for its few ticks, and the 
 being filled. Holding the input for the whole import, as version 1 does for its few seconds, would also turn any wait
 into a lock: a fill's commit waits for the Library to be at rest, What's new opens by itself on the first start after
 an update, and a held Dismiss could then never close it. For the same reason nothing bounds the wait: behind another
-import (an earlier run's, which holds the import lock, or others queued ahead: `BookStatus.waits`) the PDF queues as
-a picked PDF does, with the picker's toast for it. The job follows the import through the end the app gives it
+import (an earlier run's, which holds the import lock, or others queued ahead: `BookStatus.waits`) the PDF queues as a
+picked PDF does, with the picker's toast for it. The job follows the import through the end the app gives it
 (`book_pdf_end`: the import's job end for its PDF, or the fill's commit, which `fill_tick` begins by its own rules)
-and names the notebook made, filled or found whole and the page of it that holds the reader's book page (by the
-count the notebook's pages name, when the two engines count differently). `book_tick` then decides by what is in
-front. The Library's cards (`library_cards_in_front`: no sheet, no Files, no Graph): the notebook opens at that
-page, with version 1's toasts, a finger resting on the Library or not (the end waits for nothing the user does). Anything else: nothing opens over it, the import's
-own toast shows (`pdf_import_told`), and the page is kept as the one the notebook opens at (`book_pdf_keep_page`:
-`last_page` alone, and never for the notebook the editor has open). An end that comes while the Kindle sleeps or a
-fill's pages go in is taken after. An import that fails fails the book, and says the import's own toast
-("PDF needs a password.", "PDF too big: over N MB." and the others of `pdf_import_told`); a request that ends
-before any import (it does not read, or the walk refuses its path) says the book's. An import that is neither
-queued, waiting for the lock nor going in, and told nothing, for 3 s (a fill whose notebook changed meanwhile) ends
-on the notebook that fill was for (`fill_target`, noted while its pages waited), as it is.
+and names the notebook made, filled or found whole and the page of it that holds the reader's book page (by the count
+the notebook's pages name, when the two engines count differently). `book_tick` then decides by where the user is.
+Still on the Library (`BookStatus.left` is set once the screen has been anything else since the hand-over) with its
+cards in front (`library_cards_in_front`: no sheet, no Files, no Graph): the notebook opens at that page, with version
+1's toasts, a finger resting on the Library or not (the end waits for nothing the user does). Otherwise nothing opens:
+the import says what it says for a dropped PDF (`pdf_import_told`: its toast, or the new card alone with the Library
+in front), and the page is kept as the one the notebook opens at (`book_pdf_keep_page`: `last_page` alone, and never
+for the notebook the editor has open). An end that comes while the Kindle sleeps or a fill's pages go in is taken
+after. An import that fails fails the book, and says the import's own toast ("PDF needs a password.", "PDF too big:
+over N MB." and the others of `pdf_import_told`); a request that ends before any import (it does not read, or the walk
+refuses its path) says the book's. An import that is neither queued, waiting for the lock nor going in, and told
+nothing, for 3 s (a fill whose notebook changed meanwhile) ends on the notebook that fill was for (`fill_target`,
+noted while its pages waited), as it is.
 
 The plugin sends version 2 only for what Grimoire takes, so that a book that opened before 2.2 never fails where
 KOReader could have drawn it: there is no way back to version 1 once Grimoire has the request. It keeps version 1

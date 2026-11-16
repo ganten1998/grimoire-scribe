@@ -2971,7 +2971,8 @@ its path (`import/.book/request.ini` version 2) and draws nothing. Grimoire take
 to the PDF import, as a file picked in Files: the import draws the pages (in colour where the PDF has colour) and
 finds the links, and fills a notebook KOReader made through version 1 with the pages it lacks. Nothing is held for
 it: the import's notice counts and the Library stays usable. When it ends the page the reader was on opens if the
-Library's cards are still in front; else the import's toast shows and the book's card opens at that page. DjVu,
+user is still on the Library with its cards in front; else nothing opens, the import says what a dropped PDF's
+does, and the book's card opens at that page. DjVu,
 comics, XPS, a PDF that needs a password, a PDF at a path Grimoire does not take, one over 512 MiB, one changed
 since KOReader first opened it, and any PDF to an older launcher go by version 1, KOReader drawing them; Annotate
 this page stays version 1.
@@ -2999,8 +3000,9 @@ book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the same with a 
 says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk refuses says the book's
 failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says it waits, then both
 notebooks), `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at the reader's page,
-nothing made) and `y_koreader_pdf_12_pressed.qs` (a finger held on a Library button at the end: the notebook
-opens, and the lift does nothing on the page).
+nothing made), `y_koreader_pdf_12_pressed.qs` (a finger held on a Library button at the end: the notebook
+opens, and the lift does nothing on the page) and `y_koreader_pdf_13_came_back.qs` (back on the Library after a
+visit to a notebook: nothing opens, the card arrives and opens at book page 3).
 
 **Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
 20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):

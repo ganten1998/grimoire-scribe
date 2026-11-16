@@ -172,9 +172,10 @@ already holds, so an Open this book costs no page opens it does not need after t
 in Grimoire on a PDF draws nothing: the plugin names the file in `import/.book/request.ini` (version 2) and hands
 over at once. Grimoire's own PDF import draws the pages (in colour where the PDF has colour) and finds the links,
 as for a PDF dropped in `grimoire/import`: the Library's notice counts the pages ("Importing: page N of M") and the
-Library stays usable. When the import ends the page the reader was on opens, if the Library's cards are still in
-front; with a notebook, a sheet, Files or the Graph in front nothing opens over it, the import's toast shows, and
-the book's card opens at that page. A book opened before 2.2 keeps the pages KOReader drew, and the pages it lacks
+Library stays usable. When the import ends the page the reader was on opens, if the user is still on the Library
+with its cards in front; with a notebook, a sheet, Files or the Graph in front, or after a visit to a notebook,
+nothing opens by itself: the import's toast shows (or its new card alone, on the Library), and the book's card
+opens at that page. A book opened before 2.2 keeps the pages KOReader drew, and the pages it lacks
 come from the import. DjVu, comics, XPS, a PDF that needs a password, a PDF Grimoire does not take by its path
 (outside `/mnt/us`, in a hidden, `.sdr` or system folder such as `koreader/`, in Grimoire's own folders, through a
 link, over 512 MiB) and a PDF changed since KOReader first opened it go as before, KOReader drawing them. The
