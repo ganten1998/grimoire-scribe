@@ -29,6 +29,9 @@
   break in a name is left where it is, a file picked from a folder that is only spelled like
   `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
   opened without following links.
+- Housekeeping: package-check's size guard is now 13 MB for the Kindle binary and 7 MB for the zip (was 11 MB and
+  6 MB): the new Settings menu brought the binary to 10.96 MB, and 2.2's Files, PDF fills and KOReader's hand-over
+  by path need more.
 
 ## 2.1.0 (2026-11-13)
 

@@ -581,3 +581,287 @@ fn the_picture_index_has_a_limit() {
     c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
+
+// ---- the readers the round left by path (issue #118) ----
+
+/// Lets every background job end (one a check queued by mistake leaves no child behind).
+fn drain() {
+    let mut ms = 0;
+    while bg_busy() && ms < 60_000 {
+        bg_poll();
+        sleep_ms(10);
+        ms += 10;
+    }
+}
+
+// A notebook's compaction list (erased.txt, read for every notebook at every start) is read when the entry at its
+// name is a plain file. Anything else there (a link, to a list or to nothing, a FIFO, a folder) is no list, as
+// nothing at the name is: a start queues no compaction of that notebook, a close finds nothing listed, and the next
+// erase's list replaces the entry itself (the file a link names is never written through; a folder there stays, and
+// the page is not listed while it does). No read of it waits. (A plain list that does not read is never written
+// over: test_inkwire.rs.)
+#[test]
+fn the_compaction_list_takes_a_plain_file_only() {
+    let t = top("erased");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Erased", 1, PAPER_BLANK);
+    let id = nb.id.as_str();
+    let pid = nb.page_ids[0];
+    let list = nb_dir(&root, &nb).join("erased.txt");
+    // (a start, as editor_init's, and a close, as close_notebook asks before it queues the pass: true when neither
+    // queues or runs a compaction of the notebook)
+    let start = || {
+        let n = compact_queue_listed(300.0);
+        let queued = bg_pending(BgKind::CompactPages, id);
+        drain();
+        n == 0 && !queued
+    };
+    let close = || !compact_listed(id);
+    let mut c = Checks::default();
+    c.that(!compact_listed(id) && compact_note_page(id, pid) == 0 && compact_listed(id) && is_plain(&list), "a list of its own is written and read");
+    std::fs::remove_file(&list).unwrap();
+    // a link to a list outside
+    let outside = t.join("outside.txt");
+    let listed = format!("# a list\n{pid}\n");
+    std::fs::write(&outside, &listed).unwrap();
+    symlink(&outside, &list).unwrap();
+    c.that(start(), "a list that is a link is no list: a start compacts nothing");
+    c.that(close(), "and a close finds nothing listed");
+    c.that(compact_note_page(id, pid) == 0 && is_plain(&list), "the next erase's list replaces the link itself");
+    c.that(std::fs::read(&outside).unwrap() == listed.as_bytes(), "the file outside is as it was");
+    c.that(compact_listed(id), "and the new list lists the page");
+    std::fs::remove_file(&list).unwrap();
+    // a link to nothing
+    let nowhere = t.join("nowhere");
+    symlink(&nowhere, &list).unwrap();
+    c.that(start() && close(), "a link to nothing is no list either");
+    c.that(compact_note_page(id, pid) == 0 && is_plain(&list) && !nowhere.exists(), "and is replaced, never written through");
+    std::fs::remove_file(&list).unwrap();
+    // a FIFO
+    fifo_at(&list);
+    let (none, waited) = waits_on(&list, || start() && close());
+    c.that(!waited && none, "a list that is a FIFO is no list, at once");
+    let (rc, waited) = waits_on(&list, || compact_note_page(id, pid));
+    c.that(!waited && rc == 0 && is_plain(&list), "and the next erase's list replaces it, at once");
+    std::fs::remove_file(&list).unwrap();
+    // a folder: no list, and it stays (a list is not renamed over a folder)
+    std::fs::create_dir(&list).unwrap();
+    c.that(start() && close(), "a folder at the name is no list");
+    c.that(compact_note_page(id, pid) == -1 && list.is_dir(), "and it stays");
+    std::fs::remove_dir(&list).unwrap();
+    c.that(!compact_listed(id), "with nothing at the name nothing is listed");
+    drain();
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// A notebook's compaction list is read up to 64 KiB, to the byte (the longest Grimoire writes is 45,136 bytes: its
+// header and 4096 ids of ten digits). A longer one is a plain file that does not read: nothing is written over it.
+#[test]
+fn the_compaction_list_has_a_limit() {
+    let t = top("erased-limit");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Long list", 1, PAPER_BLANK);
+    let id = nb.id.as_str();
+    let pid = nb.page_ids[0];
+    let list = nb_dir(&root, &nb).join("erased.txt");
+    let mut c = Checks::default();
+    // a list of comments only lists nothing, once it reads
+    std::fs::write(&list, padded(b"# a list\n", 65536)).unwrap();
+    c.that(!compact_listed(id), "a list of exactly 64 KiB reads");
+    let text = padded(format!("# a list\n{pid}\n").as_bytes(), 65536);
+    std::fs::write(&list, &text).unwrap();
+    c.that(compact_note_page(id, pid + 1) == 0, "and takes a page");
+    c.that(std::fs::read(&list).is_ok_and(|b| b.ends_with(format!("\n{pid}\n{}\n", pid + 1).as_bytes())), "after the one it listed");
+    std::fs::write(&list, padded(b"# a list\n", 65537)).unwrap();
+    c.that(compact_listed(id), "one byte more is a list that does not read");
+    let text = padded(format!("# a list\n{pid}\n").as_bytes(), 65537);
+    std::fs::write(&list, &text).unwrap();
+    c.that(compact_note_page(id, pid + 1) == -1 && std::fs::read(&list).unwrap() == text, "and nothing is written over it");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// A notebook's links.ini and doclinks.ini, as its nav.ini (test_nav.rs), are read only as plain files: a link there
+// (to a file that would read, or to nothing) or a FIFO is a file that is there and does not read, at once. None of
+// its links is used, no link is added or saved, and the entry is left as it is (DESIGN.md's storage paragraph).
+#[test]
+fn the_link_sidecars_take_a_plain_file_only() {
+    let t = top("sidecars");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Sidecars", 2, PAPER_BLANK);
+    let id = nb.id.as_str();
+    let (p1, p2) = (nb.page_ids[0], nb.page_ids[1]);
+    let dir = nb_dir(&root, &nb);
+    let mut c = Checks::default();
+    // one link in each, of their own
+    let mut n = Nav::default();
+    nav_init(&mut n);
+    c.that(nav_load_links(id, &mut n) == 0 && nav_link_set(&mut n, p1, 0x77, "index") == 0 && nav_save_links(id, &mut n, &nb) == 0, "a links.ini of its own is written");
+    nav_free(&mut n);
+    let mut doc = doclinks_text(&DocLinks::default(), None);
+    doc.extend_from_slice(format!("link.{p1}=00000077,p{p2}\narea.{p1}=00000077,10,10,50,50\n").as_bytes());
+    std::fs::write(dir.join("doclinks.ini"), &doc).unwrap();
+    // (what a read of each gives: its links, and whether one more link is taken and saved)
+    let links_ini = || {
+        let mut n = Nav::default();
+        nav_init(&mut n);
+        let rc = nav_load_links(id, &mut n);
+        let got = (rc, n.links.len(), nav_link_set(&mut n, p2, 0x78, "index") == 0 && nav_save_links(id, &mut n, &nb) == 0);
+        nav_free(&mut n);
+        got
+    };
+    let doclinks_ini = || {
+        let mut dl = doclinks_load(id);
+        (dl.links.len(), doclinks_save(id, &mut dl, &nb) == 0)
+    };
+    c.that(links_ini() == (0, 1, true), "a links.ini of its own reads and takes a link");
+    c.that(doclinks_ini() == (1, true), "a doclinks.ini of its own reads and is saved");
+    let unread = |name: &str| if name == "links.ini" { links_ini() == (-1, 0, false) } else { doclinks_ini() == (0, false) };
+    for name in ["links.ini", "doclinks.ini"] {
+        let at = dir.join(name);
+        // a link to the file itself, moved outside
+        let outside = t.join(format!("outside-{name}"));
+        move_out_and_link(&at, &outside);
+        let kept = std::fs::read(&outside).unwrap();
+        c.that(unread(name), &format!("a {name} that is a link is there and does not read"));
+        c.that(is_link(&at) && std::fs::read(&outside).unwrap() == kept, &format!("the link at {name} and its file are as they were"));
+        std::fs::remove_file(&at).unwrap();
+        // a link to nothing
+        symlink(t.join("nowhere"), &at).unwrap();
+        c.that(unread(name) && is_link(&at), &format!("a {name} that is a link to nothing is one too, and stays"));
+        std::fs::remove_file(&at).unwrap();
+        // a FIFO
+        fifo_at(&at);
+        let (none, waited) = waits_on(&at, || unread(name));
+        c.that(!waited && none && std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_fifo()), &format!("a {name} that is a FIFO is one too, at once"));
+        std::fs::remove_file(&at).unwrap();
+    }
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+/// A lasso group of one stroke, for the clipboard.
+fn group() -> Group {
+    Group { w: 600, h: 800, strokes: vec![wave(5, 200.0)], links: Vec::new(), box_: Rect::new(60, 200, 360, 30), src_nb: "nb-clip".into(), src_pid: 1, ink: 1, carried: 0 }
+}
+
+// The lasso's clipboard (clipboard.qpg) is read, for a paste and for the copy a Cut keeps, when the entry at its
+// name is a plain file of at most CLIP_MAX_BYTES: a link there is not followed, a FIFO is no clipboard at once,
+// and a longer file is not read.
+#[test]
+fn the_clipboard_takes_a_plain_file_only() {
+    let t = top("clipboard");
+    let root = t.join("root");
+    store_at(&root);
+    let clip = PathBuf::from(clipboard_path());
+    let mut c = Checks::default();
+    assert_eq!(clipboard_write(&group()), 0);
+    let bytes = std::fs::read(&clip).unwrap();
+    c.that(clipboard_read().is_some_and(|g| g.strokes.len() == 1), "a clipboard of its own reads");
+    c.that(clipboard_snapshot().as_deref() == Some(&bytes[..]), "and a Cut keeps its bytes");
+    // a link to a clipboard outside
+    let outside = t.join("outside.qpg");
+    move_out_and_link(&clip, &outside);
+    c.that(clipboard_read().is_none(), "a clipboard that is a link is not read");
+    c.that(clipboard_snapshot().is_none(), "and a Cut keeps none of it");
+    c.that(clipboard_restore(None) == 0 && std::fs::symlink_metadata(&clip).is_err(), "putting back no clipboard removes the link itself");
+    c.that(std::fs::read(&outside).unwrap() == bytes, "the file outside is as it was");
+    // a FIFO
+    fifo_at(&clip);
+    let (none, waited) = waits_on(&clip, || clipboard_read().is_none());
+    c.that(!waited && none, "a clipboard that is a FIFO is none, at once");
+    let (none, waited) = waits_on(&clip, || clipboard_snapshot().is_none());
+    c.that(!waited && none, "and a Cut keeps none, at once");
+    std::fs::remove_file(&clip).unwrap();
+    // one byte over the limit
+    std::fs::File::create(&clip).unwrap().set_len(CLIP_MAX_BYTES as u64 + 1).unwrap();
+    c.that(clipboard_read().is_none() && clipboard_snapshot().is_none(), "a clipboard over CLIP_MAX_BYTES is not read");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// The shortcut files (shortcuts.ini, controller.ini, a device's own, gestures.ini, live-keys.ini) are read when the
+// entry at the name is a plain file of at most 64 KiB. A link there (to a file or to nothing), a FIFO or a longer
+// file is a file that is there and does not read: no mappings from it, and nothing is written over it. No read
+// waits.
+#[test]
+fn the_shortcut_files_take_a_plain_file_only() {
+    let t = top("shortcuts");
+    let root = t.join("root");
+    std::fs::create_dir_all(&root).unwrap();
+    let ini = root.join("shortcuts.ini");
+    let lines = b"key.e=undo\n";
+    let outside = t.join("outside.ini");
+    std::fs::write(&outside, lines).unwrap();
+    let mut c = Checks::default();
+    let mut m = Shortcuts::default();
+    std::fs::write(&ini, lines).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 1 && m.rejected == 0, "a shortcuts.ini of its own is read");
+    std::fs::remove_file(&ini).unwrap();
+    symlink(&outside, &ini).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 0 && m.rejected == 1, "a shortcuts.ini that is a link is not read");
+    std::fs::remove_file(&ini).unwrap();
+    fifo_at(&ini);
+    let (_, waited) = waits_on(&ini, || shortcuts_load(&mut m, text(&ini)));
+    c.that(!waited && m.count == 0 && m.rejected == 1, "a shortcuts.ini that is a FIFO is not read, at once");
+    std::fs::remove_file(&ini).unwrap();
+    std::fs::write(&ini, padded(lines, 65536)).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 1 && m.rejected == 0, "a shortcuts.ini of exactly 64 KiB reads");
+    std::fs::write(&ini, padded(lines, 65537)).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 0 && m.rejected == 1, "one byte more is not read");
+    // gestures.ini, through the same reader: one that does not read is never saved over
+    let g = root.join("gestures.ini");
+    symlink(&outside, &g).unwrap();
+    let mut gm = GestureMap::default();
+    c.that(gesturemap_load(&mut gm, text(&g)) == -1 && !gm.writable, "a gestures.ini that is a link is not read, and not written over");
+    c.that(std::fs::read(&outside).unwrap() == lines, "the file outside is as it was");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// The PDF cache's records (.cache/pdf/<id>/p<page id>.z) are read when the entry at the name is a plain file of at
+// most a record's largest size. A link there or a FIFO is a record that does not read: the page is drawn again,
+// its new record replaces the entry itself, and no read waits.
+#[test]
+fn a_pdf_cache_record_takes_a_plain_file_only() {
+    let t = top("pdfcache");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Cached", 2, PAPER_BLANK);
+    let pdfs = root.join("PDFs");
+    // (a mirror: the pages it drew)
+    let mirror = || {
+        let before = pdf_pages_rendered();
+        assert_eq!(export_mirror_pdf(&nb, 300.0, text(&pdfs)), 0);
+        pdf_pages_rendered() - before
+    };
+    let rec = PathBuf::from(pdf_cache_root()).join(nb.id.as_str()).join(format!("p{}.z", nb.page_ids[0]));
+    let mut c = Checks::default();
+    c.that(mirror() == 2 && is_plain(&rec), "the first mirror draws both pages and keeps their records");
+    c.that(mirror() == 0, "the next finds both");
+    // a link to the page's own record, moved outside: it would be used, were it read
+    let outside = t.join("outside.z");
+    move_out_and_link(&rec, &outside);
+    let kept = std::fs::read(&outside).unwrap();
+    c.that(mirror() == 1, "a record that is a link is not read: its page is drawn");
+    c.that(is_plain(&rec) && std::fs::read(&outside).unwrap() == kept, "its new record replaced the link itself, and the file outside is as it was");
+    // a FIFO
+    std::fs::remove_file(&rec).unwrap();
+    fifo_at(&rec);
+    let (drawn, waited) = waits_on(&rec, mirror);
+    c.that(!waited && drawn == 1 && is_plain(&rec), "a record that is a FIFO is not read, at once, and is replaced");
+    // one byte over the largest record (its header and the largest stream)
+    std::fs::remove_file(&rec).unwrap();
+    std::fs::File::create(&rec).unwrap().set_len(PDF_RECORD_MAX as u64 + 1).unwrap();
+    c.that(mirror() == 1, "a record over the largest size is not read");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}

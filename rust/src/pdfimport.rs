@@ -60,6 +60,15 @@ pub const QUEUE_MAX: usize = 8;
 pub const PDF_TRIES: i32 = 3;
 /// A PDF's pages (STORE_MAX_PAGES).
 pub const PDF_MAX_PAGES: u32 = STORE_MAX_PAGES as u32;
+/// The most the work folder's links.part holds, in bytes: the first worker's L, Q and F records, line for line in
+/// their own grammar (Collected::links_text), of which a worker sends at most RECORDS_MAX_BYTES with their newlines
+/// (Session counts them), and the one line the first slice may add itself, the F line of a walk that sent none
+/// ("F 0 0 0 0", 10 bytes with its newline).
+pub const LINKS_PART_MAX: usize = RECORDS_MAX_BYTES + 10;
+/// The most names.part holds: one O record a page (Collected::take refuses a second) for at most PDF_MAX_PAGES
+/// pages (the parts are kept only after that refusal), each "O", a page of at most 9 digits, a name of at most 95
+/// bytes as 190 hex digits, two spaces and a newline: 203 bytes, 406,000 in all.
+pub const NAMES_PART_MAX: usize = PDF_MAX_PAGES as usize * 203;
 /// An import that stopped this many times without finishing, keeping its work folder (a writer cut off, the job
 /// over its CPU budget), fails whole at its next slice.
 pub const STOPS_MAX: u32 = 3;
@@ -2385,7 +2394,12 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
         qlog!("import: %s: a PDF over %d MB; nothing imported%s", id, (cap >> 20) as i32, if mapped { "" } else { " (the device refuses the private mapping)" });
         return refuse(R_TOO_BIG, (cap >> 20) as u32);
     }
-    let key = partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd));
+    let Some(key) = partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) else {
+        // (a read that fails is no key: one taken from the samples before it would be another file's)
+        qlog!("import: %s: its book key could not be read (the storage failed a read); nothing imported", id);
+        mark_drop(src);
+        return fail(id, R_FAILED, 0);
+    };
     let mut all = Vec::new();
     store_list(&mut all);
     // "Imported before" is said of this very file. The notebooks that hold its key decide: one whose record has
@@ -2847,8 +2861,10 @@ fn write_progress_mark(src: &str, prior: Option<&Mark>, state: &State, id: &str,
 /// without them and says so in the log. Returns whether doclinks.ini was written, and how many links were left out
 /// for room (the toast says so).
 fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (bool, u32) {
-    let read = |n: &str| std::fs::read(format!("{work}/{n}")).ok().filter(|b| b.len() <= 2 * RECORDS_MAX_BYTES);
-    let (Some(lt), Some(nt)) = (read("links.part"), read("names.part")) else { return (false, 0) };
+    // (a plain file at the name, of at most what the first slice can write: a link there is not followed, a FIFO
+    // never waited on, and a longer file is not read)
+    let read = |n: &str, max: usize| read_file_max(&format!("{work}/{n}"), max);
+    let (Some(lt), Some(nt)) = (read("links.part", LINKS_PART_MAX), read("names.part", NAMES_PART_MAX)) else { return (false, 0) };
     let pages = nb.npages().max(0) as u32;
     let Some(c) = Collected::from_parts(&lt, &nt, pages) else {
         qlog!("import: %s: its links and names do not read; the notebook has none", id);
@@ -2922,11 +2938,14 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     // this open file, so both are of one file: a file that took the name between two slices, with the same size
     // and time and another key, ends the import here.
     let again = open_source(src);
-    if again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime)
-        || source.size != state.size
-        || partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) != state.key
-    {
-        qlog!("import: %s: the PDF changed under the import; nothing imported", id);
+    let still = again.as_ref().is_ok_and(|s| s.size == state.size && s.mtime == state.mtime) && source.size == state.size;
+    let key = if still { partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) } else { None };
+    if !still || key.as_deref() != Some(state.key.as_str()) {
+        if still && key.is_none() {
+            qlog!("import: %s: its book key could not be read (the storage failed a read); nothing imported", id);
+        } else {
+            qlog!("import: %s: the PDF changed under the import; nothing imported", id);
+        }
         remove_work_folder(id);
         mark_drop(src);
         return fail(id, R_FAILED, 0);

@@ -459,24 +459,19 @@ fn parse(map: &mut Shortcuts, text: &[u8], allow_key: bool, allow_pad: bool) {
         );
     }
 }
-/// A small file of lines read whole (shortcuts.ini, controller.ini, gestures.ini): None when it is
-/// not there; Err when it is not a file, is over cap bytes, or cannot be read; else its text up to
-/// its first NUL.
+/// A small file of lines read whole (shortcuts.ini, controller.ini, gestures.ini): None when nothing
+/// is at its name; Err when what is there is no plain file (a link, to a file or to nothing, is not
+/// followed, and the open never waits: util::open_read_nofollow), is over cap bytes, or cannot be read;
+/// else its text up to its first NUL.
 pub(crate) fn ini_read_bounded(path: &str, cap: u64) -> Result<Option<Vec<u8>>, ()> {
-    match std::fs::metadata(path) {
-        Ok(st) if st.is_file() && st.len() <= cap => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // A dangling symlink is an existing unreadable mapping, not a missing file.
-            return match std::fs::symlink_metadata(path) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                _ => Err(()),
-            };
-        }
+    let f = match open_read_nofollow(path) {
+        Ok((f, st)) if st.len() <= cap => f,
+        // (only nothing at the name is a missing file: a link there, even one to nothing, fails the open with
+        // ELOOP and is an existing unreadable mapping)
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         _ => return Err(()),
-    }
-    // Bound the read too, including a file changed since stat.
-    let Ok(f) = std::fs::File::open(path) else { return Err(()) ;
     };
+    // Bound the read too, including a file changed since the open.
     let mut text = Vec::new();
     let failed = std::io::Read::read_to_end(&mut std::io::Read::take(f, cap + 1), &mut text).is_err() || text.len() as u64 > cap;
     if failed {
