@@ -5993,3 +5993,9 @@ msgstr "PDF, imágenes, fuentes"
 #: rust/src/browser.rs
 msgid "link, not followed"
 msgstr "enlace, no se sigue"
+
+#. TRANSLATORS: a Files card's first line for a file Grimoire cannot use, before its size and date ("File,
+#. 2 KB, Oct 3"; 34 px).
+#: rust/src/browser.rs
+msgid "File"
+msgstr "Archivo"

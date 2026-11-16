@@ -137,6 +137,9 @@ pub enum RowKind {
     Font,
     Other,
     Link,
+    /// an entry of Grimoire's trash, listed read only by the time in its name (a notebook by its name): never
+    /// entered, no card yet (Restore is a later lane's)
+    Trashed,
 }
 
 /// A root row's place. Pick mode's root has Import, Documents, Downloads and All storage; place mode's has them all
@@ -229,11 +232,36 @@ pub struct Row {
     /// say it is the same, so the card offers Import as notebook as well, and the import gives the answer
     pub also_import: bool,
     pub status: RowStatus,
+    /// Files (2.2): the name a row shows in place of its file's (a trashed notebook's own; None until looked up, ""
+    /// when there is none), the time in a trash entry's name, and whether the entry is a folder
+    title: Option<String>,
+    when: i64,
+    dir: bool,
+    /// what the card's details say of the file beyond its size and date, once known without reading it here (a
+    /// font's family, from its check's verdict): None until looked, "" for nothing
+    detail: Option<String>,
 }
 
 impl Row {
     fn new(kind: RowKind, name: &str, path: StoragePath) -> Row {
-        Row { kind, name: name.to_string(), path, place: None, ix: usize::MAX, stat: None, stat_tried: false, pictures: None, key: None, notebook: None, also_import: false, status: RowStatus::None }
+        Row {
+            kind,
+            name: name.to_string(),
+            path,
+            place: None,
+            ix: usize::MAX,
+            stat: None,
+            stat_tried: false,
+            pictures: None,
+            key: None,
+            notebook: None,
+            also_import: false,
+            status: RowStatus::None,
+            title: None,
+            when: 0,
+            dir: kind == RowKind::Dir,
+            detail: None,
+        }
     }
 }
 
@@ -650,6 +678,13 @@ impl Browser {
         }
         dirs.extend(files);
         self.built = true;
+        if place && self.in_trash_place() {
+            // Grimoire's trash, read only: each entry by the time in its name, the newest first (no stat)
+            let mut rows = self.trash_rows();
+            rows.sort_by(|a, b| b.when.cmp(&a.when).then_with(|| name_cmp(&a.name, &b.name)));
+            self.set_rows(rows);
+            return;
+        }
         if place && self.prefs.sort != 0 && !dirs.is_empty() {
             // (by newest or size: every row's stat first, in slices; the rows shown stay as they are meanwhile)
             self.next = Some(dirs);
@@ -657,6 +692,50 @@ impl Browser {
         } else {
             self.set_rows(dirs);
         }
+    }
+
+    /// Whether the folder shown is Grimoire's trash itself (Files lists its entries read only).
+    fn in_trash_place(&self) -> bool {
+        self.at.as_ref().is_some_and(|p| self.place_path(PlaceKind::Trash).is_some_and(|t| *p == t))
+    }
+
+    /// The trash's entries as rows: a notebook (`<id>-<time>`, a folder) or a page (`<id>-p<page>-<time>`, a file),
+    /// each with the time in its name. A name of another form is listed as it is, with no time.
+    fn trash_rows(&self) -> Vec<Row> {
+        let (Some(l), Some(at)) = (self.listing.as_ref(), self.at.as_ref()) else { return Vec::new() };
+        let mut rows = Vec::new();
+        for (ix, e) in l.entries.iter().enumerate() {
+            if !matches!(e.kind, FsKind::Dir | FsKind::File) {
+                continue;
+            }
+            let (Ok(name), Some(path)) = (std::str::from_utf8(&e.name), at.join(&e.name)) else { continue };
+            if !crate::pdfimport::name_storable(name) {
+                continue;
+            }
+            let mut r = Row::new(RowKind::Trashed, name, path);
+            r.ix = ix;
+            r.dir = e.kind == FsKind::Dir;
+            r.when = name.rsplit_once('-').and_then(|(_, t)| t.parse::<i64>().ok()).unwrap_or(0);
+            rows.push(r);
+        }
+        rows
+    }
+
+    /// A trash entry's name as Files shows it: a notebook's own name (its notebook.ini in the trash, Grimoire's own
+    /// small file), a page's notebook's name, else "" (the entry's name shows).
+    fn trash_title(&self, r: &Row) -> String {
+        let Some((id, _)) = r.name.rsplit_once('-') else { return String::new() };
+        if r.dir {
+            let ini = format!("{}/trash/{}/notebook.ini", store_root(), r.name);
+            let text = crate::util::read_file_max(&ini, 16 << 10).unwrap_or_default();
+            return String::from_utf8_lossy(&text)
+                .lines()
+                .find_map(|l| l.strip_prefix("name="))
+                .map(|n| n.trim().to_string())
+                .unwrap_or_default();
+        }
+        let Some((nb, _)) = id.rsplit_once("-p") else { return String::new() };
+        self.books.iter().find(|b| b.id.as_str() == nb).map_or(String::new(), |b| b.name.as_str().to_string())
     }
 
     /// The rows shown from now on (the Import place's Look again after them), from the first screen.
@@ -811,6 +890,7 @@ impl Browser {
             // TRANSLATORS: the last row of the file picker's first screen (and of Files'): puts a Files card at the end
             // of the Library, which opens these places to browse (44 px in a row of about 1500 px).
             (RowKind::ShowCard, _) => tr("Show Files in Library").to_string(),
+            (RowKind::Trashed, _) => r.title.clone().filter(|t| !t.is_empty()).unwrap_or_else(|| r.name.clone()),
             _ => r.name.clone(),
         }
     }
@@ -829,6 +909,12 @@ impl Browser {
             // TRANSLATORS: Files with Show all: the second line of a row that is a link, which Grimoire never follows
             // (34 px, under the link's name).
             RowKind::Link => tr("link, not followed").to_string(),
+            RowKind::Trashed if r.when > 0 => {
+                let mut day = String::new();
+                format_date_short(r.when, &mut day, 64);
+                day
+            }
+            RowKind::Trashed => String::new(),
             RowKind::Dir => match r.pictures {
                 Some(n) if n > 0 => {
                     // TRANSLATORS: a folder in the file picker that holds pictures; %d is how many (small text under its name).
@@ -929,6 +1015,15 @@ impl Browser {
                 if real_now_ms().wrapping_sub(t0) >= FS_SLICE_MS {
                     return changed;
                 }
+            }
+        }
+        // Files: a trash entry's name, a font's family (from its check's verdict), one a tick
+        for i in vis.clone() {
+            if self.rows[i].kind == RowKind::Trashed && self.rows[i].title.is_none() {
+                let t = self.trash_title(&self.rows[i]);
+                self.rows[i].title = Some(t);
+                changed.push(i);
+                return changed;
             }
         }
         // picture counts, one folder a tick
@@ -1083,10 +1178,10 @@ impl Browser {
 
     /// A row's card, as a tap on a PDF or a hold on a folder opens it (the tests' too: it needs no screen).
     pub fn open_card(&mut self, row: usize) {
-        let Some(r) = self.rows.get(row) else { return };
-        if !matches!(r.kind, RowKind::Pdf | RowKind::Dir) {
+        if !self.has_card(row) {
             return;
         }
+        let Some(r) = self.rows.get(row) else { return };
         // a PDF's book key is read now if the tick has not yet
         if r.kind == RowKind::Pdf && r.key.is_none() {
             let p = r.path.clone();
@@ -1101,6 +1196,25 @@ impl Browser {
             let p = self.rows[row].path.clone();
             let n = self.count_pictures(&p);
             self.rows[row].pictures = Some(n);
+        }
+        // the row's stat, if the tick has not read it yet (its size and date are the details' first words)
+        if self.rows[row].stat.is_none() && self.rows[row].ix != usize::MAX {
+            if let Some(l) = self.listing.as_mut() {
+                let ix = self.rows[row].ix;
+                l.stat(ix..ix + 1, FS_SLICE_MS);
+                self.rows[row].stat = l.entries.get(ix).and_then(|e| e.stat);
+                self.rows[row].stat_tried = true;
+            }
+        }
+        if self.mode == BrowseMode::Place && self.rows[row].detail.is_none() {
+            let d = self.detail_of(row);
+            self.rows[row].detail = Some(d);
+        }
+        // a PDF of the PDF copies: the notebook it was written from
+        if self.rows[row].kind == RowKind::Pdf && self.rows[row].notebook.is_none() {
+            if let Some(id) = self.mirror_notebook(row) {
+                self.rows[row].notebook = Some(id);
+            }
         }
         self.card = Some(Card { row, ..Default::default() });
     }
@@ -1167,9 +1281,16 @@ impl Browser {
         let r = &self.rows[row];
         let mut rows: Vec<(i32, i32, IconKind, String)> = Vec::new();
         let details;
+        // (Files: no import from Grimoire's PDF copies or trash, as the picker never offers them)
+        let importable = self.pick() || self.storage.as_ref().is_some_and(|st| st.zone(&r.path, true) != FsZone::Refused);
         match r.kind {
+            // Files (2.2): what the file is, its size and date (and its family for a font of Grimoire's whose check
+            // passed); Use as template, Use as photo and Add to fonts wait for the copy job (the From a file lane)
+            RowKind::Picture | RowKind::Font | RowKind::Other => {
+                details = self.card_details(r);
+            }
             RowKind::Pdf => {
-                details = self.row_sub_plain(r);
+                details = if self.pick() { self.row_sub_plain(r) } else { self.card_details(r) };
                 if r.notebook.is_some() {
                     // TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
                     // (a row of about 800 px at 44 px).
@@ -1177,7 +1298,7 @@ impl Browser {
                 }
                 // (with a notebook found by its record's size, both: the import says "PDF already imported." of the
                 // same file, and makes a notebook of another)
-                if r.notebook.is_none() || r.also_import {
+                if importable && !self.is_mirror(r) && (r.notebook.is_none() || r.also_import) {
                     // TRANSLATORS: a PDF's card in the file picker: this makes a notebook of its pages (a row of about 800 px at 44 px).
                     rows.push((B_CARD_IMPORT, 0, IconKind::Download, tr("Import as notebook").to_string()));
                 }
@@ -1186,7 +1307,7 @@ impl Browser {
                 details = r.name.clone();
                 rows.push((B_CARD_OPEN, 0, IconKind::Folder, tr("Open").to_string()));
                 let n = r.pictures.unwrap_or(0);
-                if n > 0 {
+                if n > 0 && importable {
                     // TRANSLATORS: a folder's card in the file picker: this makes one notebook of the %d pictures in it,
                     // in their order (a row of about 800 px at 44 px).
                     rows.push((B_CARD_PICTURES, 0, IconKind::Download, cformat!(ng_("Import %d picture as notebook", "Import %d pictures as notebook", n as i64), n as i32)));
@@ -1195,6 +1316,64 @@ impl Browser {
         }
         rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Cancel").to_string()));
         (details, rows)
+    }
+
+    /// A Files card's details: what the file is, then its size and date, and what is known of it without reading
+    /// it here ("PDF, 14.2 MB, Oct 30"; "Font, Inter, 120 KB, Sep 9").
+    fn card_details(&self, r: &Row) -> String {
+        let kind = match r.kind {
+            RowKind::Pdf => "PDF",
+            RowKind::Picture => tr("Picture"),
+            RowKind::Font => tr("Font"),
+            // TRANSLATORS: a Files card's first line for a file Grimoire cannot use, before its size and date ("File,
+            // 2 KB, Oct 3"; 34 px).
+            _ => tr("File"),
+        };
+        let mut parts = vec![kind.to_string()];
+        if let Some(d) = r.detail.as_ref().filter(|d| !d.is_empty()) {
+            parts.push(d.clone());
+        }
+        let plain = self.row_sub_plain(r);
+        if !plain.is_empty() {
+            parts.push(plain);
+        }
+        parts.join(", ")
+    }
+
+    /// What is known of a file without reading it in the UI (never a user's file parsed here: the worker or
+    /// nothing): a font of grimoire/fonts whose check passed, its family; else "".
+    fn detail_of(&self, row: usize) -> String {
+        let r = &self.rows[row];
+        let (Some(fonts), Some(s)) = (self.place_path(PlaceKind::Fonts), r.stat) else { return String::new() };
+        if r.kind != RowKind::Font || !path_under(&r.path, &fonts) {
+            return String::new();
+        }
+        let rel = String::from_utf8_lossy(&r.path.as_bytes()[fonts.as_bytes().len()..]).trim_start_matches('/').to_string();
+        crate::userfonts::userfont_family(&rel, s.size, s.mtime).unwrap_or_default()
+    }
+
+    /// Whether a row is in Grimoire's PDF copies (a notebook's mirror PDF: opened as its notebook, never imported).
+    fn is_mirror(&self, r: &Row) -> bool {
+        self.place_path(PlaceKind::PdfCopies).is_some_and(|m| path_under(&r.path, &m))
+    }
+
+    /// The notebook a mirror PDF was written from: the one whose mirror path (export.rs) is this file's.
+    fn mirror_notebook(&self, row: usize) -> Option<String> {
+        let r = &self.rows[row];
+        if !self.is_mirror(r) {
+            return None;
+        }
+        let (root, _) = root_dir()?;
+        let abs = format!("{}/{}", root.trim_end_matches('/'), r.path.to_string_lossy());
+        let dir = crate::app::app_mirror_dir();
+        self.books
+            .iter()
+            .find(|nb| {
+                let mut p = String::new();
+                crate::export::export_mirror_path(nb, &dir, &mut p, 1200);
+                p == abs
+            })
+            .map(|nb| nb.id.as_str().to_string())
     }
 
     fn row_sub_plain(&self, r: &Row) -> String {
@@ -1208,7 +1387,7 @@ impl Browser {
     fn unchanged(&mut self, row: usize) -> bool {
         let (Some(st), Some(r)) = (self.storage.as_ref(), self.rows.get(row)) else { return false };
         match (r.stat, st.stat(&r.path, self.pick())) {
-            (Some(was), Ok(now)) if r.kind == RowKind::Pdf => was.same(&now),
+            (Some(was), Ok(now)) if r.kind != RowKind::Dir => was.same(&now),
             (_, Ok(now)) => now.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32,
             _ => false,
         }
@@ -1423,7 +1602,7 @@ impl Browser {
     }
 
     fn has_card(&self, i: usize) -> bool {
-        self.rows.get(i).is_some_and(|r| matches!(r.kind, RowKind::Pdf | RowKind::Dir))
+        self.rows.get(i).is_some_and(|r| matches!(r.kind, RowKind::Pdf | RowKind::Dir | RowKind::Picture | RowKind::Font | RowKind::Other))
     }
 
     fn draw_row(&self, c: &mut Canvas, r: Rect, i: usize) {
@@ -1448,6 +1627,8 @@ impl Browser {
             (RowKind::Font, _) => IconKind::Font,
             (RowKind::Other, _) => IconKind::FileOther,
             (RowKind::Link, _) => IconKind::LinkOff,
+            (RowKind::Trashed, _) if row.dir => IconKind::Notebook,
+            (RowKind::Trashed, _) => IconKind::Paper,
         };
         // (a file Grimoire cannot use, and a link, greyed: Show all lists them so the folder is seen whole)
         let ink = if matches!(row.kind, RowKind::Other | RowKind::Link) { 110 } else { 0 };
@@ -1666,7 +1847,12 @@ impl Browser {
                         self.redraw(a, RefreshMode::Ui);
                         return BrowserResult::ShowInLibrary;
                     }
-                    RowKind::Picture | RowKind::Font | RowKind::Other | RowKind::Link => {}
+                    // a picture's, a font's or another file's card (Files): what it is, and what can be done today
+                    RowKind::Picture | RowKind::Font | RowKind::Other => {
+                        self.open_card(i);
+                        self.show_card(a);
+                    }
+                    RowKind::Link | RowKind::Trashed => {}
                 }
             }
             _ => {}
@@ -1976,6 +2162,7 @@ impl Browser {
                         RowKind::Font => "font",
                         RowKind::Other => "other",
                         RowKind::Link => "link",
+                        RowKind::Trashed => "trashed",
                     }),
                 }
             }
@@ -2259,6 +2446,72 @@ mod tests {
         let labels: Vec<&str> = b.goto.iter().map(|g| g.0.as_str()).collect();
         assert_eq!(labels, ["Import", "Documents", "Trash", "All storage", "audible"]);
         assert!(b.goto[4].1 == sp("audible") && !b.goto[4].3 && b.goto[1].3);
+    }
+
+    // Files' item cards (2.2): a picture, a font and another file say what they are, with their size and date, and
+    // offer nothing yet but Cancel; a PDF offers its import; a PDF of the PDF copies opens the notebook it was written
+    // from and is never imported; a link has no card. The trash lists its entries read only, the newest first, a
+    // notebook by its own name and a page by its notebook's.
+    #[test]
+    fn files_cards_say_what_a_file_is_and_the_trash_is_read_only() {
+        let (base, _g) = storage("cards");
+        let d = format!("{base}/documents/Sorted");
+        std::fs::create_dir_all(&d).unwrap();
+        for (n, size) in [("a.pdf", 1000), ("c.png", 2000), ("d.ttf", 500), ("e.txt", 4000)] {
+            std::fs::write(format!("{d}/{n}"), vec![b'x'; size]).unwrap();
+        }
+        std::os::unix::fs::symlink("a.pdf", format!("{d}/f.pdf")).unwrap();
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Gamma", "School", PAPER_BLANK, &mut nb), 0);
+        let mut mirror = String::new();
+        crate::export::export_mirror_path(&nb, &crate::app::app_mirror_dir(), &mut mirror, 1200);
+        std::fs::create_dir_all(std::path::Path::new(&mirror).parent().unwrap()).unwrap();
+        std::fs::write(&mirror, b"%PDF-1.4\n").unwrap();
+        for (entry, name) in [("20261101-000000-0001-1700000000", "Old"), ("20261101-000000-0002-1790000000", "Newer")] {
+            std::fs::create_dir_all(format!("{base}/grimoire/trash/{entry}")).unwrap();
+            std::fs::write(format!("{base}/grimoire/trash/{entry}/notebook.ini"), format!("name={name}\nfolder=\n")).unwrap();
+        }
+        std::fs::write(format!("{base}/grimoire/trash/{}-p3-1750000000", nb.id.as_str()), b"").unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1 }));
+        assert!(b.go(sp("documents/Sorted")));
+        assert_eq!(row_names(&b), ["a.pdf", "c.png", "d.ttf", "e.txt", "f.pdf"]);
+        let card = |b: &mut Browser, i: usize| -> (String, Vec<String>) {
+            b.open_card(i);
+            let c = b.card.clone().expect("a card");
+            let (d, rows) = b.card_lines(&c);
+            (d, rows.into_iter().map(|r| r.3).collect())
+        };
+        let (d0, r0) = card(&mut b, 0);
+        assert!(d0.starts_with("PDF, 1 KB, "), "{d0}");
+        assert_eq!(r0, ["Import as notebook", "Cancel"]);
+        let (d1, r1) = card(&mut b, 1);
+        assert!(d1.starts_with("Picture, 2 KB, "), "{d1}");
+        assert_eq!(r1, ["Cancel"]);
+        let (d2, r2) = card(&mut b, 2);
+        assert!(d2.starts_with("Font, 1 KB, "), "{d2}");
+        assert_eq!(r2, ["Cancel"]);
+        let (d3, _) = card(&mut b, 3);
+        assert!(d3.starts_with("File, 4 KB, "), "{d3}");
+        b.card = None;
+        assert!(!b.has_card(4));
+        b.open_card(4);
+        assert!(b.card.is_none(), "a link has no card");
+        assert!(b.go(sp("grimoire/PDFs/School")));
+        assert_eq!(row_names(&b), ["Gamma.pdf"]);
+        let (_, rm) = card(&mut b, 0);
+        assert_eq!(rm, ["Open its notebook", "Cancel"]);
+        assert_eq!(b.rows[0].notebook.as_deref(), Some(nb.id.as_str()));
+        b.card = None;
+        assert!(b.go(sp("grimoire/trash")));
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
+        assert_eq!(labels, ["Newer", "Gamma", "Old"]);
+        assert!(b.rows.iter().all(|r| r.kind == RowKind::Trashed && !b.has_card(0)));
+        assert!(b.rows[0].dir && !b.rows[1].dir);
     }
 
     #[test]
