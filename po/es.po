@@ -1433,16 +1433,14 @@ msgstr "Fijar esta página"
 #. TRANSLATORS: the row that opens the sleep settings' page: the sleep screen and the
 #. timer.
 #: rust/src/dispmenu.rs rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Sleep settings"
-msgstr "Ajustes de la vista"
+msgstr "Ajustes de reposo"
 
 #. TRANSLATORS: the row that opens the clock settings' page: the clock and battery on a
 #. notebook page.
 #: rust/src/dispmenu.rs rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Clock settings"
-msgstr "Ajustes de la vista"
+msgstr "Ajustes del reloj"
 
 #. TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
 #: rust/src/dispmenu.rs
@@ -3228,30 +3226,28 @@ msgstr "Buscar actualizaciones"
 
 #. TRANSLATORS: Settings > Updates, the row whose switch picks the branch updates come from.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Update branch"
 msgstr "Canal de actualizaciones"
 
 #: rust/src/library.rs
 msgid "Enterprise"
-msgstr ""
+msgstr "Empresarial"
 
 #: rust/src/library.rs
 msgid "Enterprise 192-bit"
-msgstr ""
+msgstr "Empresarial de 192 bits"
 
 #: rust/src/library.rs
 msgid "Unknown"
-msgstr ""
+msgstr "Desconocida"
 
 #: rust/src/library.rs
-#, fuzzy
 msgid "Connected"
-msgstr "%s conectado"
+msgstr "Conectada"
 
 #: rust/src/library.rs
 msgid "Saved"
-msgstr "Guardado"
+msgstr "Guardada"
 
 #. TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
 #. is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
@@ -3273,16 +3269,14 @@ msgstr "Comprobando wifi…"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Could not add the network."
-msgstr "No se pudo iniciar el servidor"
+msgstr "No se pudo añadir la red."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the status when a saved network's profile could not be deleted.
 #. TRANSLATORS: (Settings > Wi-Fi) the toast when a saved network could not be forgotten.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Could not forget the network."
-msgstr "No se pudo iniciar el servidor"
+msgstr "No se pudo olvidar la red."
 
 #: rust/src/library.rs rust/src/share.rs
 msgid "Could not read or change Wi-Fi."
@@ -3290,9 +3284,8 @@ msgstr "No se pudo consultar ni cambiar el wifi."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the toast when the network cannot be disconnected now.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Could not disconnect."
-msgstr "No se pudo conectar a %s."
+msgstr "No se pudo desconectar."
 
 #: rust/src/library.rs rust/src/share.rs
 msgid "Wi-Fi is off"
@@ -3342,47 +3335,43 @@ msgstr "Wifi"
 #. TRANSLATORS: (Settings > Wi-Fi) the button above the nearby networks that scans again.
 #: rust/src/library.rs
 msgid "Rescan"
-msgstr ""
+msgstr "Volver a buscar"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the button above the networks that adds a hidden network by name.
 #: rust/src/library.rs
 msgid "Other..."
-msgstr ""
+msgstr "Otra..."
 
 #: rust/src/library.rs
-#, fuzzy
 msgid "Saved networks"
-msgstr "Guardar ahora"
+msgstr "Redes guardadas"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the nearby list while the radio is off.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Turn on Wi-Fi to see nearby networks."
-msgstr "Activa el wifi para ver las redes guardadas."
+msgstr "Activa el wifi para ver las redes cercanas."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the nearby list while its scan runs.
 #: rust/src/library.rs
 msgid "Scanning for networks…"
-msgstr ""
+msgstr "Buscando redes…"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the nearby list when the last scan could not run or its answer
 #. was not one this reader knows.
 #. TRANSLATORS: (Settings > Wi-Fi) the toast when a scan cannot be asked for now.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Could not scan for networks."
-msgstr "No se pudo conectar a %s."
+msgstr "No se pudo buscar redes."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the nearby list when no network is near.
 #: rust/src/library.rs
-#, fuzzy
 msgid "No networks found."
-msgstr "Más redes (%d de %d)"
+msgstr "No se encontraron redes."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the nearby list before its first scan has an answer.
 #: rust/src/library.rs
 msgid "Tap Rescan to look for networks."
-msgstr ""
+msgstr "Toca Volver a buscar para ver las redes cercanas."
 
 #. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
 #: rust/src/library.rs
@@ -3396,85 +3385,79 @@ msgstr "Activa el wifi para ver las redes guardadas."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
 #: rust/src/library.rs
-#, fuzzy
 msgid "No saved networks. Add one with Other... or in Kindle settings."
-msgstr ""
-"No hay redes guardadas. Añade una en los ajustes del Kindle o en KOReader."
+msgstr "No hay redes guardadas. Añade una con Otra... o en la Configuración del Kindle."
 
 #. TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
 #. TRANSLATORS: the password keyboard's title for a school/enterprise Wi-Fi network;
 #. %s is its name.
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Password for %s"
-msgstr "Pulsa un botón para %s"
+msgstr "Contraseña de %s"
 
 #. TRANSLATORS: the keyboard's title for a school/enterprise Wi-Fi username; %s is its name.
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Username for %s"
-msgstr "Renombrar la carpeta"
+msgstr "Nombre de usuario de %s"
 
 #. TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network whose security is being picked; %s is its name.
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Network: %s"
-msgstr "Nombre: %s"
+msgstr "Red: %s"
 
 #. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden network with no password.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Open network"
-msgstr "Abrir su cuaderno"
+msgstr "Red abierta"
 
 #. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA or WPA2 network.
 #: rust/src/library.rs
 msgid "WPA/WPA2 password"
-msgstr ""
+msgstr "Contraseña WPA/WPA2"
 
 #. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA3-Personal network.
 #: rust/src/library.rs
 msgid "WPA3 password"
-msgstr ""
+msgstr "Contraseña WPA3"
 
 #. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2- or WPA3-Enterprise network.
 #: rust/src/library.rs
 msgid "WPA2/WPA3-Enterprise"
-msgstr ""
+msgstr "WPA2/WPA3 Empresarial"
 
 #. TRANSLATORS: the title of the page that adds a hidden Wi-Fi network by name.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Other network"
-msgstr "Otro color"
+msgstr "Otra red"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the toast while the network connected to is dropped.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Disconnecting…"
-msgstr "Conectando a %s…"
+msgstr "Desconectando…"
 
 #. TRANSLATORS: the keyboard's title for a hidden Wi-Fi network's name.
 #: rust/src/library.rs
 msgid "Hidden network name"
-msgstr ""
+msgstr "Nombre de la red oculta"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the toast while a hidden network's profile is being created.
 #. TRANSLATORS: (Settings > Wi-Fi) the toast while an open network's profile is being created.
 #: rust/src/library.rs
 msgid "Adding network…"
-msgstr ""
+msgstr "Añadiendo la red…"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the toast while a saved network's profile is being deleted.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Forgetting network…"
-msgstr "Conectando a %s…"
+msgstr "Olvidando la red…"
 
 #. TRANSLATORS: (Settings > Wi-Fi) a scanned network Grimoire cannot add yet.
 #: rust/src/library.rs
 msgid "This network's security is not supported yet."
-msgstr ""
+msgstr "Aún no se admite la seguridad de esta red."
 
 #. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
 #: rust/src/library.rs
@@ -3570,9 +3553,9 @@ msgid "Language: %s"
 msgstr "Idioma: %s"
 
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Pen button: %s"
-msgstr "Botones: %s"
+msgstr "Botón del lápiz: %s"
 
 #: rust/src/library.rs
 #, c-format
@@ -3921,37 +3904,35 @@ msgstr "Conservarlo"
 
 #. TRANSLATORS: the title of the list of what the pen's button does while writing (Settings > Pen).
 #: rust/src/library.rs
-#, fuzzy
 msgid "Pen button"
-msgstr "Botón lateral"
+msgstr "Botón del lápiz"
 
 #. TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
 #: rust/src/library.rs
-#, fuzzy
 msgid "Eraser"
 msgstr "Borrador"
 
 #: rust/src/library.rs
 msgid "Kindle"
-msgstr ""
+msgstr "Kindle"
 
 #. TRANSLATORS: Settings > System > About, the device's name on a computer (the Kindle build names
 #. the Kindle's own model).
 #: rust/src/library.rs
 msgid "This computer"
-msgstr ""
+msgstr "Este ordenador"
 
 #: rust/src/library.rs
 msgid "Ko-fi"
-msgstr ""
+msgstr "Ko-fi"
 
 #: rust/src/library.rs
 msgid "Grimoire GitHub"
-msgstr ""
+msgstr "GitHub de Grimoire"
 
 #: rust/src/library.rs
 msgid "Nebuff's GitHub"
-msgstr ""
+msgstr "GitHub de Nebuff"
 
 #: rust/src/library.rs
 msgid "Ganten's GitHub"
@@ -3959,39 +3940,38 @@ msgstr "GitHub de Ganten"
 
 #: rust/src/library.rs
 msgid "About"
-msgstr ""
+msgstr "Información"
 
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Grimoire %s"
-msgstr "Versión instalada: Grimoire %s."
+msgstr "Grimoire %s"
 
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Storage: %s of %s used"
-msgstr "Página %s de %d"
+msgstr "Almacenamiento: %s de %s en uso"
 
 #: rust/src/library.rs
 #, c-format
 msgid "%s free"
-msgstr ""
+msgstr "Libre: %s"
 
 #. TRANSLATORS: Settings > System > About, where the storage bar would be when the system
 #. cannot tell the storage's size.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Storage: not available"
-msgstr "Página no disponible"
+msgstr "Almacenamiento: no disponible"
 
 #. TRANSLATORS: Settings > System > About, the heading over its links (Ko-fi, GitHub, ...).
 #: rust/src/library.rs
 msgid "Links"
-msgstr ""
+msgstr "Enlaces"
 
 #. TRANSLATORS: Settings > System > About > a link, above the link's QR code.
 #: rust/src/library.rs
 msgid "Scan with a phone's camera"
-msgstr ""
+msgstr "Escanea con la cámara de un teléfono"
 
 #: rust/src/library.rs
 msgid "Couldn't create notebook (storage full?)"
@@ -4001,13 +3981,13 @@ msgstr "No se pudo crear el cuaderno (¿almacenamiento lleno?)"
 #. than a Wi-Fi name can be.
 #: rust/src/library.rs
 msgid "Use a network name of 1 to 32 characters."
-msgstr ""
+msgstr "Usa un nombre de red de 1 a 32 caracteres."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the enterprise username is empty, a control
 #. character, or longer than 128 bytes.
 #: rust/src/library.rs
 msgid "Use a username of 1 to 128 characters."
-msgstr ""
+msgstr "Usa un nombre de usuario de 1 a 128 caracteres."
 
 #: rust/src/library.rs
 msgid "Couldn't create folder. Use a shorter name without a slash."
@@ -4880,81 +4860,69 @@ msgstr "El borrador quita solo lo que toca; más presión = más alcance."
 #. TRANSLATORS: Settings' Pen category, the row that opens the pen button's choices, with the
 #. choice in use: "Pen button: Nothing".
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Nothing"
-msgstr "Suavizado"
+msgstr "Nada"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Erases"
-msgstr "Borrador"
+msgstr "Borra"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Highlights"
-msgstr "Luces"
+msgstr "Resalta"
 
 #: rust/src/settingsmenu.rs
 msgid "Draws white"
-msgstr ""
+msgstr "Dibuja en blanco"
 
 #. TRANSLATORS: the pen button submenu's four choices, what holding the pen's button while writing does.
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Nothing while writing"
-msgstr "La escritura"
+msgstr "Nada al escribir"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Erases while writing"
-msgstr "Borrar manteniendo presionado"
+msgstr "Borra al escribir"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Highlights while writing"
-msgstr "Resaltador"
+msgstr "Resalta al escribir"
 
 #: rust/src/settingsmenu.rs
 msgid "Draws white while writing"
-msgstr ""
+msgstr "Dibuja en blanco al escribir"
 
 #. TRANSLATORS: Settings' Pen category, the row that opens the eraser's choices, with the choice in
 #. use: "Eraser: Whole strokes".
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Whole strokes"
 msgstr "Trazos enteros"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Precise"
 msgstr "Preciso"
 
 #. TRANSLATORS: the eraser submenu's two choices: it takes every stroke it touches away whole, or
 #. only what it touches (as white ink does).
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Takes away whole strokes"
-msgstr "Trazos enteros"
+msgstr "Quita trazos enteros"
 
 #: rust/src/settingsmenu.rs
 msgid "Takes away only what it touches"
-msgstr ""
+msgstr "Quita solo lo que toca"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Style (Gothic)"
-msgstr "Estilo: Clásico (toca para cambiar a Gótico)"
+msgstr "Estilo (Gótico)"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Style (Classic)"
-msgstr "Seleccionar (lazo)"
+msgstr "Estilo (Clásico)"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Display: brightness, warmth"
-msgstr "Pantalla: brillo, calidez, invertir"
+msgstr "Pantalla: brillo, calidez"
 
 #: rust/src/settingsmenu.rs
 msgid "General"
@@ -4962,38 +4930,33 @@ msgstr "General"
 
 #. TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Dark mode"
-msgstr "Modo del borrador"
+msgstr "Modo oscuro"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Rotation (portrait and landscape)"
-msgstr "Girar con el Kindle (vertical y horizontal)"
+msgstr "Rotación (vertical y horizontal)"
 
 #: rust/src/settingsmenu.rs
 msgid "Pinch with two fingers to zoom"
 msgstr "Pellizcar con dos dedos para hacer zoom"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Sleep & Clock"
-msgstr "Reposo ahora"
+msgstr "Reposo y reloj"
 
 #. TRANSLATORS: the row that opens Tool Settings' sheet: pressure and tilt, per tool.
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Tool Settings: pressure and tilt per tool"
-msgstr "Sensibilidad del lápiz (presión + inclinación por herramienta)"
+msgstr "Sensibilidad: presión e inclinación por herramienta"
 
 #: rust/src/settingsmenu.rs
 msgid "Calibrate pen and touch"
 msgstr "Calibrar el lápiz y la pantalla táctil"
 
 #: rust/src/settingsmenu.rs
-#, fuzzy
 msgid "Controls"
-msgstr "Mando"
+msgstr "Controles"
 
 #: rust/src/settingsmenu.rs
 msgid "Shortcuts: keys and controller buttons"
@@ -5007,7 +4970,7 @@ msgstr "KOReader"
 #. storage used.
 #: rust/src/settingsmenu.rs
 msgid "About: device and storage"
-msgstr ""
+msgstr "Información: dispositivo y almacenamiento"
 
 #: rust/src/share.rs
 #, c-format
