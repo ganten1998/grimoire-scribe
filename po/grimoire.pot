@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-15 23:27-0600\n"
+"POT-Creation-Date: 2026-11-16 00:42-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -664,7 +664,7 @@ msgstr ""
 
 #. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/editor.rs
 #, c-format
 msgid "Adding book pages: %d of %d"
 msgstr ""
@@ -1056,6 +1056,84 @@ msgstr ""
 msgid "Import a PDF or pictures"
 msgstr ""
 
+#. TRANSLATORS: a toast over the rename keyboard in Files: the name typed holds a character a name on the
+#. Kindle's storage cannot (%s: the character, one of / \ : * ? " < > |). One line of about 1500 px at 44 px.
+#: rust/src/browser.rs
+#, c-format
+msgid "Name can't contain %s"
+msgstr ""
+
+#. TRANSLATORS: a toast over the rename keyboard in Files: the name typed begins or ends with a space. One line
+#. of about 1500 px at 44 px.
+#: rust/src/browser.rs
+msgid "Name can't start or end with a space."
+msgstr ""
+
+#. TRANSLATORS: a toast over the rename keyboard in Files: the name typed begins with a dot (which hides a file)
+#. or ends with one. One line of about 1500 px at 44 px.
+#: rust/src/browser.rs
+msgid "Name can't start or end with a dot."
+msgstr ""
+
+#. TRANSLATORS: a toast over the rename keyboard in Files: a file's new name must end as its old one did
+#. (%s: its extension with the dot, such as .png). One line of about 1500 px at 44 px.
+#: rust/src/browser.rs
+#, c-format
+msgid "Keep the extension %s."
+msgstr ""
+
+#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
+#. would be too long for Grimoire to hand to its import (one line).
+#: rust/src/browser.rs
+msgid "Path too long."
+msgstr ""
+
+#. TRANSLATORS: a toast in Files: renaming the file or folder failed (grimoire.log says why). One line.
+#: rust/src/browser.rs
+msgid "Couldn't rename file."
+msgstr ""
+
+#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
+#: rust/src/browser.rs
+msgid "File changed. Try again."
+msgstr ""
+
+#. TRANSLATORS: a toast in Files: an import is working on this file or folder (or the folder it is in), so it
+#. is not renamed, moved to the trash or put back now. One line of about 1000 px at 44 px.
+#: rust/src/browser.rs
+msgid "Importing now."
+msgstr ""
+
+#. TRANSLATORS: a toast over the rename keyboard in Files: another file or folder in this folder has the name
+#. typed (nothing is ever replaced). One line of about 1500 px at 44 px.
+#: rust/src/browser.rs
+msgid "A file with that name is already here."
+msgstr ""
+
+#. TRANSLATORS: a toast in Files' Trash: the item could not go back, as every name it could take there (its
+#. own, then with " 2" up to " 99"), or its notebook's id, is taken. One line of about 1500 px at 44 px.
+#: rust/src/browser.rs
+msgid "Couldn't restore. Name taken."
+msgstr ""
+
+#. TRANSLATORS: a toast in Files' Trash: the folder the item came from is not there any more. One line of
+#. about 1500 px at 44 px.
+#: rust/src/browser.rs
+msgid "Couldn't restore. Folder gone."
+msgstr ""
+
+#. TRANSLATORS: a toast in Files: moving the file or folder to the trash failed (grimoire.log says why). One line.
+#: rust/src/browser.rs
+msgid "Couldn't move to trash."
+msgstr ""
+
+#. TRANSLATORS: a toast in Files' Trash: the entry could not be put back (its record does not read, or the
+#. place it names is not one Grimoire writes in). One line.
+#: rust/src/browser.rs
+msgid "Couldn't restore."
+msgstr ""
+
 #. TRANSLATORS: a file's size in kilobytes, in the file picker's rows and cards (small text).
 #: rust/src/browser.rs
 #, c-format
@@ -1084,12 +1162,6 @@ msgstr ""
 #. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
 #: rust/src/browser.rs rust/src/library.rs
 msgid "Couldn't open folder."
-msgstr ""
-
-#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
-#. would be too long for Grimoire to hand to its import (one line).
-#: rust/src/browser.rs
-msgid "Path too long."
 msgstr ""
 
 #. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
@@ -1201,6 +1273,12 @@ msgstr ""
 msgid "Import as notebook"
 msgstr ""
 
+#. TRANSLATORS: a trash entry's card in Files: puts the file, folder or notebook back where it was (a row
+#. of about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Restore"
+msgstr ""
+
 #: rust/src/browser.rs rust/src/library.rs rust/src/mapview.rs
 #: rust/src/pagesview.rs
 msgid "Open"
@@ -1215,6 +1293,20 @@ msgid_plural "Import %d pictures as notebook"
 msgstr[0] ""
 msgstr[1] ""
 
+#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): give the page
+#. a name (its naming keyboard, titled Page name).
+#: rust/src/browser.rs rust/src/library.rs rust/src/mapview.rs
+#: rust/src/pagesview.rs
+msgid "Rename"
+msgstr ""
+
+#. TRANSLATORS: a card's row in Files, for a file or folder of Grimoire's own folders: into the trash folder
+#. on the Kindle's storage (%s), from where Files' Trash can put it back (a row of about 800 px at 44 px).
+#: rust/src/browser.rs rust/src/library.rs
+#, c-format
+msgid "Delete (moves it to %s)"
+msgstr ""
+
 #: rust/src/browser.rs rust/src/httpd.rs
 msgid "Picture"
 msgstr ""
@@ -1228,6 +1320,24 @@ msgstr ""
 #. 2 KB, Oct 3"; 34 px).
 #: rust/src/browser.rs
 msgid "File"
+msgstr ""
+
+#. TRANSLATORS: a toast in Files: the file or folder went to the trash folder on the Kindle's storage (%s).
+#. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
+#: rust/src/browser.rs rust/src/library.rs
+#, c-format
+msgid "Moved to %s"
+msgstr ""
+
+#. TRANSLATORS: a toast in Files' Trash: the item is back; %s is where (a folder on the Kindle's storage, such
+#. as grimoire/photos, or the Library folder of a notebook). One line.
+#: rust/src/browser.rs
+#, c-format
+msgid "Restored to %s."
+msgstr ""
+
+#: rust/src/browser.rs rust/src/notebookpicker.rs
+msgid "Notebooks"
 msgstr ""
 
 #. TRANSLATORS: the file picker's top line when the Kindle has under 200 MB free (one line, about 800 px at 44 px).
@@ -1290,10 +1400,15 @@ msgstr ""
 msgid "has notes"
 msgstr ""
 
-#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
-#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
-#: rust/src/browser.rs
-msgid "File changed. Try again."
+#. TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
+#: rust/src/browser.rs rust/src/library.rs
+msgctxt "keyboard"
+msgid "Folder"
+msgstr ""
+
+#: rust/src/browser.rs rust/src/library.rs
+msgctxt "keyboard"
+msgid "Name"
 msgstr ""
 
 #. TRANSLATORS: the staying notice while the file picker reads a big folder (one line, about 600 px at 44 px).
@@ -2772,12 +2887,6 @@ msgstr ""
 msgid "Name: %s"
 msgstr ""
 
-#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): give the page
-#. a name (its naming keyboard, titled Page name).
-#: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
-msgid "Rename"
-msgstr ""
-
 #: rust/src/library.rs
 #, c-format
 msgid "In: %s"
@@ -3912,11 +4021,6 @@ msgid "Delete \"%s\"?"
 msgstr ""
 
 #: rust/src/library.rs
-#, c-format
-msgid "Delete (moves it to %s)"
-msgstr ""
-
-#: rust/src/library.rs
 msgid "Keep it"
 msgstr ""
 
@@ -4037,17 +4141,6 @@ msgstr ""
 msgid "Notebook %s"
 msgstr ""
 
-#. TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
-#: rust/src/library.rs
-msgctxt "keyboard"
-msgid "Folder"
-msgstr ""
-
-#: rust/src/library.rs
-msgctxt "keyboard"
-msgid "Name"
-msgstr ""
-
 #. TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
 #: rust/src/library.rs
 msgid "Couldn't start update"
@@ -4066,12 +4159,6 @@ msgstr ""
 #. not be saved.
 #: rust/src/library.rs
 msgid "Couldn't save change."
-msgstr ""
-
-#. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
-#: rust/src/library.rs
-#, c-format
-msgid "Moved to %s"
 msgstr ""
 
 #. TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
@@ -4395,10 +4482,6 @@ msgstr ""
 #. title, the Graph; about 700 px at 44 px).
 #: rust/src/nav.rs
 msgid "Notebook gone"
-msgstr ""
-
-#: rust/src/notebookpicker.rs
-msgid "Notebooks"
 msgstr ""
 
 #. TRANSLATORS: Copy to notebook...'s button over the picked notebook's pages (about 400 px,

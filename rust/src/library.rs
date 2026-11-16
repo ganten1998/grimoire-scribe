@@ -7816,6 +7816,8 @@ fn files_result(a: &mut App, r: BrowserResult) {
             settings_save(&a.settings);
             reload(a);
         }
+        // Files' Restore put a notebook back (2.2, issue #144): the Library under Files is read again at once
+        BrowserResult::NotebookBack(_) => reload(a),
         BrowserResult::LookAgain => {
             import_scan(a.dpi);
             with_files(a, |b, a| {
@@ -8979,7 +8981,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             name.push_str(match hit.id {
                 H_NEW=>"new",H_NEWFOLDER=>"new-folder",H_SETTINGS=>"settings",H_SHARE=>"share",H_EXIT=>"exit",
                 H_MORE_OPEN=>"more.open",H_MORE_RENAME=>"more.rename",H_MORE_PDF=>"more.pdf",H_MORE_DELETE=>"more.delete",
-                H_MORE_GRAPH=>"more.graph",H_FMORE_GRAPH=>"fmore.graph",
+                H_MORE_GRAPH=>"more.graph",H_FMORE_GRAPH=>"fmore.graph",H_DELETE_YES=>"delete.yes",
                 H_SET_THEME=>"theme",H_NEW_CREATE=>"create",H_MORE_MOVE=>"more.move",
                 H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
                 H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
@@ -11020,6 +11022,10 @@ fn turn(a: &mut App, next: bool) {
 /// input goes (app_type_text).
 pub fn library_keyboard_area(a: &App) -> Option<Rect> {
     let s = a.lib.as_deref()?;
+    if s.files.open {
+        // (Files' rename keyboard, 2.2: Files takes every contact while it is up)
+        return s.files.keyboard_area();
+    }
     (s.modal == Modal::Kb && s.kb.open && !rect_is_empty(s.kb.area)).then_some(s.kb.area)
 }
 

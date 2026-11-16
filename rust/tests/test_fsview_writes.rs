@@ -4,7 +4,6 @@
 // restore for a file, a folder and a notebook (both the name store_delete gives and the record form), a name taken
 // on restore, the record read strictly, the busy check, and the copy job with the floor, a write that fails, and a
 // source that changes. Every refusal of the allow-list. The trash's sizes, read a slice at a time (issue #144).
-// Nothing on screen calls these yet.
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::bgwork_copy::*;

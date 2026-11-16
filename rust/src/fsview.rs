@@ -4,7 +4,8 @@
 //! time-sliced listing, stats and free space; the picker (L8) and the PDF import (L5) read through it. Since
 //! 2.2 (issue #117) it also writes, inside Grimoire's folders for the user's files only: a rename that never
 //! replaces an entry, the trash with its record, restore, and the name rules (the copy job is
-//! bgwork_copy.rs), and the trash's sizes. Nothing on screen calls the writes yet.
+//! bgwork_copy.rs). Files' cards call rename and trash, and its Trash place restore and the trash's sizes
+//! (browser.rs, issue #144).
 //!
 //! - One root: /mnt/us on the Kindle (when Grimoire's own folder is inside it); elsewhere GRIMOIRE_STORAGE,
 //!   a hook compiled out of the Kindle build. Never "/".
