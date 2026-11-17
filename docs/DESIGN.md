@@ -2538,12 +2538,15 @@ Photos sheets' From a file... tile (issue #146, "From a file... and Use as templ
   docs/FORMAT.md, The trash, has the names and the record.
 - **The copy job, `BgKind::CopyFile = 10`** (`bgwork_copy.rs`; 9 is the file previews', below). The request
   (`copy_request`, UI thread) refuses a source in a place a pick never takes from, one no longer the plain file
-  listed, one bigger than its folder takes (`CopyTo::max_bytes`: the template job's own `TEMPLATE_MAX_BYTES`, 16
-  MB, for templates and photos, the font check's `FONT_FILE_MAX` for fonts), one whose path does not fit a job's,
+  listed, one whose name Files' Rename would not give a file in Grimoire's folders (`fsview_name_check`, as the
+  copy keeps the source's name: said with that rule's words, issue #161), one bigger than its folder takes
+  (`CopyTo::max_bytes`: the template job's own `TEMPLATE_MAX_BYTES`, 16 MB, for templates and photos, the font
+  check's `FONT_FILE_MAX`, 24 MB, for fonts), one whose path does not fit a job's,
   and one that would leave less than the floor (100 MB after it, `fsview_room_for`; looked at last, since what can
   never be copied is refused whatever room there is), and queues the job as one the user waits on (id: the folder,
   `templates`, `photos` or `fonts`; path: the listed stat and the source's storage path, under 600 bytes). The job
-  opens the source again through the walk, checks it is the file listed, no bigger than its folder takes, and that
+  opens the source again through the walk, checks the name again, that it is the file listed, no bigger than its
+  folder takes, and that
   there is room, writes `.grimoire-copy-<pid>.part` in the folder (made when missing), checks the source ended as
   listed, syncs, and renames with no replace to the source's name (" 2" when taken). Any failure removes the
   temporary file; one a killed copy left is removed by the next copy into that folder, unless its process still
@@ -2612,8 +2615,8 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   file is parsed for a card; pages and picture sizes wait for the worker (previews). A PDF offers Import as
   notebook or Open its notebook as the picker does; a PDF of the PDF copies opens the notebook it was written from
   (the one whose `export_mirror_path` it is). A picture offers Use as template and Use as photo (issue #146, below);
-  fonts and other files offer nothing else yet, but Rename and Delete inside Grimoire's own folders, which a
-  picture has there too (below, issue #144). Every act checks the file or folder again first, by its path and its
+  a font Add to fonts (issue #161, below); other files offer nothing else, but Rename and Delete inside Grimoire's
+  own folders, which a picture and a font have there too (below, issue #144). Every act checks the file or folder again first, by its path and its
   identity ("File changed. Try again.").
 - **The Trash place** lists `grimoire/trash` through the storage writes' trash listing
   (`fsview_trash_entries`, read by name alone, no stat: the newest first by the time in each entry's name, a name of
@@ -2628,7 +2631,7 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
 - **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
   row (they are bound by name, as the Library's New notebook and Share are), from a key or a gesture, over the
   Library and inside Files alike. `home` is the Library's top for now.
-- **Seams left for the later Files work**: the card's rows per kind in `card_lines` (Add to fonts), `BrowseMode`
+- **Seams left for the later Files work**: `BrowseMode`
   and `FilesPrefs` (a home), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
 
 ## From a file... and Use as template (2.2, issue #146)
@@ -2698,8 +2701,76 @@ A picture from anywhere on the Kindle becomes a template or a photo by a copy in
   rows and the tile's pick on a picture too big, and a path too long; `tests/files_copy_refused.py` plants them).
   `test_tplsheet.rs` `a_copy_ends_under_a_contact` and `z_tpl_f_from_file_press` hold the copy's end under a
   contact, and `z_tpl_g_from_file_keys` the pick's keys over the page.
-- **Not here**: Add a font... and a font's Add to fonts. They waited for the font check's hardening (#111), which
-  is merged now, and are a change of their own; the copy job already refuses a font over the font check's limit.
+- **Fonts** come in the same way, by the same job and the same kind of pick: "Add a font... and Add to fonts",
+  below.
+
+## Add a font... and Add to fonts (2.2, issue #161)
+
+A font file from anywhere on the Kindle, its own fonts folder too, is copied into `grimoire/fonts` by the copy job
+(`BgKind::CopyFile`, `CopyTo::Fonts`, above). There it is a file of that folder as one copied over USB is, and
+"Your own fonts" (above) holds for it: the UI process never parses it before the check has passed its bytes.
+
+- **The Font sheet's Add a font...** is the last item of Your fonts, after every font, so that no font's row
+  moves for it: under the folder's text while the folder is empty, on the page of the last font, alone on the
+  next page when that page is full (`library.font.page` counts it). It opens the font pick, `PickSpec::font()`:
+  pick mode with `PickKind::Font` alone, the title "Add a font...", opening at its root, which has the Kindle's own
+  fonts folder first (Kindle fonts, the storage's `fonts/`, when it is a folder: no row when it is missing or a
+  link), then Documents, Downloads and All storage, and no Import. A folder lists its folders and its `.ttf` and
+  `.otf` files, by name; a font's card is its size and date, Add to fonts first, and Cancel. The sheet stays open
+  under the pick, as the Templates sheet does under the picture pick: Back at the pick's root comes back to it,
+  and so does a copy asked (`BrowserResult::Copying(CopyTo::Fonts)`), after which the row waits (an hourglass,
+  greyed, no tap: `font_copying`) until the copy job is no longer queued or running. Then the folder is read again
+  as the sheet opened on it and the page of the new file, the first not listed before, is shown. Its row says
+  "Checking..." under the notice "Checking 1 font..." and takes no tap; when its check has passed it shows its
+  name drawn in itself (the check's preview) and can be tapped. The added font is listed, not applied: a tap applies it as any row's does (#115). A
+  copy that failed says why and leaves the rows as they were; one refused when it was asked for leaves the pick
+  up. A sheet opened while a copy into `grimoire/fonts` runs waits for it the same way, and the copy's end waits for
+  a pen or finger that is down on the sheet (reading the folder numbers the rows anew). Over a notebook's page
+  (Settings opened from the editor) the sheet has no such row (`font_add_offered`): the Library's picker is drawn
+  on the Library's screen only.
+- **A font's card in Files** offers Add to fonts for a `.ttf` or `.otf` that is not one of `grimoire/fonts`
+  already (in that folder or a folder of it one level down, which is what the Font sheet lists: one deeper is
+  offered), never out of a place a pick never takes from (Grimoire's PDF copies, the trash, whose entries have
+  Restore alone). The card's file is checked again first ("File changed. Try again."). A copy that went in says
+  "Copied to Fonts." unless the Font sheet is in front (`library_sheet_folder`), which shows it.
+- **The Kindle's fonts folder is read only**, as every folder outside Grimoire's own is (`fsview`'s zones): a
+  font's card there is Add to fonts and Cancel, with no Rename and no Delete, and the storage layer refuses a
+  rename, a delete or any write there whatever a card would offer. Grimoire writes nothing into it, not even a
+  mark or a cache: what the check keeps is kept for `grimoire/fonts`.
+- **The copy gives a font nothing.** The job reads the source as bytes and writes them under the copy job's rules:
+  the walk (no link, one device), the file the user saw (its `FsStat` identity, at the request and in the job,
+  and again at the end of the read), a name the rules allow, no more than the font check's own limit (refused
+  before a byte is copied: "Too big (over 24 MB)."), the floor, and a rename that never replaces a file (" 2"
+  for a name taken). While it is written the copy is `.grimoire-copy-<pid>.part`, a dot-name, which no listing
+  shows and which the fonts folder's scan takes for no font (`name_kind`), so a copy cut short is never taken for
+  a font: a failed write removes it, and one a power cut left is removed by a later copy into that folder (the
+  copy job's sweep, above). The copy is synced before its rename. Once it is in, the app asks for the folder to be looked at
+  (`userfonts_added`, from `copy_told`) once the file is as old as the check asks of any file before it reads it
+  (`STABLE_AGE_S` and half a second), so that one check passes it; no look is queued before that, as it would only
+  find the file too young. Until a verdict for those bytes is where verdicts are kept, the file is listed by name
+  and nothing more: not applied, not sampled, not measured, no preview, no tap, and a load of it is refused. In
+  the pick, on a card and in the sheet nothing opens a font file: rows are names, sizes and dates; a card names a
+  family only from a passing verdict (`grimoire/fonts` alone); a file of the Kindle's folder is listed by name and
+  size, and the Covers view's previews are the worker's (issue #145).
+- **Kinds.** The pick and Files' cards offer `.ttf` and `.otf`, the names Files' rows have taken as fonts since
+  issue #124 and the ones the sheet's own text asks for ("Copy .ttf or .otf files into grimoire/fonts over USB.").
+  The Kindle's folder may also hold collections (`.ttc`, `.otc`: the check takes the first face of one copied
+  over USB), web fonts (`.woff`, `.woff2`, which the check refuses), and other files: none of these is offered.
+- **Strings**: Add a font..., Add to fonts. ("Kindle fonts", "Fonts", "Copied to %s." and the copy's refusals
+  were there.)
+- **Tests**: `browser.rs`'s unit tests (the font pick's root with and without the Kindle's folder, a link in its
+  place, its rows and its card inside and outside `grimoire/fonts`; a font's card in Files, the Kindle's folder
+  read only, a collection and a web font as other files), `library.rs`'s `the_font_sheets_add_a_font_row` (the
+  row's place and pages, its tap, the wait and its end, no row over a notebook's page),
+  `rust/tests/test_addfont.rs` (the pick and the real copy job and font check with real workers: no font before its
+  check passes, and only those bytes; a font that fails its check; a copy cut short and what a dead copy left; a
+  link, a linked folder and a file swapped between the listing and the tap; too big and the floor; a name taken and
+  names the rules refuse; the Kindle's folder unchanged; the look held until the copy is old enough),
+  `test_fsview_writes.rs` (the name rules at the request and in the job, for every folder), the scenarios
+  `files_19_add_to_fonts` (Files' card, " 2", a file its check refuses, the trash), `files_20_add_font` (the sheet's
+  row, the pick from the Kindle's folder and from Documents, the wait, the check, a name taken, a refused file, no
+  row over a notebook's page), `files_21_add_font_full` (a copy whose writes fail) and `files_5_cards`, and
+  `make l10n-check`'s `fonts-add` runs (the sheet, the pick and both cards in every language).
 
 ## Files: rename, delete and restore (2.2, issue #144)
 

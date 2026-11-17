@@ -3209,3 +3209,49 @@ sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.
     the previews are made again.
 11. **Rotate** in Covers: ten tiles sideways, the previews there again after a moment, the card of a tile beside
     it.
+
+## 2.2, Add a font... (issue #161): device checks
+
+Not run on a Scribe yet. The unit tests (`browser.rs`: the font pick and a font's card; `library.rs`:
+`the_font_sheets_add_a_font_row`), `rust/tests/test_addfont.rs` (the pick, the real copy job and the real font
+check with real workers: no font before its check passes, a font that fails its check, a copy cut short, a link, a
+file swapped, too big, the floor, a name taken, names the rules refuse, the Kindle's folder unchanged),
+`test_fsview_writes.rs` (the name rules of a copy) and the scenarios `files_19_add_to_fonts`, `files_20_add_font`
+and `files_21_add_font_full` cover the logic on the Mac (docs/DESIGN.md, Add a font... and Add to fonts), with the
+floor and a failing write simulated; `make l10n-check`'s `fonts-add` runs check that the sheet, the pick and both
+cards fit in every language. What only the Scribe can tell (read grimoire.log over SSH; it names no file):
+
+1. **The Kindle's own fonts folder**: on firmware 5.9.6 or later, copy a `.ttf` text font into the storage's
+   `fonts/` over USB (or use one the Kindle's own font feature added there). Open Grimoire, Settings (Classic) >
+   Display > Font: under "Your fonts (grimoire/fonts)" the last row is Add a font... (under the folder's text while
+   it is empty). Tap it: the picker's title is "Add a font...", and its first row is Kindle fonts, with `fonts` under
+   it. Inside, each font is a row with its size and date; a tap opens its card: Add to fonts, Cancel (no Rename, no
+   Delete). Note that nothing in the picker is drawn in the font itself.
+2. **The copy and the check**: Add to fonts: the sheet comes back, the row an hourglass while the copy runs, then
+   the new file's row says "Checking..." with "Checking 1 font..." above the buttons, then shows its name drawn in
+   itself. The font in use has not changed: tap the row to apply it, and every screen comes back in it. Note the
+   times in grimoire.log (`bg: a file copied into fonts: N KB in T ms`, then the check's lines), and that the pen
+   and the sheet stay quick meanwhile. Over USB afterwards, `fonts/` holds what it held before (the same names and
+   sizes), and `grimoire/fonts` holds the copy and no `.grimoire-copy-*.part`.
+3. **From Documents**: copy an `.otf` into `documents/` over USB and add it the same way through Documents; then
+   add the first font again: the copy is "<name> 2" and the first file is as it was.
+4. **Files**: with the Files card shown, Files > Kindle fonts > a font's card: Add to fonts and Cancel; Add to
+   fonts says "Copied to Fonts." once it is in, and Settings > Font lists it (checked by then, or "Checking...").
+   Files > Fonts > that file's card: Rename, Delete and Cancel, and no Add to fonts.
+5. **A file that is no font**: rename a text file `notafont.ttf`, copy it into `documents/`, and add it: it is
+   copied, then its row says "Unreadable font." and takes no tap; the font in use is as it was.
+6. **Kinds not offered**: if the Kindle's folder holds a `.ttc` or `.otc` collection, or a `.woff` or `.woff2`, the
+   picker does not list it (Files lists it only with Show: all files, greyed, as another file); note which kinds
+   the Kindle's own folder holds on this firmware.
+7. **Nearly full storage** (optional, only with a storage to spare that can be filled and emptied safely): with
+   under 100 MB free plus the font's size, Add to fonts says "Couldn't copy file. Is the storage full?" at once and
+   the picker stays up; nothing is added to `grimoire/fonts`.
+8. **Power cut during a copy** (optional): add a large font (near 20 MB) and hold the power button to restart while
+   the row is an hourglass. After the restart, over USB, `grimoire/fonts` holds the whole font under its name, or a
+   `.grimoire-copy-<n>.part` file and no font of that name, or neither; Settings > Font lists no row for a `.part`
+   file, and a later Add to fonts removes it (the next one, unless a process running then has the number <n>:
+   then the first one an hour after the cut).
+9. **Rotate** with the sheet up and with the picker up over it: both lay out again; the row is after the last font
+   (two abreast sideways), and Back at the picker's root returns to the sheet.
+10. **Over a notebook**: open a notebook, Settings from its panel > Display > Font: the sheet has no Add a font...
+    row, and is otherwise as it was.

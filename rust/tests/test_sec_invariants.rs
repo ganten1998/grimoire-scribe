@@ -28,6 +28,7 @@ const FSVIEW: File = ("rust/src/fsview.rs", include_str!("../src/fsview.rs"));
 const BROWSER: File = ("rust/src/browser.rs", include_str!("../src/browser.rs"));
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
+const BGWORK_COPY: File = ("rust/src/bgwork_copy.rs", include_str!("../src/bgwork_copy.rs"));
 const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
 const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
@@ -601,4 +602,39 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
         "\"From the Rust crates Cargo.lock names for the Grimoire binary.",
     );
     none_failed(&fails, "the documents and comments");
+}
+
+// Add a font... and Add to fonts (2.2, issue #161): a font file copied into grimoire/fonts by the copy job is no
+// font until its check has passed. The sentences that say what keeps a copy from being taken for a font stand on
+// the code that does it: the temporary name's form (bgwork_copy.rs) and the scan's refusal of a dot-name
+// (userfonts.rs); the look the copy asks for, which sets a time and nothing else; the limit with its figure; and the
+// Kindle's own fonts folder outside the folders a write may touch (fsview.rs). The day one of those changes, the
+// sentence fails here until it is read again and follows.
+#[test]
+fn a_font_added_from_a_file_is_told_as_it_is() {
+    let mut fails = Vec::new();
+    let tmp_head = "const TMP_HEAD: &str = \".grimoire-copy-\";";
+    let tmp_tail = "const TMP_TAIL: &str = \".part\";";
+    let dot_name = "if name.starts_with('.') { return NameKind::Other; }";
+    let words = "a dot-name, which no listing shows and which the fonts folder's scan takes for no font";
+    for base in [(BGWORK_COPY, tmp_head), (BGWORK_COPY, tmp_tail), (USERFONTS, dot_name)] {
+        stands_on(&mut fails, DESIGN, words, base.0, base.1);
+    }
+    stands_on(&mut fails, BGWORK_COPY, "a dot-name with the ending `.part`: no listing shows it and the fonts folder's scan takes no such name", USERFONTS, dot_name);
+    stands_on(&mut fails, USERFONTS, "a copy still being written has a dot-name ending in `.part`", BGWORK_COPY, tmp_tail);
+    // what the copy asks of the font check: a time to look at the folder, nothing more
+    let added = "st.added_ms = Some(now_ms().wrapping_add(added_wait_ms()).max(1));";
+    stands_on(&mut fails, DESIGN, "**The copy gives a font nothing.**", USERFONTS, added);
+    stands_on(&mut fails, USERFONTS, "the copy gives it nothing (`userfonts_added` only says when the folder is looked at)", USERFONTS, added);
+    // the limit a font over is refused at, before a byte is copied
+    beside(&mut fails, DESIGN, "`FONT_FILE_MAX`", &format!("{} MB", grimoire::fontcheck::FONT_FILE_MAX >> 20));
+    // the Kindle's fonts folder: a write is allowed only inside Grimoire's own folders
+    stands_on(
+        &mut fails,
+        DESIGN,
+        "**The Kindle's fonts folder is read only**, as every folder outside Grimoire's own is",
+        FSVIEW,
+        "if OWN_WRITABLE.iter().any(|s| eq_nocase(n, s)) { return FsZone::Writable; }",
+    );
+    none_failed(&fails, "a font added from a file");
 }

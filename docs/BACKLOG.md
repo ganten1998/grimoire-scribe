@@ -76,9 +76,6 @@ the Covers view (issue #145; "Files: previews and the Covers view"). Waiting, ea
   (y_all_screens visits the picker's root only, not a place of Files); the font sample's text is fixed Latin
   ("Aa", "Abc 123"), so a font of kana or kanji alone is refused as the check refuses it. Not timed on the
   Scribe: docs/TESTING.md, "2.2, Files' previews and the Covers view (issue #145): device checks".
-- **Add to fonts** on a font's card, with the Font sheet's Add a font... and its Kindle fonts row: not built. They
-  waited for the font check's hardening (#111), which is merged now. The From a file... tiles and a picture's Use
-  as template and Use as photo are built (#146, the section below).
 - **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
   Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files; Esc at a home root asking "Exit
   Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
@@ -93,10 +90,6 @@ Built: a picture's Use as template and Use as photo in Files, and the From a fil
 Templates and Photos sheets, over New notebook and over a notebook's page (docs/DESIGN.md, From a file... and Use
 as template). Waiting:
 
-- **Add a font...** in the Font sheet (with the Kindle fonts row) and **Add to fonts** on a font's card in Files:
-  the same copy job into `grimoire/fonts` (it refuses a font over the font check's limit already), on the Font
-  sheet as nebuff's Settings work has it. The font check's hardening they waited for (#111) is merged now; they are
-  a change of their own.
 - **Defaults taken here, for the owner to confirm**: the tile is the sheet's last (no picture's tile moves for it;
   in a big folder it is on the last page); the picture pick's title is "From a file..." and its root has no Import
   place; a copy that went in is told by "Copied to Templates." (or Photos) unless its sheet is in front; a copy
@@ -111,6 +104,32 @@ as template). Waiting:
   offers the other way. No new string was the rule here; the sentence may be reworded with the next strings.
 - **Not timed on the Scribe**: a big photo's copy and preview. docs/TESTING.md, "2.2, From a file... and Use as
   template (issue #146): device checks".
+
+## Add a font... and Add to fonts (2.2, issue #161): what waits
+
+Built: the Font sheet's Add a font... row and the font pick it opens (the Kindle's own fonts folder first), and a
+font's Add to fonts in Files, both by the copy job into `grimoire/fonts`, where the font check decides as for a
+file copied over USB (docs/DESIGN.md, Add a font... and Add to fonts). Waiting:
+
+- **Defaults taken here, for the owner to confirm**: the row is the list's last item (no font's row moves for
+  it; with a full last page it is the next page's only row) and a plain row with a plus, as the Templates sheet's
+  tile is its last; the pick opens at its root, the Kindle's fonts folder its first row, and has no Import; after a
+  copy asked the user is back on the sheet, the row waiting (an hourglass, no tap) until the copy has ended, then
+  the new file listed with "Checking..." and its page shown; an added font is listed, never applied by the copy (a
+  tap applies it); a name taken in `grimoire/fonts` gives " 2", as every copy does; a copy that went in while the
+  sheet is in front is told by its row, elsewhere by "Copied to Fonts."; the Kindle's folder lists `.ttf` and
+  `.otf` only.
+- **Not offered**: collections (`.ttc`, `.otc`), which the check takes (their first face) when copied over USB, and
+  which the Kindle's own font feature may have put in its folder: the pick and Files' cards keep to the `.ttf` and
+  `.otf` the sheet's own text names. Offering them is a change in `is_font` (browser.rs), with fonts.md 7.I (each
+  face its own row) the larger step.
+- **Over a notebook's page** (Settings opened from the editor) the Font sheet has no Add a font... row: the
+  Library's picker is drawn on the Library's screen only. The editor hosts a picker of its own for its Paper
+  sheets; hosting the font pick there too would bring the row back.
+- **After a job's "File changed. Try again."** the pick, like Files, still lists the folder as it was read (the
+  section above has the same for pictures).
+- **Not run on the Scribe**: docs/TESTING.md, "2.2, Add a font... (issue #161): device checks" (the Kindle's own
+  folder on a real firmware, a copy's time, a power cut during a copy).
 
 ## After the release of 2.1.0 (2026-11-13): what waits
 
@@ -633,7 +652,6 @@ the device checks. Where the plan did not settle a thing, what the lane chose, f
 
 What waits:
 
-- **Add a font...** (the Kindle's own fonts folder, copied in) comes with 2.2's Files (the plan's D30).
 - **The Japanese slot** (a custom or bundled smooth Japanese face in Classic, the plan's L14, with nebuff).
   Kana and kanji of a custom font are already drawn at DotGothic16's em.
 - **Kerning for custom fonts** (GPOS pairs through read-fonts, fonts.md 7.G): none today; the bundled fonts
