@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('web/upload.js', 'utf8');
 const words = {send: 'send', sending: 'sending {percent}', confirm: 'confirm', sent: 'sent', no: 'no', busy: 'busy',
-    reload: 'reload', big: 'big', full: 'full'};
+    reload: 'reload', wait: 'wait', big: 'big', full: 'full'};
 
 function setup({supported = true, box = true} = {}) {
     const elements = [], sent = [];
@@ -77,7 +77,7 @@ assert.equal(s.status.textContent, 'sent');
 assert.equal(s.button.disabled, false);
 // every other answer, in the page's words
 for (const [code, said] of [[410, 'no'], [408, 'no'], [415, 'no'], [500, 'no'], [409, 'busy'], [401, 'reload'],
-    [403, 'reload'], [413, 'big'], [507, 'full'], [400, 'no']]) {
+    [403, 'reload'], [413, 'big'], [507, 'full'], [503, 'wait'], [400, 'no']]) {
     const y = s.pick({name: 'a.pdf', size: 10});
     y.status = code;
     y.onload();

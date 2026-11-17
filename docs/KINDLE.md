@@ -1012,7 +1012,8 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   import` (Import), `httpd: an upload was not kept (<why>)` (Cancel on the Kindle, no answer on the Kindle, Share
   closed, the Kindle went to sleep, a second upload came, the server stopped), `httpd: an upload was cut short;
   nothing kept`, `httpd: the browser that sent an upload left; nothing kept`, or `httpd: an upload was refused
-  (<why>)` (no token, a wrong token, another site, another host, too big, not a PDF, no room, ...). Never the file's
+  (<why>)` (no token, a wrong token, another site, another host, too big, not a PDF, no room, too soon after the last
+  one ended, ...). Never the file's
   name, the page's token or a header. `share: a sent PDF the last run left unanswered was removed` at a start means
   Grimoire ended while the Kindle asked: its temporary file (`grimoire/.cache/share-upload.part`) went.
 - **Live view** logs `live: on` and `live: off`, `live: a browser paired` or

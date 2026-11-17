@@ -1,11 +1,13 @@
 # settings: status_mode=1
 # storage: 1
 # env: GRIMOIRE_SIM_ADDRS=en0=192.168.0.20
+# env: GRIMOIRE_UPLOAD_QUIET_MS=1000
 # copy: tests/fixtures/pdf/planner grimoire/send
 # copy: tests/fixtures/photos grimoire/send
 # Send a PDF from the Share page (2.2, issue #175), refused: with Share closed nothing answers at all; open, a send
 # without the page's token, with a wrong one, from another site's page, or of a file that is no PDF is answered
-# with its refusal, and the Kindle asks nothing and keeps nothing. The page's own send is still taken after them.
+# with its refusal, and the Kindle asks nothing and keeps nothing. The page's own send is still taken after them,
+# once the few seconds after the refused file are over (shortened to 1 s here).
 # rust-only
 wait 300
 expect screen is library
@@ -22,7 +24,7 @@ upload othersite send/2027 Planner.pdf
 waitfor upload.reply.4 is 403 another site
 upload send send/IMG_0002.png
 waitfor upload.reply.5 is 415 not a PDF
-wait 300
+wait 1100
 expect share.ask is
 expect share.upload is none
 expect toast is

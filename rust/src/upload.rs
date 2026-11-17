@@ -27,6 +27,10 @@ pub const UPLOAD_ASK_MS: u32 = 120_000;
 /// After a refusal sent while the browser may still be sending, what it sends is read and dropped this long, so that
 /// it reads the refusal (a close with bytes unread would reset the connection under it).
 pub const UPLOAD_DRAIN_MS: u32 = 5_000;
+/// After a send ends any way but Import (Cancel, no answer, the browser gone, a second send, a body refused), no
+/// new send is taken for this long: longer than the toast "Not imported." (3 s), so that a question that went is
+/// seen to go before another can come, and short enough to send again at once after a Cancel by mistake.
+pub const UPLOAD_QUIET_MS: u32 = 5_000;
 /// The name of a PDF whose own name is not one a file in Grimoire's folders may have.
 pub const UPLOAD_FALLBACK: &str = "Untitled.pdf";
 /// The temporary file's name, in `grimoire/.cache` (a folder Files never lists or enters).
@@ -113,7 +117,7 @@ pub fn body_length(v: Option<&[u8]>) -> Option<u64> {
 }
 
 /// A time limit of the upload's (one of the constants above), which the simulator's runs and the tests may shorten
-/// with `GRIMOIRE_UPLOAD_<NAME>_MS` (STALL, BODY, ASK, DRAIN); never the Kindle's build.
+/// with `GRIMOIRE_UPLOAD_<NAME>_MS` (STALL, BODY, ASK, DRAIN, QUIET); never the Kindle's build.
 pub fn limit_ms(name: &str, ms: u32) -> u32 {
     #[cfg(feature = "sim")]
     if let Some(v) = std::env::var(format!("GRIMOIRE_UPLOAD_{name}_MS")).ok().and_then(|v| v.parse::<u32>().ok()) {

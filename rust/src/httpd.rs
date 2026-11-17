@@ -306,6 +306,8 @@ struct State {
     upload: Upload,
     /// the Share page's token, while Share keeps the server (a new one each time it opens; never logged or stored)
     token: Option<String>,
+    /// when the last upload ended any way but Import: no new one is taken for UPLOAD_QUIET_MS after it
+    quiet_from: Option<u32>,
 }
 
 impl Default for State {
@@ -332,6 +334,7 @@ impl Default for State {
             child_download: [None; MAX_CHILDREN],
             upload: Upload::default(),
             token: None,
+            quiet_from: None,
         }
     }
 }
@@ -550,6 +553,7 @@ fn client_close(i: usize) {
         // go with it (the temporary file is removed as its Part drops). Its yes, when it came, ended it first.
         if s.upload.st != UploadState::None && s.upload.client == i {
             s.upload = Upload { serial: s.upload.serial, ..Upload::default() };
+            s.quiet_from = Some(now_ms());
         }
     });
 }
@@ -1243,6 +1247,7 @@ fn upload_box(b: &mut Buf) {
     buf_printf!(b, ",\"max\":%lld,\"words\":{", crate::upload::UPLOAD_MAX as i64);
     let big = cformat!(tr("PDF too big: over %d MB."), (crate::upload::UPLOAD_MAX >> 20) as i32);
     let sent = cformat!(tr("Copied to %s."), "grimoire/import");
+    let quiet_s = crate::upload::limit_ms("QUIET", crate::upload::UPLOAD_QUIET_MS).div_ceil(1000) as i32;
     let mut n = 0;
     // TRANSLATORS: the share index's button (a phone's or a computer's browser) that picks a PDF to send to the
     // Kindle, which asks before it keeps it.
@@ -1261,6 +1266,9 @@ fn upload_box(b: &mut Buf) {
     // TRANSLATORS: the share index, when the page is older than the Share screen now open on the Kindle (or Share
     // was closed): it must be loaded again before it can send.
     live_word(b, &mut n, "reload", tr("Open Share on the Kindle, then reload this page."));
+    // TRANSLATORS: the share index, when a PDF is sent within a few seconds of one that was not imported (Cancel on
+    // the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
+    live_word(b, &mut n, "wait", &cformat!(tr("Wait %d seconds, then send again."), quiet_s));
     live_word(b, &mut n, "big", &big);
     live_word(b, &mut n, "full", tr("Couldn't import PDF. Is the storage full?"));
     buf_printf!(b, "}};</script><script>");
@@ -2206,13 +2214,14 @@ fn host_ok(req: &[u8]) -> bool {
 // One upload at a time, only while Share keeps the server. The request is held to upload.rs's rules in this order:
 // Share open, the Host header (host_ok), the Origin and Sec-Fetch-Site headers (same_origin), the page's token
 // (same_token), a Content-Length (no chunked body) of at least five bytes and at most UPLOAD_MAX, no other upload
-// under way (a second one ends the first: neither is kept), and room for it above the storage's floor. Nothing of the
-// head past these headers, and nothing of the body but its first five bytes, is read before the user's yes. The body
-// goes into the one temporary file (upload::Part) as it comes; once it is all in, the Kindle asks (the Share screen,
-// httpd_upload_question), and the request's answer waits for the user's. Import renames the file into import/
-// (Part::commit); every other way out drops the Part, which removes the file: Cancel, no answer in UPLOAD_ASK_MS, a
-// body that stalls for UPLOAD_STALL_MS or is not whole after UPLOAD_BODY_MS, a browser that hangs up, Share left,
-// sleep, a second upload, the server stopping. The log says what came and how it ended, never the name or the token.
+// under way (a second one ends the first: neither is kept), none ended moments ago without Import (UPLOAD_QUIET_MS),
+// and room for it above the storage's floor. Nothing of the head past these headers, and nothing of the body but its
+// first five bytes, is read before the user's yes. The body goes into the one temporary file (upload::Part) as it
+// comes; once it is all in, the Kindle asks (the Share screen, httpd_upload_question), and the request's answer waits
+// for the user's. Import renames the file into import/ (Part::commit); every other way out drops the Part, which
+// removes the file: Cancel, no answer in UPLOAD_ASK_MS, a body that stalls for UPLOAD_STALL_MS or is not whole after
+// UPLOAD_BODY_MS, a browser that hangs up, Share left, sleep, a second upload, the server stopping. The log says what
+// came and how it ended, never the name or the token.
 
 /// The length of a request's head with its blank line: what follows is the body's first bytes.
 fn head_len(req: &[u8]) -> Option<usize> {
@@ -2228,9 +2237,13 @@ fn upload_state() -> UploadState {
     with(|s| s.upload.st)
 }
 
-/// The upload forgotten, its temporary file removed (its Part drops), its connection left as it is.
+/// The upload forgotten without a yes, its temporary file removed (its Part drops), its connection left as it is;
+/// no new one is taken for UPLOAD_QUIET_MS (Import's yes forgets it in httpd_upload_answer, with no quiet time).
 fn upload_drop() {
-    with(|s| s.upload = Upload { serial: s.upload.serial, ..Upload::default() });
+    with(|s| {
+        s.upload = Upload { serial: s.upload.serial, ..Upload::default() };
+        s.quiet_from = Some(now_ms());
+    });
 }
 
 /// A short plain answer on connection c, sent from the next poll on (its stall timer starts now); with `drain`, what
@@ -2289,6 +2302,10 @@ fn route_upload(c: usize) {
         // (two senders at once: neither is kept, so one can never take the other's place under the question)
         upload_end(UploadEnd::Another);
         return upload_refuse(c, 409, "another PDF is being sent", "a second upload came while one was under way");
+    }
+    if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {
+        // (a send ended moments ago without Import: its question is seen to go before another can come)
+        return upload_refuse(c, 503, "wait a few seconds", "too soon after the last one ended");
     }
     if !free_bytes().is_some_and(|free| fsview_room_for(free, len)) {
         return upload_refuse(c, 507, "no room", "no room: the storage would keep less than 100 MB");

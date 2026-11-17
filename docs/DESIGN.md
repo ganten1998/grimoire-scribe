@@ -3172,12 +3172,14 @@ send it at all.
 five bytes (415) and at most `UPLOAD_MAX`, 64 MB (413): the import's limit for one PDF where the private mapping is
 refused (`s1::PDF_MAX_READ_WHOLE`), so every PDF sent can be imported on every Kindle; the page refuses a bigger file
 before sending. One upload at a time: **a second upload while one is under way ends both** (409 to each), so one
-sender can never take another's place under the question. Room for it above the storage's floor, 100 MB left after it
-(`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS` (30 s) of each read and `UPLOAD_BODY_MS` (10 minutes) in
-all (408), read up to 256 KiB a poll; the Kindle asks for `UPLOAD_ASK_MS` (2 minutes, then 408). The head within a
-connection's 4096 bytes, and 16 connections, as for every request. A refusal sent while the body may still come is
-followed by reading and dropping what still comes for `UPLOAD_DRAIN_MS` (5 s) or until the browser closes, so that
-the close does not reset the connection under the answer.
+sender can never take another's place under the question. **After an upload ends any way but Import, no new one is
+taken for `UPLOAD_QUIET_MS`** (5 s, 503: Cancel, no answer, the browser gone, a second upload, a body refused): longer
+than the toast "Not imported.", so a question that went is seen to go before another can come. Room for it above the
+storage's floor, 100 MB left after it (`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS` (30 s) of each read
+and `UPLOAD_BODY_MS` (10 minutes) in all (408), read up to 256 KiB a poll; the Kindle asks for `UPLOAD_ASK_MS` (2
+minutes, then 408). The head within a connection's 4096 bytes, and 16 connections, as for every request. A refusal
+sent while the body may still come is followed by reading and dropping what still comes for `UPLOAD_DRAIN_MS` (5 s)
+or until the browser closes, so that the close does not reset the connection under the answer.
 
 **Before the yes.** Nothing of the body but its first five bytes is read before the user's yes: they must be `%PDF-`,
 checked before any byte is written and refused at the first byte that differs (415). The body is written to one file
@@ -3218,8 +3220,9 @@ parses it.
 The script makes the button, so a browser without JavaScript shows nothing. A pick sends the file as one
 XMLHttpRequest (no byte of it passes through the script), shows "Sending PDF: 42%", "Confirm on the Kindle." once it
 has gone, then the answer: 200 "Copied to grimoire/import.", 413 "PDF too big: over 64 MB.", 409 "Another PDF is
-being sent. Try again.", 401 and 403 "Open Share on the Kindle, then reload this page.", 507 "Couldn't import PDF. Is
-the storage full?", anything else (Cancel, no answer, not a PDF, a connection lost) "Not imported.".
+being sent. Try again.", 401 and 403 "Open Share on the Kindle, then reload this page.", 503 "Wait 5 seconds, then
+send again.", 507 "Couldn't import PDF. Is the storage full?", anything else (Cancel, no answer, not a PDF, a
+connection lost) "Not imported.".
 
 **The log** says what came and how it ended, never the name, the token or a header: `httpd: an upload of N KB is
 coming in`, `... is in; the Kindle asks`, `httpd: an upload was kept: it waits in import/ for the import`, `httpd: an
@@ -3244,8 +3247,9 @@ temporary file before it, or a name taken as a path; replace a file in `import/`
 a page of another site the user visits.
 
 - **Strings**: `Import "%s" (%s)?`, Send a PDF to the Kindle, Confirm on the Kindle., Not imported., Another PDF is
-  being sent. Try again., Open Share on the Kindle, then reload this page. (Import, Cancel, "Sending PDF: {percent}",
-  "Copied to %s.", "PDF too big: over %d MB." and "Couldn't import PDF. Is the storage full?" were there.)
+  being sent. Try again., Open Share on the Kindle, then reload this page., `Wait %d seconds, then send again.`
+  (Import, Cancel, "Sending PDF: {percent}", "Copied to %s.", "PDF too big: over %d MB." and "Couldn't import PDF. Is
+  the storage full?" were there.)
 - **Tests**: upload.rs's unit tests (names, tokens, origins, lengths); `test_share_upload.rs`, the server spoken to
   over localhost as a browser on the Wi-Fi would (a PDF asked about and kept, " 2", Cancel, every refusal, first bytes
   split over reads, a refusal read by a browser still sending, names, two at once, a body cut short, a browser gone,

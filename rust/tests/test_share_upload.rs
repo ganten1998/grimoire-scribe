@@ -6,6 +6,11 @@
 //
 // One process, one thread: the client end of each exchange is a non-blocking socket written and read between
 // httpd_poll calls.
+//
+// A sim-feature test: after a send ends any way but Import the server takes no new one for a few seconds
+// (UPLOAD_QUIET_MS), and the cases here send again at once, with that time made 0 (GRIMOIRE_UPLOAD_QUIET_MS, as the
+// other time limits are shortened, which only the simulator's builds read); one case holds the quiet time itself.
+#![cfg(feature = "sim")]
 mod testlib;
 use grimoire::prelude::*;
 use grimoire::upload::*;
@@ -209,6 +214,7 @@ fn the_page_offers_to_send_with_a_token_of_its_own() {
     check!(tok.len() == 32 && tok.bytes().all(|c| c.is_ascii_hexdigit()));
     check!(t.contains(&format!("\",\"max\":{UPLOAD_MAX},\"words\":{{\"send\":\"Send a PDF to the Kindle\",\"sending\":\"Sending PDF: {{percent}}\"")));
     check!(t.contains("\"confirm\":\"Confirm on the Kindle.\",\"sent\":\"Copied to grimoire/import.\",\"no\":\"Not imported.\""));
+    check!(t.contains("\"reload\":\"Open Share on the Kindle, then reload this page.\",\"wait\":\"Wait 5 seconds, then send again.\""));
     check!(t.contains("\"big\":\"PDF too big: over 64 MB.\",\"full\":\"Couldn't import PDF. Is the storage full?\"}};</script><script>"));
     check!(t.contains("x.open('POST', '/upload');") && t.contains("x.setRequestHeader('X-Grimoire-Token', cfg.token);"));
     check!(t.ends_with("</script></body></html>"));
@@ -533,7 +539,6 @@ fn a_leftover_of_a_crash_goes_at_the_start() {
 }
 
 // The time limits, shortened for the test (GRIMOIRE_UPLOAD_*_MS, the simulator's builds only).
-#[cfg(feature = "sim")]
 fn slow_bodies_and_unanswered_questions_end() {
     let before: Vec<String> = import_names();
     let names: Vec<&str> = before.iter().map(|s| s.as_str()).collect();
@@ -579,7 +584,6 @@ fn slow_bodies_and_unanswered_questions_end() {
 
 // Room for it above the storage's floor (100 MB after it), as the copy job's (GRIMOIRE_UPLOAD_FREE_BYTES, the
 // simulator's builds only).
-#[cfg(feature = "sim")]
 fn no_room_is_refused() {
     let before: Vec<String> = import_names();
     let names: Vec<&str> = before.iter().map(|s| s.as_str()).collect();
@@ -596,6 +600,87 @@ fn no_room_is_refused() {
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
     check!(reply(s).status() == "HTTP/1.0 410 Gone");
     std::env::remove_var("GRIMOIRE_UPLOAD_FREE_BYTES");
+}
+
+/// Polls the server for ms milliseconds.
+fn idle(ms: u64) {
+    let until = Instant::now() + Duration::from_millis(ms);
+    while Instant::now() < until {
+        httpd_poll();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+// After a send ends any way but Import (Cancel, no answer, the browser gone, a second send), the server takes no new
+// one for UPLOAD_QUIET_MS (shortened here): it is refused with 503 and nothing is kept, and once that time is over
+// the next is asked about as usual. Import's yes holds nothing back. Two sends at once still end both, and a third
+// right behind them waits.
+fn after_a_send_that_ends_without_import_the_next_waits() {
+    let before: Vec<String> = import_names();
+    let names: Vec<&str> = before.iter().map(|s| s.as_str()).collect();
+    let tok = page_token();
+    let body = pdf(3000);
+    let n = body.len();
+    std::env::set_var("GRIMOIRE_UPLOAD_QUIET_MS", "600");
+    idle(700); // (the case before ended with a Cancel)
+    let waits = || {
+        let r = refused_reply(upload(&head(Some(&tok), Some("next.pdf"), n, ""), &body));
+        let ok = r.status() == "HTTP/1.0 503 Service Unavailable" && r.text() == "wait a few seconds\n";
+        if !ok {
+            eprintln!("    wanted 503, got {} {:?}", r.status(), r.text());
+        }
+        ok && httpd_upload_question().is_none() && !part_there()
+    };
+    let asked = || {
+        let s = upload(&head(Some(&tok), Some("next.pdf"), n, ""), &body);
+        (question(), s)
+    };
+    // Cancel: the next waits, then is asked about
+    let (q, s) = asked();
+    check!(httpd_upload_answer(q.map_or(0, |q| q.0), false).is_none());
+    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    check!(waits());
+    check!(waits());
+    idle(700);
+    let (q, s) = asked();
+    check!(q.is_some());
+    // the browser gone while the Kindle asks: the same
+    drop(s);
+    check!(poll_until(|| httpd_upload_question().is_none()));
+    check!(waits());
+    idle(700);
+    // no answer in time: the same
+    std::env::set_var("GRIMOIRE_UPLOAD_ASK_MS", "100");
+    let (q, s) = asked();
+    check!(q.is_some());
+    check!(reply(s).status() == "HTTP/1.0 408 Request Timeout");
+    std::env::remove_var("GRIMOIRE_UPLOAD_ASK_MS");
+    check!(waits());
+    idle(700);
+    // two sends at once end both, and a third right behind them waits: no question at all
+    let (q, mine) = asked();
+    check!(q.is_some());
+    let mut other = connect();
+    let mut third = connect();
+    let mut all = head(Some(&tok), Some("next.pdf"), n, "").into_bytes();
+    all.extend_from_slice(&body);
+    // (both written before the server is polled again)
+    check!(other.write_all(&all).is_ok() && third.write_all(&all).is_ok());
+    check!(refused_reply(other).status() == "HTTP/1.0 409 Conflict");
+    check!(reply(mine).status() == "HTTP/1.0 409 Conflict");
+    let r = refused_reply(third);
+    check!(r.status() == "HTTP/1.0 503 Service Unavailable" && r.text() == "wait a few seconds\n");
+    check!(nothing_kept(&names));
+    idle(700);
+    // Import holds nothing back: the next is asked about at once
+    let (q, s) = asked();
+    check!(httpd_upload_answer(q.map_or(0, |q| q.0), true).is_some_and(|r| r.is_ok()));
+    check!(reply(s).status() == "HTTP/1.0 200 OK");
+    let (q, s) = asked();
+    check!(q.is_some());
+    httpd_upload_answer(q.map_or(0, |q| q.0), false);
+    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    std::env::set_var("GRIMOIRE_UPLOAD_QUIET_MS", "0");
 }
 
 // stderr into a file for the whole run: the log says what came and how it ended, never a name or a token.
@@ -642,6 +727,8 @@ fn test_share_upload() {
     log_capture(&log);
     check!(httpd_acquire(HTTPD_SHARE, port(), 300.0, true) == 0);
     run!(the_page_offers_to_send_with_a_token_of_its_own);
+    // (the cases below send again at once after a send that was not imported: no quiet time for them)
+    std::env::set_var("GRIMOIRE_UPLOAD_QUIET_MS", "0");
     run!(a_pdf_waits_for_the_kindle_and_import_keeps_it);
     run!(cancel_keeps_nothing);
     run!(every_refusal_keeps_nothing);
@@ -651,10 +738,9 @@ fn test_share_upload() {
     run!(a_body_cut_short_or_a_browser_gone_keeps_nothing);
     run!(leaving_share_keeps_nothing_and_the_token_goes_with_it);
     run!(a_leftover_of_a_crash_goes_at_the_start);
-    #[cfg(feature = "sim")]
     run!(slow_bodies_and_unanswered_questions_end);
-    #[cfg(feature = "sim")]
     run!(no_room_is_refused);
+    run!(after_a_send_that_ends_without_import_the_next_waits);
     httpd_stop();
     let t = log_captured(&log);
     // what the log said: each way in and out, and none of the names or tokens sent
@@ -663,7 +749,8 @@ fn test_share_upload() {
         "httpd: an upload was refused (no token)", "httpd: an upload was refused (a wrong token)", "httpd: an upload was refused (another site)",
         "httpd: an upload was refused (not a PDF)", "httpd: an upload was refused (too big)", "httpd: an upload was not kept (a second upload came)",
         "httpd: an upload was cut short; nothing kept", "httpd: the browser that sent an upload left; nothing kept",
-        "httpd: an upload was not kept (Share closed)", "httpd: an upload was refused (Share is closed)"] {
+        "httpd: an upload was not kept (Share closed)", "httpd: an upload was refused (Share is closed)",
+        "httpd: an upload was refused (too soon after the last one ended)"] {
         check!(t.contains(line));
     }
     for name in ["Planner", "Cancelled", "settings.ini", "first.pdf", "Caf", "Untitled", "over-a-link", "hidden"] {

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 07:47-0600\n"
+"POT-Creation-Date: 2026-11-17 10:22-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -2611,6 +2611,13 @@ msgstr "Se está enviando otro PDF. Inténtalo de nuevo."
 #: rust/src/httpd.rs
 msgid "Open Share on the Kindle, then reload this page."
 msgstr "Abre Compartir en el Kindle y vuelve a cargar esta página."
+
+#. TRANSLATORS: the share index, when a PDF is sent within a few seconds of one that was not imported (Cancel on
+#. the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
+#: rust/src/httpd.rs
+#, c-format
+msgid "Wait %d seconds, then send again."
+msgstr "Espera %d segundos y vuelve a enviarlo."
 
 #. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
 #: rust/src/httpd.rs rust/src/i18n.rs

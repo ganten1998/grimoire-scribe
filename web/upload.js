@@ -32,7 +32,7 @@
         busy = false;
         button.disabled = false;
         status.textContent = code === 200 ? w.sent : code === 413 ? w.big : code === 409 ? w.busy :
-            code === 401 || code === 403 ? w.reload : code === 507 ? w.full : w.no;
+            code === 401 || code === 403 ? w.reload : code === 507 ? w.full : code === 503 ? w.wait : w.no;
     }
     input.addEventListener('change', function () {
         const file = input.files && input.files[0];
