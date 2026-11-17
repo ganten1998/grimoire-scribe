@@ -481,6 +481,11 @@ impl Run<'_> {
         for (h, p) in crate::pdfimport::test_hooks() {
             s.hook(h, p);
         }
+        // (what the sandbox holds, once a process, as the import logs it: the device check reads it)
+        static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            qlog!("%s", &crate::sandbox::sandboxed_line());
+        }
         let n = s.probe()?;
         self.sess = Some(s);
         Ok(n)
