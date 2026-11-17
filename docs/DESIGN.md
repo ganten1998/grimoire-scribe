@@ -3211,6 +3211,105 @@ KOReader plugin carry the reader's contrast.
   the plugin's stub test; the scenarios `z_pdf_darker_*` and `y_koreader_pdf_darker_*`. docs/TESTING.md has the
   Scribe's checks.
 
+## PDFs as templates (2.2, issue #172)
+
+A PDF in `grimoire/templates` (copied in over USB, or by Use as template on a PDF's card in Files) gives one template
+a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tplsheet.rs` shows them.
+
+- **Only the worker parses the PDF.** A PDF's pages are drawn by the sandboxed PDF worker an import uses (the same
+  exec, filter, limits and record grammar, validated by the same `Session`), and the writer and the UI never parse
+  PDF syntax. The job opens the PDF once, with no link followed, as a plain file of the templates folder, and that
+  open file is what the worker reads. With no worker to be had (a sandbox step failed, none starts, or one without
+  the sandbox's steps where the sandbox is required) nothing is drawn and nothing is marked: the PDF's tile waits, as
+  a picture's does, and the next look tries again. A sandbox step that fails marks the session broken, the UI's too:
+  the job's child ends with status 4 (`CODE_SANDBOX`), which bgjob.rs turns into the UI's mark, as an import's progress
+  record and a font check's status 4 do. A session marked broken queues no PDF's job until Grimoire starts again.
+- **The stored form** (docs/FORMAT.md, Template PDFs): in the folder's cache, under the key its previews already use
+  (the FNV-1a hash of the PDF's name, size and time), `<hash>.pages` holds the page count, and each page is a picture
+  of the Kindle's page size, `<hash>-p<nnnn>.png` (gray, or RGB for a page with colour, as the import keeps them),
+  with its `.key` and its preview `.pgm` beside it, written in that order (the preview says the page is made), or
+  its `.bad`. These files are written only inside Grimoire's own templates folder, into a cache folder reached with
+  no link on the way, as the previews job writes its own (`write_quiet`, `store_write_pgm`, `write_file_atomic`:
+  a temporary name, fsync, rename). No file of the user's is written, renamed or replaced, and no name is made from
+  the PDF's: the tiles' names are labels, never files. What removes entries of the cache (a PDF's own, and the sweep
+  of files that went, the previews job's too) looks for a link on the way again right before it lists the cache, so
+  a link put there since the job began is never followed by a removal: the window is that one listing.
+- **A page is a picture template.** A page's tile has its picture's path, and from there it is a template as any
+  picture is: `template_install` takes its key from its `.key` and queues its picture for the notebook's page size,
+  made by the picture worker from the page's PNG (`make_template`). Picking a page, drawing it and opening a notebook
+  on it never read the PDF again; the PDF can be gone by then. The PDF itself is never a picture: whatever the cache
+  holds under its own name it has no preview or key of its own (`preview_of`), so its tile is never ready,
+  `template_install` refuses it, and a notebook's picture job refuses a PDF, so the picture worker is never handed one.
+- **When.** The scan that looks at the folder (`template_scan`, as the Templates sheet opens) queues a job for each
+  PDF with work left (at most `TEMPLATE_PDF_QUEUE_MAX`, 8, a look): `BgKind::Template` with no notebook and the PDF's
+  path. It ranks behind imports and font checks, with Files' previews, first queued first run (bgjob.rs `rank`), and
+  runs in slices as an import does (`SLICE_PAGES` pages or `SLICE_WALL_MS` a slice, looked at before a page, never
+  between the tries of one): a slice that leaves pages ends with `CODE_MORE` (3) and is queued again behind whatever
+  ranks higher, so a picture picked meanwhile waits for one slice at most. Each slice asks the worker for the page
+  count again and goes on from the pages made. Jobs still queued when Grimoire ends are dropped, as Files' previews
+  are: the next look queues them again. A look that finds in the cache the count of a PDF no longer in the folder
+  (deleted, renamed or changed since) queues the folder's previews job, which sweeps that PDF's entries.
+- **Limits.** The templates folder's 16 MB (`TEMPLATE_MAX_BYTES`, a picture's), `TEMPLATE_PDF_MAX_PAGES` (50) pages,
+  the import's worker limits (its address space for the file, its CPU, the page watchdog, band mode under little
+  memory), and the free-space floor before every page (room for a page before its worker is asked, and for its
+  picture and preview before they are written). A PDF over the page limit is no template as a whole and is never cut
+  to its first pages: its count is in the log, and the sheet shows its one tile crossed out (The sheet, below).
+  The sheet takes at most `TEMPLATE_PDF_TILES_MAX` (200) tiles of PDF pages in all, four PDFs at the page limit (each
+  tile is looked at when the sheet reads the folder, and every 1.5 s while one waits, so many long PDFs must not slow
+  it): the PDFs are taken in the order of their names, and one that would take the sheet past the cap (its page
+  count, or one tile while its pages are not counted) is left out whole, as one tile the sheet cannot use, with no
+  job queued for it; the log says how many.
+- **What a failure costs.** A PDF that is empty, over 16 MB (marked before any worker starts), that the worker
+  refuses (no PDF Grimoire reads, a password, no page), whose worker lies, whose worker ends or stalls twice while it
+  is opened, or none of whose pages draws, is marked bad as a whole, as a picture is (`<hash>.bad`, and what was made
+  of it goes). A page the worker cannot draw is marked alone (`<hash>-p<nnnn>.bad`), and so is a page whose worker
+  ends or stalls twice on it (a fresh worker tries it once more; a stall right after the Kindle slept is tried again
+  with no strike, as in an import); `DEAD_PAGES_MAX` (2) pages marked so make the whole PDF no template. No worker, no
+  room, the writer out of memory for a page's pixels (no strike either), a write that failed: nothing is marked.
+- **A file changed while its pages are made.** The job checks before it keeps the count and before it keeps each page
+  that the open file is unchanged and still the plain file at the PDF's name (device, inode, size and time to the
+  nanosecond), and its cache entries are keyed by the file it opened. A PDF written over, or another file put at its
+  name, while its pages are made: no page of it drawn after the change is kept, what was made of it goes, nothing is
+  marked, and the next look makes the pages of the file as it is then.
+- **Never an import by itself.** The import watch reads `grimoire/import` alone, and the template job writes only its
+  cache: the template job never makes a notebook of a PDF in the templates folder, never moves it, and never puts it
+  in the import folder. The user may still import one by choice: Import as notebook on its card in Files makes a
+  notebook of it, as it does of any PDF there.
+- **The sheet.** Until its job has counted the pages a PDF is one waiting tile under its name. When the sheet sees the
+  count (when it looks for previews: as a job ends, and every 1.5 s while one runs) it reads the folder again, as
+  after a copy, and the PDF's pages take its place, a tile a page named after the file and the page ("Planner p. 3",
+  the Pages view's "p. %d"; the file's name is cut short before the page's part when both do not fit). Never under a
+  contact: a count seen while a pen or finger is down on the sheet is read after the lift. A PDF before the page in
+  view taking more places does not turn the sheet away: the tile the page was anchored on stays in view (the page
+  that holds it now). The pages' tiles fill in
+  as their pictures are made. A PDF's tile the sheet cannot use stays crossed out in its place at every opening (the
+  tile a picture found unusable while the sheet is open has): the whole PDF's when it is refused (over 50 pages, over
+  16 MB, a password, no PDF) or past the tiles PDFs may give, and a page's that is marked, so the user sees which file
+  or page is not used even while other templates are offered (no string is new). A picture it cannot use is still left
+  out when the sheet opens, as before. With no template to offer, the sheet counts them among the files it cannot use,
+  as for pictures. A template PDF's tiles are templates only: the Photos sheet lists no PDF.
+- **Colour** follows a picture template's: a page with colour is kept in colour, drawn behind the ink as such a
+  template is, and its preview is gray.
+- **Users with no PDF in the folder** see what they saw: the same tiles and jobs, and the sheet's tick asks nothing
+  of the folder for a picture.
+- **Use as template on a PDF** (`browser.rs`): Files' PDF card has it after Import as notebook, never for a PDF already
+  in the templates folder or one of Grimoire's PDF copies, and never in a picker. It is the pictures' copy job and
+  limit: a PDF over 16 MB is refused at the request with "Too big (over 16 MB).". The Templates sheet's From a file...
+  still picks pictures alone.
+- **Strings**: none new ("p. %d" and "Use as template" were there).
+- **Tests**: `test_template_pdfs.rs` (the tiles before and after the count, the stored form and its keys, a page used
+  as a notebook's template with the PDF gone and in colour, the slices through the queue, the cap at 50 and 51 pages,
+  the cap of tiles in all, 16 MB and an empty file with no worker, the worker's refusals, a page that crashes or hangs
+  its worker, two such pages, the writer out of memory, a PDF swapped or written over after its first page or right
+  after its count, a link swapped in for the cache, no room before the first page and in the middle of a slice, no
+  worker, and a sandbox step that fails in the job's own child, a PDF that is never a picture, a removed PDF's pages
+  swept, the import watch, a folder of pictures alone and a picture beside a PDF, the queue's order and the jobs
+  dropped at exit, and the sheet: its reading of the folder after a lift, a PDF's crossed-out tiles, the page in
+  view),
+  `bgwork_tplpdf.rs`'s unit tests (the count's strict reading, a long name's page part), `browser.rs`'s
+  `a_pdfs_card_in_files_offers_its_copy_into_templates`, and the scenarios `z_tpl_h_pdf_pages`, `z_tpl_i_pdf_refused`,
+  `z_tpl_j_pdf_cap` and `z_tpl_k_pdf_use_as`.
+
 ## Shared building blocks (2.1, lane L0)
 
 The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).

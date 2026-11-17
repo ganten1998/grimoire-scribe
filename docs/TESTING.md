@@ -3382,3 +3382,47 @@ coloured page among gray ones; KOReader with the Grimoire plugin):
    importados: No", and its list "No", "Medio", "Fuerte", whole, upright and sideways, in Gothic and Classic.
 10. **Back to Off.** Set the row to Off: `grep pdf_gamma /mnt/us/grimoire/settings.ini` shows nothing, and a new
     import is drawn as before.
+
+## 2.2, PDFs as templates (issue #172): device checks
+
+Not run on a Scribe yet. Automated: `test_template_pdfs.rs`, `bgwork_tplpdf.rs`'s and `browser.rs`'s unit tests, and
+the scenarios `z_tpl_h_pdf_pages`, `z_tpl_i_pdf_refused`, `z_tpl_j_pdf_cap` and `z_tpl_k_pdf_use_as` (docs/DESIGN.md,
+PDFs as templates). What only the Scribe can tell: how long a page takes to draw and store at the Scribe's page size,
+that the pen stays quick meanwhile, and that the worker runs in the sandbox there. Over SSH, with Grimoire closed,
+copy into `/mnt/us/grimoire/templates/` a PDF of a few pages (a planner's day pages, or any paper design sold as a
+PDF), here `Planner.pdf`, and start Grimoire:
+
+1. **The tiles**: open a notebook, Paper > More layouts...: one tile named Planner waits, then (seconds later) the
+   sheet shows a tile a page, "Planner p. 1" and on, each filling in. grimoire.log has `templates: a PDF of N
+   page(s)`, `templates: a PDF's pages are done`, a `work: sandboxed (...)` line (one a slice), and no file name.
+   Note the time from the first line to the last, and N.
+2. **The pen meanwhile**: open the sheet on a new PDF of 20 pages or more, close it at once and write on the page
+   while the pages are drawn (grimoire.log shows `bg: template of a file` lines, a slice each): the ink keeps up as
+   it does with no job running.
+3. **A page as paper**: tap "Planner p. 2": the page goes onto it, white for a moment, then the page's picture behind
+   the ink. Write over it, open Paper > More layouts... again: "Planner p. 2" is selected. A new notebook on
+   "Planner p. 3" (New > More layouts...) starts on it.
+4. **The PDF gone**: delete `Planner.pdf` over SSH while Grimoire runs; the pages already on paper keep their
+   picture, and a restart still shows them. The tiles go at the next look, and `grimoire/templates/.cache` no
+   longer has its entries once that look's job has run (grimoire.log: `templates: 0 preview(s) made`).
+5. **Colour**: a PDF with a coloured page: its page is kept in colour, as a colour picture template is
+   (grimoire.log: `templates: <notebook>: bg/<id>.png made (1860x2480, colour)` once it is a page's paper), and it
+   draws behind the ink as such a template does.
+6. **Refusals**: copy in a PDF of more than 50 pages, a PDF with a password and a file renamed to `.pdf` that is no
+   PDF: at the first opening each shows a waiting tile until its job has looked at it. With no other template the
+   sheet then says "Grimoire cannot use 3 files there (see grimoire.log).", at this opening and the next; with a
+   picture template beside them, their three tiles are crossed out beside it, at every opening, and none can be
+   picked. The log says `51 pages, more than the 50` (or the count), `it needs a password` and `no PDF Grimoire can
+   read`.
+7. **Files**: Files > Documents > a PDF's card offers Import as notebook, Use as template and Cancel; Use as template
+   says "Copied to Templates.", and More layouts... then shows its pages. A PDF over 16 MB says "Too big (over 16
+   MB)." and nothing is copied.
+8. **Never imported by itself**: after the steps above (Import as notebook never tapped) the Library has no new
+   notebook, and `grimoire/import` is as it was.
+9. **Changed while drawn**: copy in a PDF of 30 pages, open the sheet, and while its pages come replace it over SSH
+   with another PDF of the same name (`cp other.pdf /mnt/us/grimoire/templates/Planner.pdf`): grimoire.log may say `a
+   PDF changed while its pages were made` (only when the copy lands while a slice is drawing its pages), and opening
+   the sheet again shows the new file's pages only.
+10. **Full storage** (optional, only with a storage to spare that can be filled and emptied safely): with under 100 MB
+    free, a new PDF's tile waits and grimoire.log says `not enough room on the storage`; nothing is added to
+    `grimoire/templates/.cache`. Free some room and open the sheet again: its pages come.

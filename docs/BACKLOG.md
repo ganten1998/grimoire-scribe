@@ -4,6 +4,27 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## PDFs as templates (2.2, issue #172): what waits, and what is for the owner
+
+Built: a PDF in `grimoire/templates` gives a template a page, drawn once by the sandboxed PDF worker; Use as template
+on a PDF's card in Files (docs/DESIGN.md, PDFs as templates). Waiting:
+
+- **Defaults taken here, for the owner to confirm**: at most 50 pages, and a longer PDF is no template as a whole
+  (never its first 50); the templates folder's 16 MB for a PDF too, and so for its copy from Files; the pages drawn
+  at the Kindle's page size, rendered when the Templates sheet looks at the folder, ranked behind imports and font
+  checks with Files' previews, in an import's slices; a page whose worker ends twice is left out alone, two such
+  pages leave the whole PDF out; the tiles named "<file> p. <n>" with no new string; at most 200 tiles of PDF pages
+  on the sheet in all, a PDF past them left out whole; a PDF's tile the sheet cannot use (a refused PDF, one past the
+  200, a page left out) kept crossed out at every opening, where a picture's is left out; darker lines (#173) not
+  applied to template pages (to apply them, the setting's level would join the cache key, and the pages be drawn
+  again when it changes).
+- **From a file...** in the Templates sheet still picks pictures alone: picking a PDF there would need the picture
+  pick to list PDFs, with their own card.
+- **The empty Templates sheet** names only pictures in its text, and `templates/README.txt` (written once) does not
+  mention PDFs: a new string each, for the next round of strings.
+- **Not timed on the Scribe**: a page's drawing and storing at 1860 x 2480. docs/TESTING.md, "2.2, PDFs as templates
+  (issue #172): device checks".
+
 ## Files' rename, delete and restore (2.2, issue #144): what waits
 
 Built: Rename and Delete on the cards inside Grimoire's folders for the user's files, the name rules' words, Delete's

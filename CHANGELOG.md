@@ -110,6 +110,12 @@
   or by KOReader). KOReader's Open this book passes the reader's contrast the same way when the reader draws the PDF
   darker. On a KOReader before 2023.10, Open with from the file browser now takes a book's contrast as that KOReader
   keeps it (it read the inverse before).
+- **PDFs as templates** (#172). A PDF in `grimoire/templates` gives a template for each of its pages: More layouts...
+  shows a tile a page ("Planner p. 3"), drawn once in the background by the same separate, sandboxed reader as a PDF
+  import, after any import. A page works as a picture template does, in colour where the PDF has colour. In Files, a
+  PDF's card offers Use as template. A PDF of more than 50 pages, over 16 MB, with a password, or that cannot be read
+  is not used, and shows its tile crossed out (so does a page that cannot be drawn); the sheet takes 200 PDF pages in
+  all.
 
 ## 2.1.0 (2026-11-13)
 
