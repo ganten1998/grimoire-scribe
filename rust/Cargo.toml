@@ -27,6 +27,9 @@ default = []
 kindle = []
 sim = []
 external-platform = []
+# A platform kept in another crate whose system runs a Linux kernel under another name than Linux: the sandbox's
+# worker steps are built for it, and its workers hold the ones that need no root (sandbox.rs, PORTING.md).
+linux-kernel = []
 
 [lib]
 name = "grimoire"

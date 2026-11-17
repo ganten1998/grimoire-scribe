@@ -304,6 +304,24 @@ call the copy since issue #146 (each its own section, above).
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
 
+## The sandbox's steps for a platform kept in another crate (`linux-kernel`, #148): what waits
+
+- **The picture and font workers have not run on such a device.** Only the PDF worker did (three runs, PR
+  #150). They take the same steps and the same filter, with other parsing code, so another call of that
+  platform's C library may show up there.
+- **The address-space limit counts only what is mapped after the first step.** On such a device the
+  allocator reserves its regions when the program starts; memory it hands out from them later is not counted
+  (`as_limit`). The CPU limit, NOFILE 0, NPROC 0 and the allow-list hold as on the Kindle. A bound on the
+  allocator's own use would need its own setting there.
+- **No test runs the feature's rules.** CI's sandbox job type-checks the library and the tests with the
+  feature (`cargo check --features "sim linux-kernel"`); nothing runs a real worker that says `S 2`. A run
+  under the feature in the Linux job (not as root, not required) would need the unit tests that assume the
+  feature off split by it.
+- **The whole sandbox with the feature (`GRIMOIRE_SANDBOX=require`, as root) has not been run on such a
+  device.**
+- **The prctl numbers for arm and x86_64** in `LINUX_KERNEL_ENOSYS` are the kernel's; only aarch64's was seen
+  on a device.
+
 ## Hardening round (2026-11), sandbox: what waits
 
 - **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), sandbox").

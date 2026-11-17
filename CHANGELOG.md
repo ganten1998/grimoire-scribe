@@ -51,6 +51,9 @@
   `photos/` or `import/` that is a link is no longer taken: copy the file in.
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- Housekeeping: a platform kept in another crate whose system runs a Linux kernel under another name can
+  build the sandbox's steps that need no root for that process (`linux-kernel`, rust/PORTING.md). No change
+  in the app.
 - Housekeeping: the documents of the safe loader and of your own fonts say what the code does (the limit
   on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
   try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check

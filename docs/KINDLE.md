@@ -519,7 +519,8 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
   process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
-  required (never on the Kindle).
+  required (never on the Kindle). `work: sandboxed without root (...)` is a platform's build with the
+  `linux-kernel` feature (rust/PORTING.md), never the Kindle's.
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
@@ -617,7 +618,8 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
   <id>: page N of M: no sandboxed worker can be had; nothing imported` and `import: <id>: no try is counted; a
   later scan takes the folder again`. Off the Kindle, where the sandbox is not required, the same failure reads
   `work: pictures decode in the writer (<why>); the sandbox is unavailable` and the pictures decode in the writer
-  as in 2.0. Only a picture that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs
+  as in 2.0. A build with the `linux-kernel` feature (rust/PORTING.md) takes the Kindle's way here: its pictures
+  wait, and its writer decodes none. Only a picture that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs
   are still drawn by the UI.
 - `bg: PDF import of <id> (pid N)` once per slice; `bg: PDF import pid N done`.
 
