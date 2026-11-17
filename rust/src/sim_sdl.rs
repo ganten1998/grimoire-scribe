@@ -150,6 +150,10 @@ struct State {
     // Simulated front light (the simulator has no light to drive).
     light_i: i32,
     light_w: i32,
+    /// the Kindle's own auto brightness (flAuto): 1 on, 0 off
+    light_auto: i32,
+    /// GRIMOIRE_SIM_LIGHT_SENSOR: whether this simulated Kindle has an ambient-light sensor
+    light_sensor: bool,
     // The simulated power service's state, what sys_powerd_state reports: set by the script's
     // `powerd <state>` ("unknown" reads as unreadable). It never changes on its own.
     powerd_state: FixedStr<32>,
@@ -278,6 +282,8 @@ impl Default for State {
             npresents: 0,
             light_i: 12,
             light_w: 8,
+            light_auto: 0,
+            light_sensor: false,
             powerd_state: FixedStr::from_str("active"),
             sim_grab: true,
             pokes: 0,
@@ -1046,7 +1052,10 @@ pub fn display_set_invert(on: bool) {
 pub fn light_available() -> bool {
     std::env::var_os("GRIMOIRE_SIM_NO_LIGHT").is_none()
 }
-pub fn light_refresh() {}
+pub fn light_refresh() {
+    let sensor = light_available() && std::env::var_os("GRIMOIRE_SIM_LIGHT_SENSOR").is_some_and(|v| v != "0");
+    with(|st| st.light_sensor = sensor);
+}
 pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
     with(|st| {
         *intensity = st.light_i;
@@ -1061,6 +1070,25 @@ pub fn light_set_warmth(level: i32) {
 }
 pub fn light_warmth() -> i32 {
     with(|st| st.light_w)
+}
+pub fn light_auto() -> i32 {
+    if !with(|st| st.light_sensor) {
+        return -1;
+    }
+    with(|st| st.light_auto)
+}
+pub fn light_set_auto(on: bool) {
+    if !with(|st| st.light_sensor) {
+        return;
+    }
+    with(|st| {
+        st.light_auto = i32::from(on);
+        if on {
+            // The simulated sensor's room: a level distinct from the startup one, so a script can
+            // see the Brightness slider follow auto brightness.
+            st.light_i = 18;
+        }
+    });
 }
 pub fn sys_powerd_state(out: &mut String, cap: usize) -> i32 {
     with(|st| {

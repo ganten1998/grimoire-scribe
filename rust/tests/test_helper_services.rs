@@ -140,27 +140,31 @@ fn lipc_is_asked_through_the_shell() {
     std::env::set_var("LIGHT_TEST_LOG", &log);
     script(
         &format!("{}/lipc-get-prop", dir),
-        "#!/bin/sh\ncase \"$*\" in\n*flIntensity*) echo 7;;\n*currentAmberLevel*) echo 12;;\n*state*) echo '  screenSaver  ';;\nesac\n",
+        "#!/bin/sh\ncase \"$*\" in\n*flIntensity*) echo 7;;\n*currentAmberLevel*) echo 12;;\n*flAuto*) echo 1;;\n*alsLux*) echo 80;;\n*state*) echo '  screenSaver  ';;\nesac\n",
     );
     script(&format!("{}/lipc-set-prop", dir), "#!/bin/sh\necho \"$*\" >> \"$LIGHT_TEST_LOG\"\n");
     let (mut i, mut w) = (0, 0);
     check!(lk::light_warmth() == -1);
     lk::light_get(&mut i, &mut w); // never read: asks
     check!(i == 7 && w == 12 && lk::light_warmth() == 12);
+    check!(lk::light_auto() == 1);
     lk::light_set_intensity(30); // clamped to LIGHT_MAX
     lk::light_set_warmth(-3);
+    lk::light_set_auto(false);
+    check!(lk::light_auto() == 0);
     lk::light_get(&mut i, &mut w);
     check!(i == LIGHT_MAX && w == 0);
-    check!(wait_for(|| read_file(&log).is_some_and(|b| b.iter().filter(|&&c| c == b'\n').count() == 2)));
+    check!(wait_for(|| read_file(&log).is_some_and(|b| b.iter().filter(|&&c| c == b'\n').count() == 3)));
     let calls = String::from_utf8_lossy(&read_file(&log).unwrap_or_default()).into_owned();
     check!(calls.contains("-i com.lab126.powerd flIntensity 24\n") && calls.contains("-i com.lab126.powerd currentAmberLevel 0\n"));
+    check!(calls.contains("-i com.lab126.powerd flAuto 0\n"));
     let mut state = String::new();
     check!(lk::sys_powerd_state(&mut state, 64) == 0 && state == "screenSaver");
     check!(lk::sys_powerd_state(&mut state, 5) == 0 && state == "scre");
     lk::sys_prevent_sleep(true);
     lk::sys_activity();
     lk::sys_request_sleep();
-    check!(wait_for(|| read_file(&log).is_some_and(|b| b.iter().filter(|&&c| c == b'\n').count() == 6)));
+    check!(wait_for(|| read_file(&log).is_some_and(|b| b.iter().filter(|&&c| c == b'\n').count() == 7)));
     let calls = String::from_utf8_lossy(&read_file(&log).unwrap_or_default()).into_owned();
     check!(calls.contains("preventScreenSaver 1\n") && calls.contains("touchScreenSaverTimeout 1\n"));
     check!(calls.contains("preventScreenSaver 0\n") && calls.contains("powerButton 1\n"));
@@ -171,6 +175,17 @@ fn lipc_is_asked_through_the_shell() {
     std::env::remove_var("GRIMOIRE_AWESOME_STOPPED");
     std::env::remove_var("GRIMOIRE_PILLOW_DISABLED");
     check!(lk::sys_kindle_ui(true) && lk::sys_kindle_ui(false));
+    // A Kindle without an ambient-light sensor says nothing for alsLux: no auto brightness there,
+    // and turning it on writes nothing.
+    script(
+        &format!("{}/lipc-get-prop", dir),
+        "#!/bin/sh\ncase \"$*\" in\n*flIntensity*) echo 7;;\n*currentAmberLevel*) echo 12;;\n*flAuto*) echo 0;;\n*state*) echo active;;\nesac\n",
+    );
+    lk::light_refresh();
+    check!(lk::light_auto() == -1);
+    lk::light_set_auto(true);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    check!(read_file(&log).is_some_and(|b| b.iter().filter(|&&c| c == b'\n').count() == 7));
     std::env::set_var("PATH", saved);
 }
 

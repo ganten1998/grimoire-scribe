@@ -87,6 +87,10 @@ pub fn light_set_warmth(level: i32) {}
 pub fn light_warmth() -> i32 {
     -1
 }
+pub fn light_auto() -> i32 {
+    -1
+}
+pub fn light_set_auto(on: bool) {}
 pub fn sys_request_sleep() {}
 pub fn sys_powerd_state(out: &mut String, cap: usize) -> i32 {
     -1
