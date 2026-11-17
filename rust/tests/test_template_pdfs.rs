@@ -394,8 +394,24 @@ fn no_room_makes_nothing() {
     check!(names(&scan()) == ["Planner"]);
     settle();
     check!(cache_names().is_empty());
+    // no room at a later slice: what the first made is kept (the count and page 1), nothing more is made or marked
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    clean_env_keep_slices();
+    check!(job("Planner.pdf") == CODE_MORE && cache_names().len() == 4);
+    std::env::set_var("GRIMOIRE_PDF_FREE_BYTES", "50000000");
+    let (rc, log) = with_log("room-page", || job("Planner.pdf"));
+    check!(rc == -1 && cache_names().len() == 4 && log.contains("not enough room on the storage"));
     clean_env();
     check!(job_to_end("Planner.pdf").0 == 0 && scan().len() == 2);
+}
+
+/// clean_env, with the slice length given kept.
+fn clean_env_keep_slices() {
+    let slices = std::env::var("GRIMOIRE_PDF_SLICE_PAGES").ok();
+    clean_env();
+    if let Some(v) = slices {
+        std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", v);
+    }
 }
 
 // A PDF in grimoire/templates is never an import: the import watch reads import/ alone.

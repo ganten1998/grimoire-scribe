@@ -413,6 +413,8 @@ impl Run<'_> {
                 qlog!("templates: a PDF's slice made %d page(s) and marked %d; the rest in the next", made as i32, marked as i32);
                 return Ok(CODE_MORE);
             }
+            // (the floor before each page's worker is asked; its picture's own size is asked again before it is kept)
+            self.room(PAGE_ROOM)?;
             match self.page(k)? {
                 PageEnd::Made => made += 1,
                 PageEnd::Marked(why) => {
