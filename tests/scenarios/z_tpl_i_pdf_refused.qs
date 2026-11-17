@@ -13,10 +13,11 @@ wait 200
 expect library.sheet is templates
 waitbg
 wait 300
-# (marked while the sheet was open: crossed out in their places, offered no more)
+# (marked while the sheet was open: the folder read again, and with no template to offer the sheet says how to add
+# some and counts the two)
 expect templates.count is 0
 expect templates.names is Broken|Locked
-shot 01-crossed-out
+shot 01-marked-at-once
 tap library templates.back
 wait 200
 expect library.sheet is new
