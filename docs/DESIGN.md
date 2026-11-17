@@ -3247,12 +3247,12 @@ parses it.
 **The page** (web/upload.js, inline in the index after `window.GRIMOIRE_UPLOAD`: the token, the limit and the words;
 served without its comment lines, blank lines and indents, `script_bare`). The script makes the button, so a browser
 without JavaScript shows nothing. A pick sends the file as one XMLHttpRequest (no byte of it passes through the
-script; a lone half of a UTF-16 pair in its name is sent as `_`), shows "Sending PDF: 42%", "Confirm on the Kindle."
-once it has gone, "Code 4821" in big type under it once the reply's first line has come, then the answer, and the
-code goes: `imported` "Copied to grimoire/import.", `another PDF was sent` or 409 "Another PDF is being sent. Try
-again.", `no room` or 507 "Couldn't import PDF. Is the storage full?", 413 "PDF too big: over 64 MB.", 401 and 403
-"Open Share on the Kindle, then reload this page.", 503 "Wait 5 seconds, then send again.", anything else (Cancel, no
-answer, not a PDF, a connection lost) "Not imported.".
+script; a lone half of a UTF-16 pair in its name is sent as `_`), shows "Sending PDF: 42%", then, once the reply's
+first line has come, "Confirm on the Kindle." with "Code 4821" in big type under it (never the one without the
+other), then the answer, and the code goes: `imported` "Copied to grimoire/import.", `another PDF was sent` or 409
+"Another PDF is being sent. Try again.", `no room` or 507 "Couldn't import PDF. Is the storage full?", 413 "PDF too
+big: over 64 MB.", 401 and 403 "Open Share on the Kindle, then reload this page.", 503 "Wait 5 seconds, then send
+again.", anything else (Cancel, no answer, not a PDF, a connection lost) "Not imported.".
 
 **The log** says what came and how it ended, never the name, the token, the send's code or a header: `httpd: an
 upload of N KB is coming in`, `... is in; the Kindle asks`, `httpd: an upload was kept: it waits in import/ for the

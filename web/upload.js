@@ -33,10 +33,13 @@
     function sending(done, total) {
         status.textContent = w.sending.replace('{percent}', Math.min(100, Math.floor(done * 100 / Math.max(1, total))) + '%');
     }
-    // The send's code, once its line has come.
+    // The send's code, once its line has come, and with it the word to confirm on the Kindle: never the one without
+    // the other, so a page whose code has not come does not ask for a yes.
     function coded(x) {
         const m = /^code (\d{4})\n/.exec(x.responseText || '');
-        if (m) code.textContent = w.code.replace('%s', m[1]);
+        if (!m) return;
+        status.textContent = w.confirm;
+        code.textContent = w.code.replace('%s', m[1]);
     }
     // The answer: a refusal's status, or the last line of a send the Kindle asked about. The code goes with the send.
     function finish(c, text) {
@@ -73,7 +76,7 @@
             if (e.lengthComputable) sending(e.loaded, e.total);
         };
         x.upload.onload = function () {
-            status.textContent = w.confirm;
+            sending(1, 1);
         };
         x.onprogress = x.onreadystatechange = function () {
             coded(x);

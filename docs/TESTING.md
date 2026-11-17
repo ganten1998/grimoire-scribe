@@ -3329,13 +3329,14 @@ lines marked "Over SSH, optional" look at the files themselves and can be left o
 
 1. **Sent and imported**: on the Kindle, Library > Share. On the phone, open the address it shows (or scan its code):
    the page has a Send a PDF to the Kindle button under Download everything (zip). Tap it, pick the small PDF: the
-   page counts "Sending PDF: N%", then says "Confirm on the Kindle." with "Code NNNN" in big type under it. The Kindle
-   shows `Import "2027 Planner.pdf" (N MB)?` over the Share screen, the same "Code NNNN" in big type under it, then
-   Import and Cancel; the size is the file's. Both codes read easily at arm's length, and they are the same. Tap
-   Import: the toast "Copied to grimoire/import.", the page says the same and its code goes. Tap X: back in the
-   Library the import's notice counts its pages, and the notebook "2027 Planner" is a card. Over SSH, optional:
-   before Import `ls -a /mnt/us/grimoire/.cache` shows `share-upload.part` and `grimoire/import` has nothing new;
-   after it the part is gone.
+   page counts "Sending PDF: N%", then says "Confirm on the Kindle." with "Code NNNN" in big type under it, the two
+   together (a page that stays at "Sending PDF: 100%" while the Kindle asks was not given its code: note the browser
+   and the network, and tap Cancel). The Kindle shows `Import "2027 Planner.pdf" (N MB)?` over the Share screen, the
+   same "Code NNNN" in big type under it, then Import and Cancel; the size is the file's. Both codes read easily at
+   arm's length, and they are the same. Tap Import: the toast "Copied to grimoire/import.", the page says the same
+   and its code goes. Tap X: back in the Library the import's notice counts its pages, and the notebook "2027
+   Planner" is a card. Over SSH, optional: before Import `ls -a /mnt/us/grimoire/.cache` shows `share-upload.part`
+   and `grimoire/import` has nothing new; after it the part is gone.
 2. **Cancelled**: send the small PDF again; on the Kindle tap Cancel: no toast, the page says "Not imported." and its
    code goes, and back in the Library no new notebook appears (Files > All storage > grimoire > import shows nothing
    new).

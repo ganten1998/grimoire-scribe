@@ -78,15 +78,19 @@ assert.equal(s.input.clicked, 1);
 x.upload.onprogress({lengthComputable: true, loaded: 420, total: 1000});
 assert.equal(s.status.textContent, 'sending 42%');
 x.upload.onload();
-assert.equal(s.status.textContent, 'confirm');
-// the send's code, once its whole line has come, big under it while the Kindle asks
+assert.equal(s.status.textContent, 'sending 100%', 'all sent, and no word of confirming before the code');
+x.onreadystatechange();
+assert.equal(s.status.textContent, 'sending 100%', 'the reply opened without its code: still none');
+// the send's code, once its whole line has come, big under the word to confirm on the Kindle while it asks
 assert.equal(s.code.textContent, '');
 x.responseText = 'code 48';
 x.onprogress();
 assert.equal(s.code.textContent, '', 'half a line is no code');
+assert.equal(s.status.textContent, 'sending 100%', 'nor a word of confirming');
 x.responseText = 'code 4821\n';
 x.onreadystatechange();
 assert.equal(s.code.textContent, 'code 4821');
+assert.equal(s.status.textContent, 'confirm', 'the word to confirm comes with the code');
 x.responseText += 'imported\n';
 x.status = 200;
 x.onload();
@@ -100,6 +104,7 @@ for (const [line, said] of [['declined on the Kindle', 'no'], ['no answer on the
     y.responseText = 'code 0042\n';
     y.onprogress();
     assert.equal(s.code.textContent, 'code 0042');
+    assert.equal(s.status.textContent, 'confirm');
     y.responseText += line + '\n';
     y.status = 200;
     y.onload();
@@ -110,8 +115,12 @@ for (const [line, said] of [['declined on the Kindle', 'no'], ['no answer on the
 for (const [code, said] of [[408, 'no'], [415, 'no'], [500, 'no'], [409, 'busy'], [401, 'reload'],
     [403, 'reload'], [413, 'big'], [507, 'full'], [503, 'wait'], [400, 'no']]) {
     const y = s.pick({name: 'a.pdf', size: 10});
+    y.upload.onload();
     y.responseText = 'some words\n';
     y.status = code;
+    y.onreadystatechange();
+    assert.equal(s.status.textContent, 'sending 100%', 'no word of confirming for a refusal');
+    assert.equal(s.code.textContent, '');
     y.onload();
     assert.equal(s.status.textContent, said, String(code));
 }
