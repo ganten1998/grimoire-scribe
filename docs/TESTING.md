@@ -3209,3 +3209,46 @@ sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.
     the previews are made again.
 11. **Rotate** in Covers: ten tiles sideways, the previews there again after a moment, the card of a tile beside
     it.
+
+## 2.2, Home (issue #160): device checks
+
+Not run on a Scribe yet. Automated: `home.rs`'s, `browser.rs`'s and `library.rs`'s unit tests, `test_store.rs`
+`home_key`, and the scenarios `files_19_home_set` to `files_31_home_es_fit_classic` (docs/DESIGN.md, Files: home).
+What only the Scribe can tell: the walk to a home on its storage (vfat under the FUSE proxy), a start at home after a
+reboot and after KOReader's hand-over, and what a USB connection does to a home inside Files. With Grimoire open and
+Files' card shown (New > From a file... > Show Files in Library), on a folder made over USB first
+(`/mnt/us/documents/Home probe`, with one PDF in it):
+
+1. **Set from Files**: Files > Documents > Home probe, tap the path's last part: the Go to sheet's first row reads
+   "Home: Notebooks", and Set as home is after the folders. Tap it: no toast, the Back button goes, and the sheet
+   opened again reads "Home: Home probe" with Reset home to Notebooks. Over SSH `grep ^home= /mnt/us/grimoire/
+   settings.ini` shows `home=files/documents/Home probe`.
+2. **A start at home**: Exit, start Grimoire from the Kindle's home screen: Files opens at Home probe with no Back
+   button, within the start's usual time (grimoire.log's `first frame presented` against an earlier start's), and
+   with no toast. Esc on a paired keyboard (or a key bound to back) asks "Exit Grimoire?"; No leaves Files as it was.
+   The path bar's Documents and Files lead up; Files' root's Back reaches the Library, and the Go to sheet's Home
+   row comes back.
+3. **A notebook closed**: from the Library open a notebook and close it: the Library, where it was left, not Files.
+   With a key bound to `home` (shortcuts.ini `key.h=home`), H goes back to Home probe.
+4. **KOReader**: with home set, open a page with Annotate this page in Grimoire: the page opens, as without a home;
+   closing it shows Files at Home probe. Then Open this book in Grimoire on a PDF KOReader hands over by its path:
+   the import's notice counts, and the book's page opens by itself as without a home (Files does not open over the
+   Library first); closing it shows Files at Home probe.
+5. **Gone**: with Grimoire closed, rename the folder over USB to `Home probe 2`; start Grimoire: the Library's top,
+   one toast "Home folder not found.", and `grep ^home= settings.ini` shows nothing. The next start says nothing.
+6. **A link**: with Grimoire closed, `ln -s "Home probe 2" "/mnt/us/documents/Home link"` and write
+   `home=files/documents/Home link` into settings.ini by hand: the start shows the Library's top and the toast, and
+   grimoire.log has `home: the home folder was not found` (and no name). Remove the link.
+7. **Renamed in Grimoire**: make an empty folder over USB, `/mnt/us/grimoire/photos/Home probe 3` (Documents is read
+   only, so Rename is offered in Grimoire's own folders). Files > Photos > its card > Set as home, then its card >
+   Rename to `Home probe 4`: settings.ini names `files/grimoire/photos/Home probe 4`, and a restart opens Files
+   there. Delete it from its card in Photos: the next start shows the toast, and Restore in Files > Trash puts it
+   back (set it again to make it home).
+8. **A Library folder**: a folder's menu in the Library > Set as home; restart: the Library opens in it, with its
+   Back button; Esc asks "Exit Grimoire?". Rename it from its menu: the next start opens in it under its new name.
+   Its menu > Reset home to Notebooks: the next start opens at the top.
+9. **USB while running**: with home inside Files and Files open at it, connect USB and, from the computer, rename the
+   folder; disconnect. Tap a row: Files reads the folder again and goes to the nearest folder above that opens, with
+   no crash and no stuck screen; H (the `home` action) shows the Library's top with the toast.
+10. **Spanish**: Settings > Language > Español: the Go to sheet's "Inicio: ...", "Usar como inicio" and "Restablecer
+    el inicio a Cuadernos", the folder's card and the Library folder's menu read whole, upright and sideways.

@@ -56,11 +56,14 @@ Waiting:
 Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
 level), the path bar inside Files only, Go to, Sort, Show, a card for every kind of file, the trash listed read
 only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"); previews and
-the Covers view (issue #145; "Files: previews and the Covers view"). Waiting, each for its own issue:
+the Covers view (issue #145; "Files: previews and the Covers view"); the home folder (issue #160; "Files: home").
+Waiting, each for its own issue:
 
-- **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
-  folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
-  (the action) goes to the Library's top (`library_home`, where a set home starts).
+- **Home (issue #160): calls for the owner to confirm**, each the smallest reading of the plan: a Library folder
+  that is home keeps its Back button (the Library has no path bar to lead up) while Esc there asks "Exit
+  Grimoire?"; no Set folder as home on a file's card (the Go to sheet's row sets the folder shown); a home inside
+  Files opens Files even while its card is hidden; a home that is gone goes back to Notebooks at once, not kept for
+  a folder that may come back. Not tried on the Scribe: docs/TESTING.md, "2.2, Home (issue #160): device checks".
 - **Rename and Trash on screen** and **Restore** in the Trash place: built with issue #144 (above).
 - **After the previews (issue #145)**: the details a card can only have from the worker (a PDF's pages, a
   picture's size, a font's coverage) and a preview on a file's card; Covers as the default for Templates and Photos
@@ -80,9 +83,9 @@ the Covers view (issue #145; "Files: previews and the Covers view"). Waiting, ea
   waited for the font check's hardening (#111), which is merged now. The From a file... tiles and a picture's Use
   as template and Use as photo are built (#146, the section below).
 - **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
-  Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files; Esc at a home root asking "Exit
-  Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
-  too far, the other reading (the last card of the first screen) is a change in `reload` alone.
+  Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files. The card is the last card of the top level,
+  which in a big Library is the last screen: if that is too far, the other reading (the last card of the first
+  screen) is a change in `reload` alone.
 - **Not timed on the Scribe**: Sort by newest or size stats a whole folder (up to 5,000 entries) in 20 ms slices
   on the UI thread; the Go to sheet reads the storage root at once on the tap, at most 200 ms in all (a root that
   takes longer lists the folders read by then). TESTING.md, "2.2, Files (issue #124): device checks".
@@ -1626,8 +1629,8 @@ items of Document links. Left:
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
   one line in `Browser::work` if the Scribe says so.
 - **Pictures as files, fonts, the path bar, Go to, Sort, Show, View and item cards on every file** are built in
-  2.2's Files (issue #124, below). **Rename, Trash, Set as home, Covers, previews and "Making previews..."** wait
-  for the later Files work ("Files (2.2, issue #124): what waits").
+  2.2's Files (issue #124, below), and so are Rename, Trash, Covers, previews and "Making previews..." (issues
+  #144 and #145) and Set as home (issue #160); what is left waits in "Files (2.2, issue #124): what waits".
 - **A PDF being imported still offers Import as notebook** on its card in the Import place; a second tap while it
   runs is `AlreadyRunning` and says nothing (its row says Waiting or Importing).
 - **A picked folder's import has no progress** (the picture import never had: its row says Waiting until the

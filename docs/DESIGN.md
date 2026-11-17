@@ -2627,9 +2627,9 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   the lift after it does nothing.
 - **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
   row (they are bound by name, as the Library's New notebook and Share are), from a key or a gesture, over the
-  Library and inside Files alike. `home` is the Library's top for now.
+  Library and inside Files alike. `home` goes to the home folder ("Files: home", below).
 - **Seams left for the later Files work**: the card's rows per kind in `card_lines` (Add to fonts), `BrowseMode`
-  and `FilesPrefs` (a home), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
+  and `FilesPrefs`, `PickSpec.start` (opening at a folder).
 
 ## From a file... and Use as template (2.2, issue #146)
 
@@ -2953,6 +2953,86 @@ may cost is held to a few seconds a file, behind every other job.
   the Import place's statuses) and `files_14_covers_use_as` (a picture's card closed by Use as template over
   arriving previews); and CI's Linux job, a preview of each kind and a filter kill in the real sandbox
   (`test_sandbox_linux.rs`). docs/TESTING.md has the Scribe's check.
+
+## Files: home (2.2, issue #160)
+
+The place the main menu opens at: the Library's top unless the user sets a Library folder or a folder of the
+Kindle's storage shown in Files (the owner's D31). `home.rs` reads the setting; the Library (`library.rs`) opens
+there and keeps it; Files (`browser.rs`) has the rows that set it and the home folder as the top.
+
+- **The setting**, settings.ini `home=`: absent, empty or `notebooks` is the Library's top (no line is written for
+  it); `notebooks/<folder>` is a Library folder by its path (`notebooks/School/2026`); `files/<path>` a folder of
+  the storage by its path from the storage root (`files/documents/Planners`). `Home::parse` takes these shapes
+  alone: under `FS_PATH_MAX` + 8 bytes, in UTF-8, with no control character, no absolute path and no empty, `.` or
+  `..` part (a Library folder as `store_folder_valid` takes one, a storage path as `StoragePath::new` takes one,
+  never the root). Any other value names no home. No file or folder is looked at to read the line.
+- **What it names is resolved one way only.** The line is anyone's to write (the user, another program, another
+  version; Grimoire runs as root). A Library folder is a name looked up in the Library's own list (`folders`, as
+  `reload` reads it), never a path on the storage. A folder inside Files is reached only through Files' walk
+  (`FsStorage::folder`: each part opened from the one before with no link followed, on the storage's device, in no
+  refused place, not Grimoire's notebooks, never the storage's root, and never the trash or anything in it, which
+  is known by the trash's identity), and Files enters it as a tap would (`Browser::enter_home`). Nothing joins the
+  value into a path and opens it, and nothing is listed, read or made at a home that fails.
+- **Where Grimoire opens.** The main menu opens at home as it comes in front until it is used in a run
+  (`LibraryState.home_pending`, which the first contact, gesture or key action on the Library ends): at the start,
+  and again when a notebook KOReader opened at the start closes. After that it comes back as it was left: closing a
+  notebook returns to the Library where the user was, as before (a notebook opened from Files returns to the
+  Library, as before). A Library folder that is home opens the Library in it; a home inside Files opens Files there
+  (place mode, whether or not the Files card is shown) over the Library's top. A home inside Files waits for What's
+  new (open over the Library at the first start after an update: its closing goes home) and, once, for the notebook
+  KOReader hands over (`app_handed_over`): that notebook opens over the Library's cards as before, which the PDF
+  hand-over's own opening needs, and home opens when the main menu next comes in front. With no home set the start
+  is the plain reload it was, with the same screens and refreshes.
+- **Gone or refused.** A line that names no home (`Settings.home_refused`, as settings.ini is read), a Library folder
+  not in the list, or a folder the walk does not reach as one that can be home: the Library's top shows, with one
+  toast, "Home folder not found." (the screen does not say why), and home is Notebooks again in settings.ini at
+  once. The value is not kept, unlike `files_sort`'s (which a later version may have written): kept, it would be
+  tried and said at every start, and for a Library folder that is gone the one Reset row in reach would be Files'
+  Go to sheet, behind a card that is hidden by default. A home that goes away while Grimoire runs (over USB, a
+  Delete in Files, a Library folder removed) stays set: a screen that shows it is as Files leaves any folder that
+  is gone (the next act reads it again and goes to the nearest folder above that opens), and the next start or
+  `home` action finds it gone, as above.
+- **Set and reset.** Files' Go to sheet has a first row, "Home: %s" (Notebooks; a Library folder by its own name; a
+  place of Files' root by the place's name, any other folder by its own), that goes there. After its folders comes
+  Set as home, for the folder shown, unless it is home already or can never be (the storage's root, the trash, a
+  folder whose path settings.ini could not keep as it is: `home_folder_ok`), then Reset home to Notebooks while
+  home is anything else, then Cancel. A folder's card in Files has Set as home, or on the folder that is home Reset
+  home to Notebooks in its place (before Rename and Delete). A Library folder's menu has the same row (before Remove
+  folder): the Library has no Go to sheet, so the folder that is home resets from its own menu. A folder set from
+  Files is walked again before it is kept ("Couldn't open folder." when it no longer opens), and a card's folder is
+  checked again first ("File changed. Try again."). Nothing is said: the rows read the other way afterwards. When
+  the screen has no room for every row, the Go to sheet leaves folders out from their end and keeps its Home row,
+  its home rows and Cancel. A picker offers none of it. The plan's "Set folder as home" on a file's card was left
+  out: the Go to sheet's row does the same for the folder shown, with one string fewer.
+- **The home folder as the top.** In Files at the folder that is home the header has no Back button (the title
+  stands at the margin, as the Library's does), and Esc, or a Back key, asks "Exit Grimoire?" over Files as at the
+  Library's top (`files_back`; while the question is up its answers and its keys are its own, `files_in_front`, and
+  Files neither draws nor ticks under it). The path bar still leads up, and a folder inside home has Back, which
+  leads to it. At a Library folder that is home Esc asks "Exit Grimoire?" too, and its Back button stays: with no
+  path bar in the Library it is the one way up. From a home inside Files the path bar's Files and the root's Back
+  lead to the Library; the Go to sheet's Home row, the `home` action and the next start lead back.
+- **The `home` action** (109, no default key) goes home from the Library and from Files: out of Files (or a picker)
+  for the Library's top or a Library folder; to the home folder inside Files, without leaving Files when it is up.
+- **A rename takes home along.** A rename of the home folder, or of a folder it is in, done in Grimoire puts home
+  where that folder is now: Files' Rename (`home_follows`, after `rename_to`) and the Library's Rename folder, Move
+  folder and Merge, Merge into it or Keep both under its new name (`home_follow`). A folder whose name only begins
+  the same is another folder, and a new path settings.ini could not keep leaves home as it was, to be found gone. A
+  home folder moved to the trash in Files is gone until Restore puts it back at its path.
+- **Logs**: `home: the home folder was not found: home is Notebooks again`, and as settings.ini is read `settings:
+  home= names no home (N bytes): Notebooks`; never the value, which may hold a name.
+- **Strings**: Home: %s, Set as home, Reset home to Notebooks, Home folder not found. ("Notebooks", "Couldn't open
+  folder.", "File changed. Try again." and "Exit Grimoire?" were there.)
+- **Tests**: `home.rs`'s unit tests (the shapes and the value each is kept as, hostile values, the walk on a tree with
+  links in and out of the storage, a file, the trash, Grimoire's notebooks, refused and hidden folders, a name with
+  a control character); `test_store.rs` `home_key`; `browser.rs`'s (the Go to sheet's and a folder's card's rows, a
+  folder home cannot keep, entering home only through the walk, no Back at home, the Go to sheet's rows sideways, a
+  rename and a delete in Files); `library.rs`'s (opening at home in each kind of place, gone or refused with one
+  toast and the line gone, home until the main menu is used, the action and Esc at home, a Library folder's menu,
+  Files' rows through the Library, What's new and KOReader's hand-over, a rename, a move and a merge); and the
+  scenarios `files_19_home_set` to `files_31_home_es_fit_classic` (set, a restart, reset, gone, a link, a `..`, a
+  Library folder, its rename and the start there, a folder's card in Files, its rename, the start there and its
+  delete, a notebook closed, and Spanish in Gothic and Classic with every text checked for fit). docs/TESTING.md has
+  the Scribe's checks.
 
 ## Shared building blocks (2.1, lane L0)
 

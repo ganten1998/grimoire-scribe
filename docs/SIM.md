@@ -381,8 +381,11 @@ answered"): a script waits `wait 500` between the tap that opens one and its ans
 outside; the Library's `delete.yes`), and tests/scenarios/files_18_delete_twice.qs, which taps sooner on purpose,
 runs on the script's clock. In Files: `files.crumb.N` (the Nth part of the
 path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort`,
-`files.show` and `files.view` (its chips), and `files.goto.N` (the Go to sheet's Nth row). In the Covers view
-`files.row.N` and `files.item.NAME` tap a tile (it has no `...`).
+`files.show` and `files.view` (its chips), and `files.goto.N` (the Go to sheet's Nth folder or place). Home (2.2,
+issue #160): `files.goto.home` (the Go to sheet's first row, "Home: ..."), `files.card.sethome` and
+`files.card.resethome` (Set as home and Reset home to Notebooks, on the Go to sheet and on a folder's card), and in
+the Library `fmore.home` (a folder's menu's Set as home, or Reset home to Notebooks on the folder that is home). In
+the Covers view `files.row.N` and `files.item.NAME` tap a tile (it has no `...`).
 
 | key | value |
 |---|---|
@@ -398,6 +401,7 @@ path bar, from 1: Files, the place, then each folder; the last opens the Go to s
 | `files.order`, `files.drawn` | the rows' names in order, joined by `|`; the rows' names as last drawn on the screen (a new order shows there once, when ready) |
 | `files.view`, `files.tiles` | Files' view (`list`, `covers`), as settings.ini has it; in the Covers view what each tile on the screen was last drawn showing, a letter each in order: `p` its preview, `l` the hourglass (its preview to come), `i` its kind's icon (a folder, another file, one the worker refused or gave nothing for); empty in the list (2.2). The tiles that changed are drawn together (at once when the screen's set is complete, else every 2 s at most), so `files.tiles` follows `files.covers` |
 | `files.covers`, `files.says.N` | in the Covers view, what each tile on the screen would show now, drawn yet or not (the same letters); and what the Nth tile on the screen was last drawn saying under its name (the Import place's status, `Importing: page 3 of 12`), empty for none and in the list |
+| `files.home`, `files.at_home` | home as Files was told it, the settings.ini value (`files/documents/Sorted`, `notebooks/School`; empty for Notebooks), and `1` while the folder shown is the home folder (no Back button there), else `0` (2.2) |
 | `files.making`, `files.asked` | `1` while a preview the Covers screen asked for is queued or running ("Making previews..." stays while one is being made, after its first second); how many files were looked at since the folder was entered, a file the cache had included, one whose queued job was taken back not |
 | `storage.exists.PATH`, `storage.size.PATH`, `storage.names.DIR` | on the storage root: whether a path is there (a link counts as itself), a file's size (-1 without it), a folder's names sorted and joined by `|` |
 
@@ -463,7 +467,7 @@ shows what the app holds.
 | `font.own.bytes`, `font.own.drawn` | the bytes of custom font files the UI holds (0: none loaded), and `1` once a custom font has drawn a glyph in this run |
 | `rotation` | the quarter turns applied, 0..3 |
 | `size` | the screen, `1860x2480` or `2480x1860` (`1986x2648` or `2648x1986` under `GRIMOIRE_SIM_SIZE=1986x2648`) |
-| `settings.KEY` | the setting as settings.ini stores it, for `theme` (`gothic` or `classic`), `invert`, `mirror_pdf`, `follow_rotation`, `pinch_zoom`, `side_button` (0 nothing, 1 eraser, 2 highlighter, 3 white ink), `sleep_mode` (0 the page, 1 a pinned page, 2 the Kindle's screensaver, 3 KOReader wallpaper), `sleep_minutes`, `pen.valid` and `touch.valid` (1 once calibrated); `language` (`auto`, `en` or `es`, and `auto` for a value this version does not speak, which settings.ini keeps as it was); `font` (Classic's font, 2.1: `terminess`, `atkinson`, `noto-sans` or `literata`, and `terminess` for a value this version does not have, which settings.ini keeps as it was); `pen.panel` and `touch.panel` (the panel the calibration was made on, `WxH`, empty when not recorded) |
+| `settings.KEY` | the setting as settings.ini stores it, for `theme` (`gothic` or `classic`), `invert`, `mirror_pdf`, `follow_rotation`, `pinch_zoom`, `side_button` (0 nothing, 1 eraser, 2 highlighter, 3 white ink), `sleep_mode` (0 the page, 1 a pinned page, 2 the Kindle's screensaver, 3 KOReader wallpaper), `sleep_minutes`, `pen.valid` and `touch.valid` (1 once calibrated); `language` (`auto`, `en` or `es`, and `auto` for a value this version does not speak, which settings.ini keeps as it was); `font` (Classic's font, 2.1: `terminess`, `atkinson`, `noto-sans` or `literata`, and `terminess` for a value this version does not have, which settings.ini keeps as it was); `pen.panel` and `touch.panel` (the panel the calibration was made on, `WxH`, empty when not recorded); `home` (2.2: the home folder as settings.ini keeps it, `notebooks/<folder>` or `files/<path>`, empty for Notebooks and after a line that names no home) |
 | `settings.kept.KEY` | the value settings.ini had for a known key that this version could not use as written and keeps to write back as it was (`settings.kept.font` is `comic-sans` for `font=comic-sans`); empty when there is none (2.1) |
 | `settings.TOOL.PARAM` | a tool's pen feel as settings.ini stores it, four decimals: TOOL as for `editor.tool`, PARAM a slider's settings.ini name (`size_min_mm`, `size_max_mm`, `opacity_min`, `opacity_max`, `pressure_floor`, `pressure_ceiling`, `pressure_gamma`, `tilt_min_deg`, `tilt_max_deg`, `tilt_size`, `tilt_opacity`, `grain`, `smoothing`), e.g. `settings.fountain.pressure_gamma` |
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
@@ -639,6 +643,7 @@ shows what the app holds.
 | `update.requested` | what Update now asked the launcher for (`preview` or `stable`), empty for nothing |
 | `library.hint` | `1` while the empty Library's (or an empty folder's) two lines show ("No notebooks yet" or "This folder is empty", then "Tap New to start one."), `0` when there are cards, and under every sheet but the keyboard |
 | `library.folder` | the open folder, empty at the top level |
+| `library.home.pending` | `1` while the main menu has not been used in this run (no contact, gesture or key action on it yet), so that it opens at home as it comes in front (2.2, issue #160), else `0` |
 | `library.folders` | every folder by its path, as Move to lists them, joined by `, ` (`Archive, Archive/School`); empty with none |
 | `library.mirror` | the mirror PDFs (`PDFs/`) by directory: `.` for the top and each directory in it, sorted, with how many PDFs it holds (`. 0, Archive_School 1`), so a directory left behind shows as `School 0` |
 | `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder, and the Files card last when it is shown (2.2; `library.card.N` says `files` for it) |

@@ -40,6 +40,11 @@
   page, a picture, a font's sample), made in the background by the sandboxed reader for the files on screen only,
   after any export, import or font check and for a few seconds a file at most, with "Making previews..." while
   they come. Previews are kept in `grimoire/.cache/files/` (each with its file's path), which can be deleted.
+- **Files: a home folder** (#160). Set as home, in Files' Go to sheet, on a folder's card in Files or in a Library
+  folder's menu, makes that folder the place Grimoire opens at each start and where the `home` action goes; Reset
+  home to Notebooks puts it back. At home there is no Back button in Files, and Esc asks "Exit Grimoire?" as at the
+  Library's top. A home that is gone shows the Library with "Home folder not found." and is Notebooks again; a
+  home folder renamed in Grimoire stays home.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
