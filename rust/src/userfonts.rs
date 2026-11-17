@@ -1,7 +1,11 @@
 //! Your own fonts (2.1.0-beta.2, lane L10; DESIGN.md "Your own fonts"): everything around the check. Rust only.
 //!
 //! - the folder: grimoire/fonts/, made at start with a README.txt. `.ttf`, `.otf`, `.ttc` and `.otc` files in
-//!   it and in its folders one level down, at most 200, read through fsview's walk (no link is followed).
+//!   it and in its folders one level down, at most 200, read through fsview's walk (no link is followed). A file
+//!   comes there over USB, or by the copy job (bgwork_copy.rs: the Font sheet's Add a font..., Files' Add to
+//!   fonts, issue #161). Either way it is only a file there until its check has passed: the copy gives it nothing
+//!   (`userfonts_added` only says when the folder is looked at), and a copy still being written has a dot-name
+//!   ending in `.part`, which the listing never shows and `name_kind` takes for no font.
 //! - the cache: grimoire/fonts/.cache/<key>.pgm (the font's name drawn in itself), .no (the check refused the
 //!   file), .checking (a check under way), .bad (the check's worker died on it) and .slow (one check ran out of
 //!   time, or found glyphs too slow to draw: FORMAT.md). <key> is the FNV-1a hash of the file's path under the
@@ -789,6 +793,9 @@ struct State {
     dpi: f32,
     /// userfonts_job_done is applying the font: no check is queued by that (it decides what comes next)
     holding: bool,
+    /// a font was copied into the folder (`userfonts_added`): when the folder is looked at for it. Until then no
+    /// look at the folder is queued: the file would only be found too young (bg_font_check) and left for later
+    added_ms: Option<u32>,
 }
 
 /// Checks in a row that end with no verdict before the session stops asking (H8: no check forked 29 times a
@@ -1162,9 +1169,10 @@ fn queue_check(arg: &str, dpi: f32) {
     with(|st| st.dpi = dpi);
     // (one look at the folder at a time: a check that runs or waits already serves; a file it was too early
     // for is found by the look after it)
-    // (and not before the retry time of a check that ended with no verdict: userfonts_tick queues it then)
+    // (and not before the retry time of a check that ended with no verdict: userfonts_tick queues it then; nor,
+    // for a look at the folder, before a font just copied in has been still long enough: userfonts_added)
     if with(|st| st.broken || st.retry_ms.is_some() || st.holding)
-        || (arg.is_empty() && bg_pending(BgKind::FontCheck, ""))
+        || (arg.is_empty() && (with(|st| st.added_ms.is_some()) || bg_pending(BgKind::FontCheck, "")))
     {
         return;
     }
@@ -1191,19 +1199,47 @@ fn note_failure(why: &str) {
     });
 }
 
-/// The retry time of a check that left a font with no verdict has come: the check is queued again. The Library
-/// asks every tick (a comparison when nothing waits).
+/// The retry time of a check that left a font with no verdict has come, or the time to look at the folder for a
+/// font that was copied in: the check is queued. The Library asks every tick (two comparisons when nothing
+/// waits).
 pub fn userfonts_tick(a: &mut App, now: u32) {
-    let due = with(|st| match st.retry_ms {
-        Some(t) if now.wrapping_sub(t) < 0x8000_0000 => {
-            st.retry_ms = None;
-            true
+    let due = with(|st| {
+        let mut due = false;
+        for t in [&mut st.retry_ms, &mut st.added_ms] {
+            if t.is_some_and(|t| now.wrapping_sub(t) < 0x8000_0000) {
+                *t = None;
+                due = true;
+            }
         }
-        _ => false,
+        due
     });
     if due {
         queue_check("", a.dpi);
     }
+}
+
+/// How long after a copy into the folder ended the folder is looked at for it: the age the check asks of any
+/// file before it reads it (pdfimport's STABLE_AGE_S, a file still being copied over USB waits so) and half a
+/// second, so that the one look finds it old enough; none where the tests skip that wait (`fast_stable`).
+fn added_wait_ms() -> u32 {
+    if fast_stable() {
+        0
+    } else {
+        crate::pdfimport::STABLE_AGE_S as u32 * 1000 + 500
+    }
+}
+
+/// A font file was copied into grimoire/fonts by the copy job (the Font sheet's Add a font..., Files' Add to
+/// fonts): the folder is looked at for it, and the file checked as every file there is, by the same job, once it
+/// is as old as the check asks. Nothing else follows from the copy: the file is no font to Grimoire until that
+/// check has passed its bytes. Nothing in the writer or the UI parses, applies, measures or loads it before then
+/// (the Font sheet lists it, its row "Checking..."); a preview of it in Files' Covers view is made by the
+/// sandboxed worker, as for any font in Files (issue #145). `userfonts_tick` queues the look.
+pub fn userfonts_added(dpi: f32) {
+    with(|st| {
+        st.dpi = dpi;
+        st.added_ms = Some(now_ms().wrapping_add(added_wait_ms()).max(1));
+    });
 }
 
 /// The font files of grimoire/fonts, in name order, each with what the cache says of it: nothing big is read

@@ -23,6 +23,14 @@
 //! it then makes the worker's jail, and a worker given a jail holds every step): macOS has none of the steps
 //! (plain process isolation), and a Linux build takes the ones that work without root (no new privileges, the
 //! limits, the allow-list) and has no chroot. The Linux CI job runs them all as root, required.
+//!
+//! A platform kept in another crate whose target gives its system another name than Linux, but which runs a Linux
+//! kernel, builds the steps with the `linux-kernel` feature (PORTING.md). Its worker always holds the steps that need
+//! no root (oom_score_adj, no new privileges, the parent-death signal, the limits, the allow-list), as a required
+//! sandbox holds its steps, and leaves out the ones that need root (namespaces, chroot, uid) unless its writer
+//! requires the whole sandbox and makes the jail. Its handshake then says `S 2`, never `S 1`: `S 1` stays the word of
+//! the whole set of steps, and only a build with the feature takes `S 2`, and only where its writer does not require
+//! the whole sandbox (where it does, the writers take only `S 1`, as everywhere).
 
 use crate::prelude::*;
 use std::ffi::CString;
@@ -279,9 +287,25 @@ pub fn allow_list() -> Vec<u32> {
     allow_list_for(this_arch())
 }
 
-/// "The time64 calls musl tries first answer ENOSYS" (the 32-bit ARM only).
+/// The calls that answer ENOSYS in place of a trap: the architecture's own (the time64 calls musl tries first on the
+/// 32-bit ARM, and gettid), and in a build with the `linux-kernel` feature prctl as well (`LINUX_KERNEL_ENOSYS`).
 pub fn enosys_calls() -> Vec<u32> {
-    this_arch().enosys.to_vec()
+    let mut v = this_arch().enosys.to_vec();
+    if LINUX_KERNEL {
+        v.extend(linux_kernel_enosys(this_arch()));
+    }
+    v
+}
+
+/// What a build with the `linux-kernel` feature also answers ENOSYS, by architecture: prctl. Its C library's
+/// allocator names each region it maps with prctl(PR_SET_VMA) and goes on when that fails; trapped, the first
+/// region it mapped after the filter ended the worker before its sandbox line (such a device, 2026-11-16:
+/// `E sigsys 167`). The call does nothing then; nothing is allowed that was not.
+pub const LINUX_KERNEL_ENOSYS: [(u32, u32); 3] = [(ARM.audit_arch, 172), (X86_64.audit_arch, 157), (AARCH64.audit_arch, 167)];
+
+/// LINUX_KERNEL_ENOSYS's calls for an architecture.
+pub fn linux_kernel_enosys(n: &SysNums) -> Vec<u32> {
+    LINUX_KERNEL_ENOSYS.iter().filter(|(arch, _)| *arch == n.audit_arch).map(|(_, nr)| *nr).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -446,6 +470,28 @@ pub struct Step<'a> {
     pub run: Box<dyn FnMut() -> Result<String, i32> + 'a>,
 }
 
+/// A build for a platform whose system runs a Linux kernel under another name (the `linux-kernel` feature, PORTING.md):
+/// its workers hold at least the steps that need no root, and say so with `S 2` (the module's notes).
+pub const LINUX_KERNEL: bool = cfg!(feature = "linux-kernel");
+
+/// Whether a worker takes only the steps that need no root: in a build with the `linux-kernel` feature, when its writer
+/// made no jail (the writer makes one only where it requires the whole sandbox).
+pub fn takes_no_root_steps(linux_kernel: bool, jail_given: bool) -> bool {
+    linux_kernel && !jail_given
+}
+
+/// The handshake's sandbox word: 1 the whole set of steps (each held where the sandbox is required), 2 the steps that
+/// need no root, each held (a build with the `linux-kernel` feature, without a jail), 0 a build without the steps.
+pub fn sandbox_word(sandboxed: bool, no_root: bool) -> i32 {
+    if !sandboxed {
+        0
+    } else if no_root {
+        2
+    } else {
+        1
+    }
+}
+
 /// Whether a failed step refuses the work: always on the Kindle. Elsewhere (the simulator, CI, the Mac) only
 /// when GRIMOIRE_SANDBOX=require asks for it (the Linux CI job as root does), and never otherwise: those
 /// builds run with plain process isolation.
@@ -455,6 +501,18 @@ pub fn sandbox_required() -> bool {
     #[cfg(not(feature = "kindle"))]
     let ask = std::env::var("GRIMOIRE_SANDBOX").ok();
     required_for(cfg!(feature = "kindle"), ask.as_deref())
+}
+
+/// Whether a writer must never parse untrusted bytes itself when no worker can be had (the pictures' fallback,
+/// picwork.rs): where the sandbox is required, and in a build with the `linux-kernel` feature, whose workers always
+/// hold at least the steps that need no root.
+pub fn writer_never_parses() -> bool {
+    writer_never_parses_for(sandbox_required(), LINUX_KERNEL)
+}
+
+/// The rule itself.
+pub fn writer_never_parses_for(required: bool, linux_kernel: bool) -> bool {
+    required || linux_kernel
 }
 
 /// The rule itself: the Kindle always, any other build only when asked.
@@ -470,14 +528,28 @@ pub fn worker_holds_every_step(required_here: bool, injected: bool, jail_given: 
 }
 
 /// What a writer takes as the sandbox line of a worker's handshake: `S 1` (the steps are in place) anywhere,
-/// `S 0` (a build without the steps) only where the sandbox is not required.
+/// `S 0` (a build without the steps) only where the sandbox is not required. (`S 2` is a word only a build with the
+/// `linux-kernel` feature reads, and its writers never take `S 0`: `sandbox_line_ok`.)
 pub fn sandbox_line_ok_for(sandboxed: bool, required: bool) -> bool {
     sandboxed || !required
 }
 
-/// The same, for this process (`sandbox_required`).
+/// The same, for this process: where `sandbox_required` says so, and in a build with the `linux-kernel` feature, whose
+/// workers always hold at least the steps that need no root.
 pub fn sandbox_line_ok(sandboxed: bool) -> bool {
-    sandbox_line_ok_for(sandboxed, sandbox_required())
+    sandbox_line_ok_for(sandboxed, sandbox_required() || LINUX_KERNEL)
+}
+
+/// Whether this build's writers take a worker's `S 2`: only with the `linux-kernel` feature, and only where the whole
+/// sandbox is not required (where it is, the writers take only `S 1`: DESIGN.md 3.7).
+pub fn sandbox_line_two_ok() -> bool {
+    // (in this order: without the feature nothing else is asked, and the writers' code is what it was)
+    LINUX_KERNEL && !sandbox_required()
+}
+
+/// The rule itself.
+pub fn sandbox_line_two_ok_for(linux_kernel: bool, required: bool) -> bool {
+    linux_kernel && !required
 }
 
 /// The filter's report as a worker's line, read strictly: `E sigsys ` followed by the call's number in one to
@@ -517,6 +589,20 @@ pub struct Limits {
     pub mapped: bool,
     /// the PDF's length (the worker can no longer fstat once the sandbox is on)
     pub file_len: u64,
+}
+
+/// The address-space limit a worker sets: `as_bytes` (the writer's, `worker_as_bytes`), with the address space
+/// it holds already (`held`, 0 for not measured) in place of the image that assumes, when that is larger. Only a
+/// build with the `linux-kernel` feature measures; everywhere else this is `as_bytes`.
+pub fn as_limit(as_bytes: u64, held: u64) -> u64 {
+    as_bytes + held.saturating_sub(s1::WORKER_IMAGE)
+}
+
+/// `as_limit` as a limit of `max` (the largest value the target's limits hold) takes it: a target whose limits are 32
+/// bits wide caps the sum there. Only a build with the `linux-kernel` feature caps; elsewhere the figure never comes
+/// near.
+pub fn as_capped(as_bytes: u64, held: u64, max: u64) -> u64 {
+    as_limit(as_bytes, held).min(max)
 }
 
 /// The worker's address space for a file of `file_len` bytes (4.3): its image, the file, and the margin.
@@ -564,7 +650,7 @@ pub fn parse_work_args(args: &[String]) -> Option<WorkArgs> {
 
 // ---- the steps on Linux ----
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", feature = "linux-kernel"))]
 mod linux {
     use super::*;
 
@@ -653,13 +739,19 @@ mod linux {
     /// NOFILE 0 (the descriptors it holds keep working; no new one can be made, whatever it closes), NPROC 0,
     /// FSIZE 0, CORE 0, AS and CPU; then proves NOFILE: no new descriptor of any kind.
     pub fn rlimits(l: &Limits) -> Result<String, i32> {
+        // A build with the `linux-kernel` feature: the address space the worker holds already takes the place of
+        // the image the limit assumes, when it is larger. Its C library's allocator may reserve gigabytes of
+        // address space at the start, before any step, and a limit under what is held already lets no mapping be
+        // made and no stack grow (`as_limit`). Measured before the first step (`standard_steps`): after a chroot
+        // /proc/self cannot be read.
+        let held = if LINUX_KERNEL { HELD.load(std::sync::atomic::Ordering::Relaxed) } else { 0 };
         // SAFETY: signal() with SIG_IGN, so a write past FSIZE 0 is an error and not a signal.
         unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
         set_limit!(libc::RLIMIT_NOFILE, 0, 0);
         set_limit!(libc::RLIMIT_NPROC, 0, 0);
         set_limit!(libc::RLIMIT_FSIZE, 0, 0);
         set_limit!(libc::RLIMIT_CORE, 0, 0);
-        set_limit!(libc::RLIMIT_AS, l.as_bytes, l.as_bytes);
+        set_limit!(libc::RLIMIT_AS, as_set(l.as_bytes, held), as_set(l.as_bytes, held));
         set_limit!(libc::RLIMIT_CPU, l.cpu_secs, l.cpu_secs + 5);
         // SAFETY: dup, socket and open only take plain arguments; none may succeed.
         let (d, s, o) = unsafe {
@@ -668,7 +760,29 @@ mod linux {
         if d >= 0 || s >= 0 || o >= 0 {
             return Err(libc::EMFILE ^ 0x4000);
         }
-        Ok(format!("NOFILE 0, NPROC 0, FSIZE 0, CORE 0, AS {} MiB, CPU {} s", l.as_bytes >> 20, l.cpu_secs))
+        Ok(format!("NOFILE 0, NPROC 0, FSIZE 0, CORE 0, AS {} MiB, CPU {} s", as_set(l.as_bytes, held) >> 20, l.cpu_secs))
+    }
+
+    /// The address-space limit the rlimits step sets: `as_limit`, and in a build with the `linux-kernel` feature
+    /// capped at what this target's limits hold (`as_capped`).
+    fn as_set(as_bytes: u64, held: u64) -> u64 {
+        if LINUX_KERNEL {
+            as_capped(as_bytes, held, libc::rlim_t::MAX as u64)
+        } else {
+            as_limit(as_bytes, held)
+        }
+    }
+
+    /// The address space the worker held before its first step (a build with the `linux-kernel` feature only:
+    /// `standard_steps` measures it, the rlimits step reads it).
+    pub static HELD: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    /// The address space this process holds (bytes), from /proc/self/statm; 0 when it cannot be read.
+    pub fn address_space_held() -> u64 {
+        // SAFETY: sysconf takes a plain name.
+        let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.max(0) as u64;
+        let pages = std::fs::read_to_string("/proc/self/statm").ok().and_then(|s| s.split(' ').next().and_then(|n| n.parse::<u64>().ok()));
+        pages.unwrap_or(0) * page
     }
 
     // The SIGSYS reporter: a call outside the allow-list ends the worker, telling the writer which call (one
@@ -793,16 +907,24 @@ mod linux {
 }
 
 /// The worker's steps for this build, in the design's order (3.7, 2 to 9). Off Linux there are none (plain
-/// process isolation).
-#[cfg(target_os = "linux")]
+/// process isolation). A build with the `linux-kernel` feature whose writer made no jail leaves out the ones that
+/// need root (the module's notes).
+#[cfg(any(target_os = "linux", feature = "linux-kernel"))]
 pub fn standard_steps<'a>(a: &'a WorkArgs) -> Vec<Step<'a>> {
     use linux::*;
-    let mut v: Vec<Step> = vec![Step { name: "oom", run: Box::new(|| oom_score_adj(1000)) }];
-    v.push(Step { name: "namespaces", run: Box::new(unshare_net_ipc) });
-    if let Some(j) = a.jail.as_deref() {
-        v.push(Step { name: "chroot", run: Box::new(move || chroot_to(j)) });
+    if LINUX_KERNEL {
+        // (before any step: the rlimits step's address-space limit starts from it, and after a chroot /proc/self
+        // cannot be read)
+        HELD.store(address_space_held(), std::sync::atomic::Ordering::Relaxed);
     }
-    v.push(Step { name: "uid", run: Box::new(|| drop_ids(WORKER_ID)) });
+    let mut v: Vec<Step> = vec![Step { name: "oom", run: Box::new(|| oom_score_adj(1000)) }];
+    if !takes_no_root_steps(LINUX_KERNEL, a.jail.is_some()) {
+        v.push(Step { name: "namespaces", run: Box::new(unshare_net_ipc) });
+        if let Some(j) = a.jail.as_deref() {
+            v.push(Step { name: "chroot", run: Box::new(move || chroot_to(j)) });
+        }
+        v.push(Step { name: "uid", run: Box::new(|| drop_ids(WORKER_ID)) });
+    }
     v.push(Step { name: "privileges", run: Box::new(no_new_privs) });
     let writer = a.writer_pid;
     v.push(Step { name: "pdeathsig", run: Box::new(move || pdeathsig(writer)) });
@@ -811,13 +933,13 @@ pub fn standard_steps<'a>(a: &'a WorkArgs) -> Vec<Step<'a>> {
     v.push(Step { name: "seccomp", run: Box::new(seccomp) });
     v
 }
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", feature = "linux-kernel")))]
 pub fn standard_steps<'a>(_a: &'a WorkArgs) -> Vec<Step<'a>> {
     Vec::new()
 }
 
 /// The CPU and core limits the OS honours off Linux too (macOS ignores RLIMIT_AS).
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", feature = "linux-kernel")))]
 fn soft_limits(l: &Limits) {
     let lim = libc::rlimit { rlim_cur: l.cpu_secs as libc::rlim_t, rlim_max: (l.cpu_secs + 5) as libc::rlim_t };
     let core = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
@@ -879,7 +1001,8 @@ pub fn work_main(args: &[String]) -> i32 {
     }
     out_line(&format!("B {}\n", build_id()));
     let fail = injected_failure(&a);
-    let required = worker_holds_every_step(sandbox_required(), fail.is_some(), a.jail.is_some());
+    // (a build with the `linux-kernel` feature holds the steps it takes as a required sandbox does)
+    let required = worker_holds_every_step(sandbox_required() || LINUX_KERNEL, fail.is_some(), a.jail.is_some());
     let mut steps = standard_steps(&a);
     if let Some(name) = fail.as_deref() {
         // an injected failure takes the place of the named step (or comes first in a build with none)
@@ -892,7 +1015,7 @@ pub fn work_main(args: &[String]) -> i32 {
         }
     }
     let r = apply_steps(&mut steps, required, |_name, _ok, _detail| {});
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", feature = "linux-kernel")))]
     soft_limits(&a.limits);
     if let Err(step) = r {
         out_line(&format!("E sandbox {step}\n"));
@@ -900,7 +1023,7 @@ pub fn work_main(args: &[String]) -> i32 {
         unsafe { libc::_exit(3) };
     }
     let sandboxed = !steps.is_empty();
-    out_line(&format!("S {}\n", if sandboxed { 1 } else { 0 }));
+    out_line(&format!("S {}\n", sandbox_word(sandboxed, takes_no_root_steps(LINUX_KERNEL, a.jail.is_some()))));
     // 10. parses on one thread, writes only records and pixels to fd 4
     let rc = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match a.kind {
         WorkKind::Pdf => crate::pdfwork::worker_run(&a.limits),
@@ -1004,7 +1127,7 @@ impl Worker {
     /// reads the end of the pipe at the handshake). `source` is the PDF (read only), None for kinds that take
     /// none.
     pub fn spawn(kind: WorkKind, source: Option<i32>, limits: &Limits) -> Result<Worker, SpawnErr> {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
         let jail = if sandbox_required() {
             if !linux::id_unused(WORKER_ID) {
                 qlog!("work: uid %d is listed in /etc/passwd or /etc/group; no worker", WORKER_ID as i32);
@@ -1020,7 +1143,7 @@ impl Worker {
         } else {
             None
         };
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", feature = "linux-kernel")))]
         let jail: Option<String> = None;
         let exe = work_exe();
         let mut argv_s = vec![
@@ -1052,9 +1175,9 @@ impl Worker {
         let mut p4 = [-1i32; 2];
         let mut p5 = [-1i32; 2];
         // SAFETY: pipe2 fills the two-int arrays we own.
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
         let ok = unsafe { libc::pipe2(p4.as_mut_ptr(), libc::O_CLOEXEC) == 0 && libc::pipe2(p5.as_mut_ptr(), libc::O_CLOEXEC) == 0 };
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", feature = "linux-kernel")))]
         let ok = unsafe {
             let r = libc::pipe(p4.as_mut_ptr()) == 0 && libc::pipe(p5.as_mut_ptr()) == 0;
             if r {
@@ -1142,9 +1265,9 @@ impl Worker {
     /// gone) can never block the writer: each write follows a poll for room and is at most PIPE_BUF, which
     /// then cannot block.
     pub fn send_bytes(&mut self, b: &[u8], deadline_ms: u64) -> bool {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
         const CHUNK: usize = 4096;
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", feature = "linux-kernel")))]
         const CHUNK: usize = 512;
         let mut off = 0;
         while off < b.len() {
@@ -1359,7 +1482,7 @@ pub fn mono_ms() -> u64 {
 
 /// The line the device log gets at the first worker of a session (3.7, The device log).
 pub fn sandboxed_line() -> String {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
     {
         if sandbox_required() {
             return format!(
@@ -1367,6 +1490,9 @@ pub fn sandboxed_line() -> String {
                 WORKER_ID,
                 linux::selinux()
             );
+        }
+        if LINUX_KERNEL {
+            return "work: sandboxed without root (oom_score_adj, no new privileges, dies with the writer, limits, seccomp; no namespaces, chroot or uid of its own)".to_string();
         }
     }
     "work: not sandboxed (plain process isolation: the steps need the Kindle or GRIMOIRE_SANDBOX=require as root on Linux)".to_string()
@@ -1522,8 +1648,33 @@ mod tests {
             let f = build_filter(n, &allow_list_for(n), n.enosys);
             assert_eq!(eval_filter(&f, n.audit_arch, gettid), SECCOMP_RET_ERRNO | 38);
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
         assert!(this_arch().enosys.contains(&(libc::SYS_gettid as u32)));
+    }
+
+    // A build with the `linux-kernel` feature answers prctl ENOSYS on each architecture; every other build traps it.
+    // The table's numbers are each architecture's prctl.
+    #[test]
+    fn a_linux_kernel_build_answers_prctl_enosys() {
+        for (n, prctl) in [(&ARM, 172u32), (&X86_64, 157), (&AARCH64, 167)] {
+            assert_eq!(linux_kernel_enosys(n), vec![prctl]);
+            assert!(!allow_list_for(n).contains(&prctl) && !n.enosys.contains(&prctl) && !n.reach_out.contains(&prctl));
+            let plain = build_filter(n, &allow_list_for(n), n.enosys);
+            assert_eq!(eval_filter(&plain, n.audit_arch, prctl), SECCOMP_RET_TRAP, "{prctl}");
+            let with = build_filter(n, &allow_list_for(n), &[n.enosys, &linux_kernel_enosys(n)[..]].concat());
+            assert_eq!(eval_filter(&with, n.audit_arch, prctl), SECCOMP_RET_ERRNO | 38, "{prctl}");
+            for nr in n.reach_out {
+                assert_eq!(eval_filter(&with, n.audit_arch, nr), SECCOMP_RET_TRAP, "{nr}");
+            }
+        }
+        // (this build's list: the architecture's own, and prctl with the feature)
+        let mut want = this_arch().enosys.to_vec();
+        if LINUX_KERNEL {
+            want.extend(linux_kernel_enosys(this_arch()));
+        }
+        assert_eq!(enosys_calls(), want);
+        #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
+        assert_eq!(libc::SYS_prctl as u32, linux_kernel_enosys(this_arch())[0]);
     }
 
     // The calls a worker must never make (socket, execve, kill, ptrace, mount, chroot) are not on any
@@ -1540,7 +1691,7 @@ mod tests {
     }
 
     // The tables are typed by hand: on Linux they are checked against libc's.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
     #[test]
     fn the_host_table_matches_libc() {
         let n = this_arch();
@@ -1641,6 +1792,44 @@ mod tests {
         assert!(sandbox_line_ok_for(true, false));
         assert!(sandbox_line_ok_for(false, false));
         assert!(!sandbox_line_ok_for(false, true));
+    }
+
+    // The address-space limit: the writer's, and with what a worker holds already in place of the image when that
+    // is larger (a build with the `linux-kernel` feature measures it; no other build does). Capped where a target's
+    // limits are 32 bits wide.
+    #[test]
+    fn the_address_space_limit_starts_from_what_is_held_when_that_is_larger() {
+        let a = worker_as_bytes(1 << 20, false);
+        assert_eq!(as_limit(a, 0), a, "not measured");
+        assert_eq!(as_limit(a, s1::WORKER_IMAGE - 4096), a, "less than the image");
+        assert_eq!(as_limit(a, s1::WORKER_IMAGE), a);
+        assert_eq!(as_limit(a, 8 << 30), a - s1::WORKER_IMAGE + (8 << 30), "an allocator's reserve of 8 GiB");
+        assert_eq!(as_capped(a, 8 << 30, u32::MAX as u64), u32::MAX as u64, "32-bit limits");
+        assert_eq!(as_capped(a, 8 << 30, u64::MAX), as_limit(a, 8 << 30));
+        assert_eq!(as_capped(a, 0, u32::MAX as u64), a);
+    }
+
+    // A build with the `linux-kernel` feature: its worker takes only the steps that need no root when its writer made
+    // no jail, and says `S 2` for them; `S 1` stays the word of the whole set of steps, and every other build says
+    // what it said.
+    #[test]
+    fn the_steps_that_need_no_root_have_a_word_of_their_own() {
+        assert!(takes_no_root_steps(true, false));
+        assert!(!takes_no_root_steps(true, true), "a writer that made a jail requires the whole sandbox");
+        assert!(!takes_no_root_steps(false, false) && !takes_no_root_steps(false, true));
+        assert_eq!((sandbox_word(true, false), sandbox_word(true, true), sandbox_word(false, false), sandbox_word(false, true)), (1, 2, 0, 0));
+        // `S 2` is taken only by a build with the feature, and only where the whole sandbox is not required
+        assert!(sandbox_line_two_ok_for(true, false));
+        assert!(!sandbox_line_two_ok_for(true, true), "where the whole sandbox is required the writers take only `S 1`");
+        assert!(!sandbox_line_two_ok_for(false, false) && !sandbox_line_two_ok_for(false, true));
+        // this build, whatever it is: a build without the feature neither takes `S 2` nor loosens what it takes of
+        // `S 0`; a build with it never takes `S 0`
+        assert_eq!(sandbox_line_two_ok(), sandbox_line_two_ok_for(LINUX_KERNEL, sandbox_required()));
+        assert_eq!(sandbox_line_ok(false), !sandbox_required() && !LINUX_KERNEL);
+        // and a writer of a build with the feature never parses untrusted bytes itself, required or not
+        assert!(writer_never_parses_for(false, true) && writer_never_parses_for(true, false) && writer_never_parses_for(true, true));
+        assert!(!writer_never_parses_for(false, false));
+        assert_eq!(writer_never_parses(), sandbox_required() || LINUX_KERNEL);
     }
 
     #[test]

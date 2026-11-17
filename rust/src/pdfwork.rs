@@ -20,8 +20,10 @@
 //! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a worker besides the pixels and the
 //! handshake's two lines, `B` and `S`):
 //!   `B <version> <protocol>`        the build, first line
-//!   `S <0|1>`                       1 when this build has the sandbox steps (each held, where the sandbox is
-//!                                   required); the writer takes 0 only where the sandbox is not required
+//!   `S <0|1|2>`                     1 when this build has the sandbox steps (each held, where the sandbox is
+//!                                   required); the writer takes 0 only where the sandbox is not required; 2 the
+//!                                   steps that need no root, each held, which only a build with the `linux-kernel`
+//!                                   feature takes, where the whole sandbox is not required (sandbox.rs)
 //!   `P <pages>`                     the probe's page count
 //!   `K`                             the probe is done
 //!   `G <page> <y0> <w> <h> <ch>`    then w*h*ch bytes: a band of a page (rows y0 .. y0+h), 1 channel when
@@ -192,6 +194,8 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
         ("S", 2) => match t[1] {
             "0" => Ok(Rec::Sandboxed(false)),
             "1" => Ok(Rec::Sandboxed(true)),
+            // (the steps that need no root: a word only a build with the `linux-kernel` feature takes, sandbox.rs)
+            "2" if sandbox_line_two_ok() => Ok(Rec::Sandboxed(true)),
             _ => Err(bad),
         },
         ("P", 2) => Ok(Rec::Pages(num(1)?)),

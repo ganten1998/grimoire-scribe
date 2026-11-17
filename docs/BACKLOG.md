@@ -81,9 +81,6 @@ Waiting, each for its own issue:
   (y_all_screens visits the picker's root only, not a place of Files); the font sample's text is fixed Latin
   ("Aa", "Abc 123"), so a font of kana or kanji alone is refused as the check refuses it. Not timed on the
   Scribe: docs/TESTING.md, "2.2, Files' previews and the Covers view (issue #145): device checks".
-- **Add to fonts** on a font's card, with the Font sheet's Add a font... and its Kindle fonts row: not built. They
-  waited for the font check's hardening (#111), which is merged now. The From a file... tiles and a picture's Use
-  as template and Use as photo are built (#146, the section below).
 - **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
   Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files. The card is the last card of the top level,
   which in a big Library is the last screen: if that is too far, the other reading (the last card of the first
@@ -98,10 +95,6 @@ Built: a picture's Use as template and Use as photo in Files, and the From a fil
 Templates and Photos sheets, over New notebook and over a notebook's page (docs/DESIGN.md, From a file... and Use
 as template). Waiting:
 
-- **Add a font...** in the Font sheet (with the Kindle fonts row) and **Add to fonts** on a font's card in Files:
-  the same copy job into `grimoire/fonts` (it refuses a font over the font check's limit already), on the Font
-  sheet as nebuff's Settings work has it. The font check's hardening they waited for (#111) is merged now; they are
-  a change of their own.
 - **Defaults taken here, for the owner to confirm**: the tile is the sheet's last (no picture's tile moves for it;
   in a big folder it is on the last page); the picture pick's title is "From a file..." and its root has no Import
   place; a copy that went in is told by "Copied to Templates." (or Photos) unless its sheet is in front; a copy
@@ -116,6 +109,32 @@ as template). Waiting:
   offers the other way. No new string was the rule here; the sentence may be reworded with the next strings.
 - **Not timed on the Scribe**: a big photo's copy and preview. docs/TESTING.md, "2.2, From a file... and Use as
   template (issue #146): device checks".
+
+## Add a font... and Add to fonts (2.2, issue #161): what waits
+
+Built: the Font sheet's Add a font... row and the font pick it opens (the Kindle's own fonts folder first), and a
+font's Add to fonts in Files, both by the copy job into `grimoire/fonts`, where the font check decides as for a
+file copied over USB (docs/DESIGN.md, Add a font... and Add to fonts). Waiting:
+
+- **Defaults taken here, for the owner to confirm**: the row is the list's last item (no font's row moves for
+  it; with a full last page it is the next page's only row) and a plain row with a plus, as the Templates sheet's
+  tile is its last; the pick opens at its root, the Kindle's fonts folder its first row, and has no Import; after a
+  copy asked the user is back on the sheet, the row waiting (an hourglass, no tap) until the copy has ended, then
+  the new file listed with "Checking..." and its page shown; an added font is listed, never applied by the copy (a
+  tap applies it); a name taken in `grimoire/fonts` gives " 2", as every copy does; a copy that went in while the
+  sheet is in front is told by its row, elsewhere by "Copied to Fonts."; the Kindle's folder lists `.ttf` and
+  `.otf` only.
+- **Not offered**: collections (`.ttc`, `.otc`), which the check takes (their first face) when copied over USB, and
+  which the Kindle's own font feature may have put in its folder: the pick and Files' cards keep to the `.ttf` and
+  `.otf` the sheet's own text names. Offering them is a change in `is_font` (browser.rs), with fonts.md 7.I (each
+  face its own row) the larger step.
+- **Over a notebook's page** (Settings opened from the editor) the Font sheet has no Add a font... row: the
+  Library's picker is drawn on the Library's screen only. The editor hosts a picker of its own for its Paper
+  sheets; hosting the font pick there too would bring the row back.
+- **After a job's "File changed. Try again."** the pick, like Files, still lists the folder as it was read (the
+  section above has the same for pictures).
+- **Not run on the Scribe**: docs/TESTING.md, "2.2, Add a font... (issue #161): device checks" (the Kindle's own
+  folder on a real firmware, a copy's time, what a copy cut short leaves).
 
 ## After the release of 2.1.0 (2026-11-13): what waits
 
@@ -289,6 +308,24 @@ call the copy since issue #146 (each its own section, above).
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
+
+## The sandbox's steps for a platform kept in another crate (`linux-kernel`, #148): what waits
+
+- **The picture and font workers have not run on such a device.** Only the PDF worker did (three runs, PR
+  #150). They take the same steps and the same filter, with other parsing code, so another call of that
+  platform's C library may show up there.
+- **The address-space limit counts only what is mapped after the first step.** On such a device the
+  allocator reserves its regions when the program starts; memory it hands out from them later is not counted
+  (`as_limit`). The CPU limit, NOFILE 0, NPROC 0 and the allow-list hold as on the Kindle. A bound on the
+  allocator's own use would need its own setting there.
+- **No test runs the feature's rules.** CI's sandbox job type-checks the library and the tests with the
+  feature (`cargo check --features "sim linux-kernel"`); nothing runs a real worker that says `S 2`. A run
+  under the feature in the Linux job (not as root, not required) would need the unit tests that assume the
+  feature off split by it.
+- **The whole sandbox with the feature (`GRIMOIRE_SANDBOX=require`, as root) has not been run on such a
+  device.**
+- **The prctl numbers for arm and x86_64** in `LINUX_KERNEL_ENOSYS` are the kernel's; only aarch64's was seen
+  on a device.
 
 ## Hardening round (2026-11), sandbox: what waits
 
@@ -638,7 +675,6 @@ the device checks. Where the plan did not settle a thing, what the lane chose, f
 
 What waits:
 
-- **Add a font...** (the Kindle's own fonts folder, copied in) comes with 2.2's Files (the plan's D30).
 - **The Japanese slot** (a custom or bundled smooth Japanese face in Classic, the plan's L14, with nebuff).
   Kana and kanji of a custom font are already drawn at DotGothic16's em.
 - **Kerning for custom fonts** (GPOS pairs through read-fonts, fonts.md 7.G): none today; the bundled fonts

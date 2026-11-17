@@ -433,6 +433,13 @@ jobs:
         run: |
           sudo mount -t tmpfs -o size=1g,mode=1777 tmpfs /tmp
           findmnt -no FSTYPE /tmp
+      - name: The linux-kernel feature compiles
+        # A platform kept in another crate whose system runs a Linux kernel under another name builds the sandbox's
+        # steps with it (rust/PORTING.md). No test runs it yet (docs/BACKLOG.md); this checks that it builds, the
+        # library and the tests, on Linux. (Before the tests as root, which leave root's files in rust/target.)
+        run: |
+          cd rust
+          PATH="$RUST_BIN:$PATH" cargo check --locked --features "sim linux-kernel" --lib --tests
       - name: The sandbox tests, as root
         run: |
           (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)

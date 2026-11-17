@@ -13,7 +13,8 @@
 //!   alone (`PicOut::Dead`): a template or photo is marked `.bad`, a folder's import counts one try of its
 //!   three. A call the filter refuses is final at once. A worker that cannot start, or whose sandbox step
 //!   failed, is not the picture's fault. Where the sandbox is required (the Kindle, or GRIMOIRE_SANDBOX=require:
-//!   sandbox.rs `sandbox_required`) pictures then fail closed (the owner's ruling, 2026-11-10): nothing is
+//!   sandbox.rs `sandbox_required`), and in a build with the `linux-kernel` feature (`writer_never_parses`),
+//!   pictures then fail closed (the owner's ruling, 2026-11-10): nothing is
 //!   decoded, in a worker or in the writer, and the picture waits (`PicOut::NoWorker`: a template or photo is not
 //!   marked, a folder's import counts no try, and a later job tries again). Elsewhere (the Mac, the simulator,
 //!   tests) the pool decodes in the writer, as 2.0 did (D21). Either way the log says so once a process.
@@ -27,7 +28,7 @@
 //!   `Q`                             end
 //!
 //! Records (worker to writer, text lines of a fixed grammar):
-//!   `B <version> <protocol>`, `S <0|1>`  the handshake, as the PDF worker's
+//!   `B <version> <protocol>`, `S <0|1|2>`  the handshake, as the PDF worker's
 //!   `I <w> <h>`                     the answer to `C`: a picture Grimoire takes, this big
 //!   `G <sw> <sh> <w> <h> <ch>`      the answer to `D`, then w * h * ch bytes: the page picture (sw x sh was the
 //!                                   source's size), top row first
@@ -295,8 +296,9 @@ pub enum PicOut {
     Retry(&'static str),
     /// the worker died or stalled on it: it is marked bad
     Dead(&'static str),
-    /// no worker can be had and the sandbox is required (the Kindle): nothing was decoded, in a worker or in the
-    /// writer. Not the picture's fault: nothing is marked and no try is counted; a later job tries it again.
+    /// no worker can be had and the sandbox is required (the Kindle; or a build with the `linux-kernel` feature):
+    /// nothing was decoded, in a worker or in the writer. Not the picture's fault: nothing is marked and no try is
+    /// counted; a later job tries it again.
     NoWorker(&'static str),
 }
 
@@ -307,12 +309,14 @@ static NO_WORKER: AtomicBool = AtomicBool::new(false);
 static SANDBOX_LINE: AtomicBool = AtomicBool::new(false);
 
 /// Whether no picture worker can be had in this process (one could not start, or a sandbox step failed). Where
-/// the sandbox is required pictures then wait (`PicOut::NoWorker`); elsewhere the writer decodes them itself.
+/// the sandbox is required, and in a build with the `linux-kernel` feature, pictures then wait (`PicOut::NoWorker`);
+/// elsewhere the writer decodes them itself.
 pub fn in_fallback() -> bool {
     NO_WORKER.load(Ordering::Relaxed) || session_broken()
 }
 
-/// `waits`: the pool asking never decodes in the writer (the sandbox is required, or it is a worker-only pool).
+/// `waits`: the pool asking never decodes in the writer (`PicPool::waits`: the writer never parses, or it is a
+/// worker-only pool).
 fn no_worker(why: &str, waits: bool) {
     if !NO_WORKER.swap(true, Ordering::Relaxed) {
         if waits {
@@ -331,7 +335,7 @@ pub struct PicPool {
     w: Option<Worker>,
     served: usize,
     /// pictures are never decoded in the writer, whatever the sandbox's state (Files' previews, 2.2): with no
-    /// worker a picture waits (`PicOut::NoWorker`), as it does where the sandbox is required
+    /// worker a picture waits (`PicOut::NoWorker`), as it does where the writer never parses (`writer_never_parses`)
     worker_only: bool,
     /// a picture gets one worker run: a worker that ends or stalls on it is not followed by a fresh one's second try
     /// (Files' previews: their second try is another visit's job)
@@ -359,16 +363,18 @@ enum Asked {
     /// no worker can be had, and none was given this picture: the writer may decode it (the sandbox is not
     /// required: D21)
     Local,
-    /// no worker can be had, and the sandbox is required: nothing decodes it now, it waits
+    /// no worker can be had, and the sandbox is required (or the build has the `linux-kernel` feature): nothing
+    /// decodes it now, it waits
     Wait,
 }
 
-/// No worker can be had for a picture: where the sandbox is required it waits, never decoded here (whether a
+/// No worker can be had for a picture: where the sandbox is required (or the build has the `linux-kernel` feature:
+/// `writer_never_parses`) it waits, never decoded here (whether a
 /// worker was given it before or not); elsewhere one that no worker was given is decoded in the writer (D21), and
 /// one a worker was given is refused, for a worker the picture took over could otherwise hand it to a root process
 /// (security review 2026-11).
 fn without_worker(handed: bool) -> Result<Asked, &'static str> {
-    if sandbox_required() {
+    if writer_never_parses() {
         Ok(Asked::Wait)
     } else if handed {
         Err("no worker for a picture a worker was given")
@@ -394,9 +400,10 @@ impl PicPool {
         PicPool { w: None, served: 0, worker_only: true, one_run: true, until }
     }
 
-    /// Whether this pool never decodes in the writer.
+    /// Whether this pool never decodes in the writer: a worker-only pool, or where the writer never parses
+    /// (`writer_never_parses`: the sandbox is required, or the build has the `linux-kernel` feature).
     fn waits(&self) -> bool {
-        self.worker_only || sandbox_required()
+        self.worker_only || writer_never_parses()
     }
 
     fn start(&mut self) -> Start {
@@ -434,7 +441,7 @@ impl PicPool {
             }
             let line = w.read_line(512, deadline).ok()?;
             let s = String::from_utf8_lossy(&line).into_owned();
-            if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) {
+            if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) || (s == "S 2" && sandbox_line_two_ok()) {
                 return Some(Ok(()));
             }
             if s == "S 0" {
@@ -489,9 +496,10 @@ impl PicPool {
     }
 
     /// One request: the command line, the bytes, and the first record back. When no worker can be had nothing was
-    /// decoded: `Asked::Wait` where the sandbox is required (the picture waits), else `Asked::Local` when no worker
-    /// was ever given this picture (the caller decodes it in the writer, D21). `handed` says an earlier try gave it
-    /// to a worker already: a picture a worker was given is never decoded in the writer (`without_worker`).
+    /// decoded: `Asked::Wait` where the writer never parses (`writer_never_parses`: the picture waits), else
+    /// `Asked::Local` when no worker was ever given this picture (the caller decodes it in the writer, D21). `handed`
+    /// says an earlier try gave it to a worker already: a picture a worker was given is never decoded in the writer
+    /// (`without_worker`).
     fn ask(&mut self, line: &str, data: &[u8], mut handed: bool) -> Result<Asked, &'static str> {
         let mut again = true;
         loop {
@@ -715,9 +723,10 @@ fn parse_info(line: &[u8]) -> Reply {
     }
 }
 
-/// The writer's own header check: what 2.0 did, for when no worker can be had and the sandbox is not required.
+/// The writer's own header check: what 2.0 did, for when no worker can be had and the writer may parse
+/// (`writer_never_parses` is false).
 fn local_check(head: &[u8], file_len: usize) -> PicOut {
-    if sandbox_required() {
+    if writer_never_parses() {
         return PicOut::NoWorker(NO_WORKER_WHY); // (never reached: `without_worker`; a last guard)
     }
     let (mut w, mut h) = (0, 0);
@@ -729,9 +738,10 @@ fn local_check(head: &[u8], file_len: usize) -> PicOut {
     }
 }
 
-/// The writer's own decode: what 2.0 did, for when no worker can be had and the sandbox is not required.
+/// The writer's own decode: what 2.0 did, for when no worker can be had and the writer may parse
+/// (`writer_never_parses` is false).
 fn local_decode(data: &[u8], orient: bool, pw: i32, ph: i32) -> PicOut {
-    if sandbox_required() {
+    if writer_never_parses() {
         return PicOut::NoWorker(NO_WORKER_WHY); // (never reached: `without_worker`; a last guard)
     }
     match decode_one(data, orient, pw, ph) {
