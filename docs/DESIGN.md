@@ -3233,9 +3233,13 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
 - **Strings**: none new ("p. %d" and "Use as template" were there).
 - **Tests**: `test_template_pdfs.rs` (the tiles before and after the count, the stored form and its keys, a page used
   as a notebook's template with the PDF gone and in colour, the slices through the queue, the cap at 50 and 51 pages,
-  16 MB and an empty file with no worker, the worker's refusals, a page that crashes or hangs its worker, two such
-  pages, a PDF swapped or written over after its first page, no room, no worker and a sandbox step that fails, the
-  import watch, a folder of pictures alone, the queue's order, and the sheet's reading of the folder after a lift),
+  the cap of tiles in all, 16 MB and an empty file with no worker, the worker's refusals, a page that crashes or hangs
+  its worker, two such pages, the writer out of memory, a PDF swapped or written over after its first page or right
+  after its count, a link swapped in for the cache, no room before the first page and in the middle of a slice, no
+  worker, and a sandbox step that fails in the job's own child, a PDF that is never a picture, a removed PDF's pages
+  swept, the import watch, a folder of pictures alone and a picture beside a PDF, the queue's order and the jobs
+  dropped at exit, and the sheet: its reading of the folder after a lift, a PDF's crossed-out tiles, the page in
+  view),
   `bgwork_tplpdf.rs`'s unit tests (the count's strict reading, a long name's page part), `browser.rs`'s
   `a_pdfs_card_in_files_offers_its_copy_into_templates`, and the scenarios `z_tpl_h_pdf_pages`, `z_tpl_i_pdf_refused`,
   `z_tpl_j_pdf_cap` and `z_tpl_k_pdf_use_as`.
