@@ -78,6 +78,7 @@ fn case(name: &str, body: &str, ask: Ask, f: impl FnOnce(&str) -> i32) -> Option
 
 /// The stand-ins' scripts, after `started`.
 const SAYS_S0_THEN_WAITS: &str = "printf 'B %s\\nS 0\\n' '@BUILD@' >&4\nIFS= read -r line <&5 && : > '@DIR@/handed'\n";
+const SAYS_S2_THEN_WAITS: &str = "printf 'B %s\\nS 2\\n' '@BUILD@' >&4\nIFS= read -r line <&5 && : > '@DIR@/handed'\n";
 const SAYS_SIGSYS_240: &str = "printf 'B %s\\nE sigsys 240\\n' '@BUILD@' >&4\n";
 const SAYS_S1_THEN_SIGSYS_192: &str = "printf 'B %s\\nS 1\\n' '@BUILD@' >&4\nIFS= read -r line <&5\nprintf 'E sigsys 192\\n' >&4\n";
 const ANSWERS_THE_PROBE_THEN_SIGSYS_125: &str =
@@ -195,6 +196,62 @@ fn where_the_sandbox_is_not_required_s0_is_taken() {
     check!(s.handed);
 }
 
+// `S 2` (the steps that need no root, sandbox.rs) is a word only a build with the `linux-kernel` feature takes, and
+// only where the whole sandbox is not required. A build without the feature refuses it before a command or a byte
+// of the file is sent, even where the sandbox is not required, as a handshake it does not know (`S 1` stays the
+// word of the whole set of steps). (A build with the feature takes it here: nothing to check.)
+fn a_worker_that_says_s2_is_refused_by_a_build_without_the_feature() {
+    if LINUX_KERNEL {
+        return;
+    }
+    check!(!sandbox_line_two_ok());
+    if let Some(s) = case("pdf-s2", SAYS_S2_THEN_WAITS, Ask::Not, |dir| pdf_start_is(dir, "Worker(\"handshake\")")) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(!s.handed);
+    }
+    // (pictures: where the sandbox is not required the writer decodes a picture no worker was given, as before)
+    if let Some(s) = case("pic-s2", SAYS_S2_THEN_WAITS, Ask::Not, |dir| {
+        let out = PicPool::new().decode(&small_png(dir), false, 300, 400);
+        forkcase::note(&format!("PicPool::decode: {}; in_fallback: {}", matches!(out, PicOut::Pic { .. }), in_fallback()));
+        (!(matches!(out, PicOut::Pic { .. }) && in_fallback())) as i32
+    }) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(!s.handed);
+        check!(s.log.contains("work: pictures decode in the writer (no handshake)"));
+    }
+    if let Some(s) = case("font-s2", SAYS_S2_THEN_WAITS, Ask::Not, |_| font_has_no_worker("no handshake", false)) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(!s.handed);
+    }
+}
+
+// Where the whole sandbox is required (the Kindle's rule, #96) the writers take only `S 1`: `S 2` is refused by each
+// of the three, with the feature or without, before a command or a byte of the file is sent. As a handshake that is
+// not taken, not a failed step, it does not mark the session (`S 0` there does, for pictures and fonts).
+fn a_worker_that_says_s2_is_refused_where_the_sandbox_is_required() {
+    let pdf = |dir: &str| pdf_start_is(dir, "Worker(\"handshake\")");
+    if let Some(s) = case("pdf-s2-req", SAYS_S2_THEN_WAITS, Ask::Require, pdf) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(!s.handed);
+    }
+    if let Some(s) = case("pic-s2-req", SAYS_S2_THEN_WAITS, Ask::Require, |dir| picture_waits(dir, false)) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(!s.handed);
+        check!(s.log.contains("work: pictures wait (no handshake)"));
+    }
+    let font = |_: &str| font_has_no_worker("no handshake", false);
+    if let Some(s) = case("font-s2-req", SAYS_S2_THEN_WAITS, Ask::Require, font) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(!s.handed);
+    }
+}
+
 // The filter's report in place of the sandbox line: no worker, not the file's fault, and the log names the call
 // for each of the three writers. It is not a failed step: the session is not marked.
 fn a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number() {
@@ -271,6 +328,8 @@ fn test_sec_handshake() {
     run!(a_picture_worker_that_is_not_sandboxed_is_refused_where_required);
     run!(a_font_worker_that_is_not_sandboxed_is_refused_where_required);
     run!(where_the_sandbox_is_not_required_s0_is_taken);
+    run!(a_worker_that_says_s2_is_refused_by_a_build_without_the_feature);
+    run!(a_worker_that_says_s2_is_refused_where_the_sandbox_is_required);
     run!(a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number);
     run!(a_refused_call_at_the_probe_is_logged_with_its_number);
     run!(a_refused_call_in_the_link_walk_is_logged_with_its_number);

@@ -34,6 +34,19 @@ fn main() {
     if kindle && sim {
         panic!("the kindle and sim features are two builds of the app: enable one");
     }
+    if env::var_os("CARGO_FEATURE_LINUX_KERNEL").is_some() {
+        // (sandbox.rs: the worker's steps for a target that runs a Linux kernel under another system's name)
+        if kindle {
+            panic!("the linux-kernel feature is for a platform kept in another crate; the kindle build is Linux itself");
+        }
+        if !target.contains("-linux") {
+            panic!("the linux-kernel feature is for a target that runs a Linux kernel (a triple that names linux): {target}");
+        }
+        let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+        if !["arm", "x86_64", "aarch64"].contains(&arch.as_str()) {
+            panic!("the linux-kernel feature needs a system-call table of sandbox.rs's (arm, x86_64, aarch64): {arch}");
+        }
+    }
     if kindle && !(target.contains("linux") && target.starts_with("arm")) {
         panic!("the kindle feature builds for the Kindle: --target armv7-unknown-linux-musleabihf (got {target})");
     }

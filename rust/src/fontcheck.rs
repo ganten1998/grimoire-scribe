@@ -33,7 +33,7 @@
 //!   `Q`                                 end
 //!
 //! Records (worker to writer, text lines of a fixed grammar; numbers are decimal, without sign):
-//!   `B <version> <protocol>`, `S <0|1>`   the handshake, as every worker's
+//!   `B <version> <protocol>`, `S <0|1|2>` the handshake, as every worker's
 //!   `F face <upem> <ascent> <descent> <scale> <weight> <italic> <mapped>`   (descent as a magnitude; scale in
 //!                                       thousandths)
 //!   `F wght <min> <default> <max> <bold at>`   only for a font with a weight axis
@@ -1460,7 +1460,7 @@ fn start_worker_until(len: usize, until: u64) -> Hello {
         }
         let line = w.read_line(512, deadline).ok()?;
         let s = String::from_utf8_lossy(&line).into_owned();
-        if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) {
+        if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) || (s == "S 2" && sandbox_line_two_ok()) {
             return Some("");
         }
         if s == "S 0" {
