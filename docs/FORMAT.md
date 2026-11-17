@@ -640,7 +640,8 @@ A page is then a template as a picture is: its path is its `.png` in the cache, 
 and a page given one gets the template's image paper (role 0) with its picture made for the notebook from that PNG
 (Ids). A notebook keeps its own copy (`bg/`): deleting or changing the PDF, or the cache, never changes a page
 already on it. The entries of a PDF that changed (another `<hash>`) or went are removed by the next previews job or
-template PDF job, as a picture's are. Deleting `templates/.cache/` loses nothing: the pages are drawn again at the
+template PDF job, as a picture's are; a look at the folder that finds the count of a PDF no longer there queues the
+previews job for it. Deleting `templates/.cache/` loses nothing: the pages are drawn again at the
 next look.
 
 ### Photos: `root/photos/` (2.0.0-beta.5 on)

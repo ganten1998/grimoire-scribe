@@ -517,6 +517,21 @@ fn a_pdf_itself_is_never_a_picture() {
     clean_env();
 }
 
+// A PDF removed after its pages were made (over USB, or Delete in Files), nothing else in the folder: the next look
+// finds its count in the cache with no file for it and queues the folder's previews job, which sweeps its entries; a
+// look after that queues nothing.
+fn a_removed_pdfs_pages_go() {
+    clean_env();
+    folder(&[("Gone.pdf", pdffix::planner(3))]);
+    let h = hash("Gone.pdf");
+    check!(job_to_end("Gone.pdf").0 == 0 && cache_names().iter().filter(|n| n.starts_with(&h)).count() == 10);
+    std::fs::remove_file(format!("{}/Gone.pdf", tpl())).unwrap();
+    check!(scan().is_empty() && bg_job_pending(BgKind::Template, "", &tpl()));
+    settle();
+    check!(cache_names().is_empty());
+    check!(scan().is_empty() && !bg_busy());
+}
+
 // A PDF in grimoire/templates is never an import: the import watch reads import/ alone.
 fn a_template_pdf_is_never_imported() {
     clean_env();
@@ -686,6 +701,7 @@ fn test_template_pdfs() {
     run!(a_pdf_changed_while_its_pages_are_made);
     run!(no_room_makes_nothing);
     run!(a_pdf_itself_is_never_a_picture);
+    run!(a_removed_pdfs_pages_go);
     run!(a_template_pdf_is_never_imported);
     run!(pictures_alone_are_as_they_were);
     run!(a_picture_beside_a_pdf);

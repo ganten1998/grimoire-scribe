@@ -3178,7 +3178,8 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   between the tries of one): a slice that leaves pages ends with `CODE_MORE` (3) and is queued again behind whatever
   ranks higher, so a picture picked meanwhile waits for one slice at most. Each slice asks the worker for the page
   count again and goes on from the pages made. Jobs still queued when Grimoire ends are dropped, as Files' previews
-  are: the next look queues them again.
+  are: the next look queues them again. A look that finds in the cache the count of a PDF no longer in the folder
+  (deleted, renamed or changed since) queues the folder's previews job, which sweeps that PDF's entries.
 - **Limits.** The templates folder's 16 MB (`TEMPLATE_MAX_BYTES`, a picture's), `TEMPLATE_PDF_MAX_PAGES` (50) pages,
   the import's worker limits (its address space for the file, its CPU, the page watchdog, band mode under little
   memory), and the free-space floor before every page (room for a page before its worker is asked, and for its

@@ -602,7 +602,8 @@ fn scan_folder(which: &str, out: &mut Vec<Template>, dpi: f32) -> i32 {
     if pdf_past != 0 {
         qlog!("templates: %d PDF(s) left out: their pages would take the sheet past %d tiles of PDF pages", pdf_past, crate::bgwork_tplpdf::TEMPLATE_PDF_TILES_MAX as i32);
     }
-    if missing {
+    // (the folder's previews job also sweeps the cache: queued too for the entries of a PDF no longer there)
+    if missing || (pdfs && pdf_entries_left(&dir, &names)) {
         bg_queue(BgKind::Template, Some(""), Some(&dir), dpi, false);
     }
     // (each PDF with pages to make is a job of its own, behind the pictures' previews: bgwork_tplpdf.rs)
@@ -656,6 +657,36 @@ pub fn template_list_free(t: &mut Vec<Template>) {
         canvas_free(&mut tp.thumb);
     }
     t.clear();
+}
+
+// Whether the templates folder's cache (`dir`/.cache) holds the page count of a template PDF that is not among the
+// folder's files listed (`names`): one deleted, renamed or changed since its pages were made. Its entries are then the
+// previews job's to sweep. (One listing of the cache; a stat for each PDF only when it holds a count. A folder past
+// MAX_TEMPLATES files lists only some: nothing is asked then.)
+fn pdf_entries_left(dir: &str, names: &[String]) -> bool {
+    if names.len() >= MAX_TEMPLATES {
+        return false;
+    }
+    let Ok(rd) = std::fs::read_dir(format!("{dir}/.cache")) else { return false };
+    let counts: Vec<String> = rd
+        .flatten()
+        .filter_map(|e| {
+            let n = e.file_name().into_string().ok()?;
+            n.strip_suffix(".pages").filter(|h| h.len() == 16).map(str::to_string)
+        })
+        .collect();
+    if counts.is_empty() {
+        return false;
+    }
+    let listed: Vec<String> = names
+        .iter()
+        .filter(|n| crate::bgwork_tplpdf::is_pdf_name(n))
+        .filter_map(|n| {
+            let st = std::fs::metadata(format!("{dir}/{n}")).ok()?;
+            Some(crate::bgwork_tplpdf::hash_hex(preview_hash(n, st.len(), st.mtime())))
+        })
+        .collect();
+    counts.iter().any(|h| !listed.contains(h))
 }
 
 /// What template_scan found of each of the n templates brought up to date (a preview made since,

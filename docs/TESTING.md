@@ -3337,8 +3337,8 @@ PDF), here `Planner.pdf`, and start Grimoire:
    the ink. Write over it, open Paper > More layouts... again: "Planner p. 2" is selected. A new notebook on
    "Planner p. 3" (New > More layouts...) starts on it.
 4. **The PDF gone**: delete `Planner.pdf` over SSH while Grimoire runs; the pages already on paper keep their
-   picture, and a restart still shows them. The tiles go at the next look (the cache's entries go with the next
-   job of the folder).
+   picture, and a restart still shows them. The tiles go at the next look, and `grimoire/templates/.cache` no
+   longer has its entries once that look's job has run (grimoire.log: `templates: 0 preview(s) made`).
 5. **Colour**: a PDF with a coloured page: its page is kept in colour, as a colour picture template is
    (grimoire.log: `templates: <notebook>: bg/<id>.png made (1860x2480, colour)` once it is a page's paper), and it
    draws behind the ink as such a template does.
