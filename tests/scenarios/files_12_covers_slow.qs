@@ -14,10 +14,15 @@
 # their workers here, and each is ended when the preview's own time is up (8 s here; 6 s for a picture on the
 # Kindle, where an import would wait 60 s and try a second worker). While the screen's set is not complete, the
 # tiles that changed are drawn together once every 2 s at most: the six files before the photos are made within
-# the first seconds and nothing is refreshed while the app's clock stands still (waitbg); 2 s on, the six go out
-# as one ui refresh (after the notice's own, at its first second); the photos' tiles, when the second one's time is
-# up and the set is complete, go out together as one more (the notice's place, which that refresh reaches, cleared
-# with it). Two refreshes of tiles for eight files, none a full.
+# the first seconds and nothing is refreshed while the app's clock stands still (waitbg); the notice goes out by
+# its own ui refresh at the screen's first second, no tile with it; 2 s on, the six go out as one ui refresh; the
+# photos' tiles, when the second one's time is up and the set is complete, go out together as one more (the
+# notice's place, which that refresh reaches, cleared with it). Two refreshes of tiles for eight files, none a full.
+# The notice and the six tiles are each checked after a wait of their own (1.7 s and 2.3 s after the folder
+# opened, by the app's clock), so their order is the script's and not the machine's: a wait always ends with the
+# app's clock at its end, but on a machine whose rounds take longer than they idle, the app's clock moves on by
+# less than the real time and jumps to the wait's end in its last round, and one wait over both reached both in
+# that round, whose refresh goes out before the notice's own (issue #169).
 # A file that ran out of time once keeps its kind's icon for the visit, and has no mark yet.
 # rust-only
 clock 1700000000
@@ -32,10 +37,13 @@ expect display.presents not -1
 waitbg 4000
 expect files.tiles is llllllll
 expect display.presents is
-wait 1900
+wait 1300
 expect notice is Making previews...
+expect files.tiles is llllllll
+expect display.presents is ui 677 2250 505 110
+wait 600
 expect files.tiles is pippppll
-expect display.presents is ui 677 2250 505 110, ui 46 356 1766 1284
+expect display.presents is ui 46 356 1766 1284
 shot 01-six-made
 waitbg
 wait 60

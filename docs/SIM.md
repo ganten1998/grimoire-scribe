@@ -59,7 +59,11 @@ is when it times it by the script's own clock: `touch` lines are stamped by thei
 
 `GRIMOIRE_SIM_CLOCK=script` holds app timers still while a script line is processed or a background
 job runs. Each `wait MS` advances those timers by exactly MS; host work and `GRIMOIRE_SIM_LATE_MS`
-still delay the runner, but do not advance app time. A `waitfor` advances them by what it idled, a
+still delay the runner, but do not advance app time. Inside a wait, app time moves on a round at a
+time by what that round idled, and what the machine took besides is made up in one step at the
+wait's end: two timers due inside one wait can then come due together in its last round, their
+refreshes in that round's order and not their own, so a check of their order gives each a wait of
+its own (tests/scenarios/files_12_covers_slow.qs, issue #169). A `waitfor` advances them by what it idled, a
 round at a time, until its probe matches (tests/scenarios/z_waitfor_script_clock.qs waits so for a
 toast to go). A `side click` advances them by its own time, its presses and the gaps between them
 (80 ms for one click), as its events come due: so a `wait` after it is that long after the release
