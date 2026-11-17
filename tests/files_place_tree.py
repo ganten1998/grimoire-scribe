@@ -49,3 +49,11 @@ put('documents/Sorted/e.txt', 4000, 10)
 put('documents/Sorted/Sub/Deep/inside.pdf', 900, 600)
 os.utime(os.path.join(root, 'documents/Sorted/Sub'), (T - 5, T - 5))
 os.symlink('a.pdf', os.path.join(root, 'documents/Sorted/f.pdf'))
+# documents/Covers, where the Covers scenarios' "# copy:" lines put their files before this runs: cp gives each file
+# the second it was copied in, and several copies can end in two different seconds. One time for all of them, so
+# that Sort by newest keeps the names' order there (files_9_covers_back).
+for d, _, names in os.walk(os.path.join(root, 'documents/Covers')):
+    for n in names:
+        p = os.path.join(d, n)
+        if not os.path.islink(p):
+            os.utime(p, (T - 700, T - 700))

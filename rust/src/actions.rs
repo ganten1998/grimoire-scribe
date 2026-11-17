@@ -66,8 +66,8 @@ pub const SHORTCUT_PAN_DOWN: i32 = 104;
 pub const SHORTCUT_SIZE_SMALLER: i32 = 105;
 pub const SHORTCUT_SIZE_LARGER: i32 = 106;
 pub const SHORTCUT_QUICK_SIZE: i32 = 107;
-/// Files (2.2): open Files (place mode) whether or not its card is in the Library, and go home (the Library's top;
-/// a home set by the user comes later). Library actions with no default key, bound by name in
+/// Files (2.2): open Files (place mode) whether or not its card is in the Library, and go home (the home folder,
+/// issue #160: the Library's top until one is set). Library actions with no default key, bound by name in
 /// shortcuts.ini or gestures.ini as the Library's other actions are (105 to 107 are the size keys').
 pub const SHORTCUT_FILES: i32 = 108;
 pub const SHORTCUT_HOME: i32 = 109;
@@ -1259,8 +1259,8 @@ static ACTIONS: [ActionInfo; 93] = [
         GROUP_MENUS, 0, ActionKind::Menu, SRC_ALL,
     ),
     ai(
-        // TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
-        // out of any folder (and out of Files).
+        // TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: to the home
+        // folder, where Grimoire opens (the Library's top until one is set).
         SHORTCUT_HOME, "home", n_("Home"), None, IconKind::Home,
         GROUP_MENUS, 0, ActionKind::OneShot, SRC_ALL,
     ),

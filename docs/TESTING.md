@@ -89,7 +89,8 @@ documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md,
 RELEASING.md: sentences about the safe loader and the font check that must not come back, the names
 `RECORDS_MAX_BYTES`, `<key>.slow` and `<key>.no`, the font check's glyph limit with its figure, the number in
 a font verdict's first line and in a `<key>.slow` mark's line, the font check's other placeholders with
-their values, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys)
+their values, a few sentences that hold only while another one stands, and what must not come back about
+Files' rename, delete and restore), `mapview.rs` (the Graph's keys)
 and
 `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
 by hand: otherwise the push to main is the first run to say so.
@@ -2748,8 +2749,9 @@ the fallback's check and its rename, a case-only rename, a rename and a trash st
 trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
 its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
 reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
-`RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
-questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+`RENAME_NOREPLACE` on its tmpfs. The Scribe's part here is three questions about its storage, asked over SSH
+(Grimoire closed unless a step says otherwise); Files' screens on these writes have their own section (issue #144,
+below). Their answers decide
 what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
 screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
 docs/KINDLE.md (How it fits in).
@@ -2899,7 +2901,7 @@ What only the storage can tell, on the Scribe:
    (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
    comes back in the picker's root.
 5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
-   notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
+   notebook; Files > Trash lists deleted notebooks by name, size and date, newest first, and none opens.
 6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.
 
 ## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
@@ -3106,3 +3108,211 @@ own import then finds every page there, and the notebook opens at book page 2).
     its pages`.
 
 No line of `grimoire.log` or `crash.log` from these steps names a book, its file or its title.
+
+## 2.2, Files' rename, delete and restore (issue #144): device checks
+
+Not run on a Scribe yet. Automated: `browser.rs`'s unit tests, `test_fsview_writes.rs`'s trash sizes and listing,
+`test_sec_font_verdict.rs`'s renamed font and the scenarios `files_8_rename` to `files_18_delete_twice`
+(docs/DESIGN.md, Files: rename, delete and restore). On the
+Mac only the storage writes' fallback rename runs, so what only the Scribe's storage can tell comes after the three
+checks of "2.2, Files' storage writes (issue #117): device checks" above (whether its storage takes the no-replace
+rename, whether a move into the trash is one rename, whether the numbers a check compares stay put). Then, with
+Grimoire open and Files' card shown (New > From a file... > Show Files in Library), on a copy of a picture put in
+`grimoire/templates` over USB first (say `Probe.png`):
+
+1. **Rename**: Files > Templates > Probe.png's card > Rename: the keyboard holds `Probe.png` with the caret before
+   `.png`. Type `:` and Done: "Name can't contain :" and the keyboard stays; delete it, type `2` and Done: the row is
+   `Probe2.png`. Over SSH, `ls /mnt/us/grimoire/templates` shows `Probe2.png` and no `Probe.png`, and grimoire.log has
+   `files: an item of templates was renamed` (no name). Rename it to a template's name already there: "That name
+   is taken.", and that file is unchanged (`stat -c '%i %s %Y'` before and after).
+2. **Delete**: its card > Delete: the question `Delete "Probe2.png"?` comes up as the Library's does for a
+   notebook, and Keep it leaves the file. With the file on the first row of its folder, upright, tap the card's
+   Delete twice quickly at one place: the question is up and the file is where it was (the second tap answered
+   nothing: say if the question went, or the file did). Then its Delete (moves it to grimoire/trash): "Moved to
+   grimoire/trash", the row is gone, and
+   `ls -a /mnt/us/grimoire/trash/files-*` shows `Probe2.png` beside `.grimoire-trash`, whose `from=` line is
+   `grimoire/templates/Probe2.png`. The inode is the one it had in `templates` (one rename, as step 2 of #117's
+   checks found).
+3. **The Trash's size**: Files' root: the Trash row says `grimoire/trash, N` once its walk is through; note how long
+   it took (grimoire.log, `files: the trash holds N entries, N files, N KB (read in T ms)`) and whether the root
+   stayed quick meanwhile. Compare N with `du -sk /mnt/us/grimoire/trash` (the walk counts file sizes, `du` blocks:
+   close, not equal).
+4. **Restore**: Files > Trash: the picture's row (its own name, its size, today's date) > Restore: "Restored to
+   grimoire/templates.", and `Probe2.png` is back in `templates` with the same inode; its `files-...` folder is gone
+   from the trash. Then delete a notebook in the Library and restore it from Files > Trash: it is back in the
+   Library at once, with its pages and links.
+5. **Held by an import**: copy a PDF of several pages into `grimoire/import` over USB, and while its notice says
+   "Importing: page ...", open its card in Files > Import: Rename and Delete each say "Importing now." and the file
+   stays.
+6. **The font in use**: in Classic, with a font of your own picked in Settings > Font, open Files > Fonts and its
+   card. Delete says "Font in use." and the file stays. Rename it (add a letter): the screen stays in the font,
+   `settings.ini` has `font=file:<the new name>`, and grimoire.log has `fonts: a rename in Files: what the check
+   found of 1 font file(s) went with them`, then `font: custom font loaded: ...`, and no `bg: font check` line
+   after them. `ls /var/local/grimoire/*/fonts` shows as many `.font` files as before the rename. Close and start
+   Grimoire: the font draws on the first screen and the log has no `bg: font check` line. (On the Kindle the
+   verdicts are in Grimoire's own folder, where this rename is the one thing the app itself does: say if the log
+   has 0 in place of 1.)
+
+Tidy: delete `Probe2.png` from `templates` over USB (or keep it as a template).
+
+## 2.2, Files' previews and the Covers view (issue #145): device checks
+
+Not run on a Scribe yet. The unit tests (`bgwork_previews.rs`: the key, the `.info`, the prune, a preview's time),
+the job tests through a real worker (`rust/tests/test_file_previews.rs`), `test_browser.rs` (only the screen's
+files asked for, a tile that comes back, the tiles drawn together) and the Covers scenarios `files_8_covers` to
+`files_14_covers_use_as` cover the logic on the Mac, where the simulated panel counts the refreshes
+(`display.presents`); CI's Linux job makes a preview of each kind, and has the filter end a worker, in the real
+sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.log over SSH; it names no file):
+
+1. **A big mixed folder, and the previews' times**: put about 40 files in a folder of `documents/` (PDFs, one of
+   them a planner of a few hundred pages and over 100 MB; phone photos of 12 MP, and one of 40 MP or more; a few
+   fonts, one of them a CJK font near 20 MB). Files > Documents > that folder, View: Covers. Note how long until
+   every tile of the first screen shows its preview, and whether "Making previews..." comes after a second and
+   goes when the last one lands. Send the lines `file previews: a pdf|picture|font made in T ms (the worker's peak
+   N kB, this job's M kB)`: T for each kind, the slowest, and the peaks; and every `gave no preview (slow)` line
+   with what the file was. A preview has 3 s (a PDF's page, a font's sample) or 6 s (a picture), numbers derived
+   from the import's watchdogs and not yet measured: a real file of an ordinary size that runs out of them means
+   the numbers are too tight.
+2. **The panel**: while a screen's previews arrive, the tiles change in groups (all at once when they come within
+   2 s, else about every 2 s), never tile by tile, and never with a flash of the whole screen; look for ghosting
+   on the tiles after several screens, and note whether the next page turn after about thirty refreshes is the one
+   that flashes.
+3. **Memory**: while the first screen's previews are being made, `grep MemAvailable /proc/meminfo` a few times and
+   `dmesg | tail` after: no process killed, Grimoire's own memory (`grep VmRSS /proc/$(pidof grimoire)/status`)
+   about the same before and after (a screen of previews is about 1 MB).
+4. **Turning screens**: on a folder of a few hundred pictures, turn three screens quickly: only the screens shown
+   get `made` lines (count them: nine a screen upright), the pen and the page turns stay quick meanwhile. Turn back
+   to the first screen: its tiles show their previews again within a moment (hourglasses first, then the previews
+   together), with no new `made` line, and the turn itself is not held up (the cache is read a few files a tick).
+   The same after Sort, after Show, and after a rotation.
+5. **A folder past 5,000 files** in Covers: "Showing the first 5000." under the path, and only the screen shown is
+   made (nine lines).
+6. **Refused and slow**: a text file renamed `x.pdf`, and a truncated JPEG: each tile shows its kind's icon and the
+   log says `has no preview (refused), marked` once; entering the folder again makes no new line for them. A file
+   that runs out of its time says `gave no preview (slow) ...; one more try at another visit` the first time, and
+   `has no preview (slow), marked` when the folder is entered again; after that it is not tried.
+7. **Behind other work**: start a PDF import of a few hundred pages (or an export), then open a folder in Covers:
+   the import's pages go on at their pace (its notice counts on), the tiles wait as hourglasses, and the previews
+   come once the import is done. In Files > Import, in Covers, the tile of the PDF being imported says
+   "Importing: page N of M" under its name.
+8. **A card over arriving previews**: tap a tile while its screen's previews are still coming, wait until the log
+   shows the last `made` line, close the card: every tile shows its preview, none stays an hourglass.
+9. **Sleep and wake** while previews are being made (the power button): after the wake every tile shows a preview
+   or its icon, none stays an hourglass, and entering the folder again makes what is missing.
+10. **The cache**: with Grimoire closed, `du -sh /mnt/us/grimoire/.cache/files` and `ls | wc -l` there after the
+    checks above (a preview is 120,015 bytes, its `.info` under a kilobyte). Delete a previewed file over USB and
+    the sweep's stamp (`rm /mnt/us/grimoire/.cache/files/.swept`), then open any folder with a file not yet
+    previewed in Covers: the log says `1 preview(s) of files that are gone or changed dropped from
+    the cache`, and note how long that job took beside its `made in T ms`. The prune: the cache passes 64 MiB at
+    about 559 previews (some 62 screens); the line to see then is `file previews: the cache pruned: N file(s) (M
+    kB) removed of K`, after which about 419 previews are left. Then delete the folder; reopen Files in Covers:
+    the previews are made again.
+11. **Rotate** in Covers: ten tiles sideways, the previews there again after a moment, the card of a tile beside
+    it.
+
+## 2.2, Add a font... (issue #161): device checks
+
+Not run on a Scribe yet. The unit tests (`browser.rs`: the font pick and a font's card; `library.rs`:
+`the_font_sheets_add_a_font_row`), `rust/tests/test_addfont.rs` (the pick, the real copy job and the real font
+check with real workers: no font before its check passes, a font that fails its check, a copy cut short, a link, a
+file swapped, too big, the floor, a name taken, names the rules refuse, the Kindle's folder unchanged),
+`test_fsview_writes.rs` (the name rules of a copy) and the scenarios `files_19_add_to_fonts`, `files_20_add_font`
+and `files_21_add_font_full` cover the logic on the Mac (docs/DESIGN.md, Add a font... and Add to fonts), with the
+floor and a failing write simulated; `make l10n-check`'s `fonts-add` runs (Classic) and `fonts-card` runs
+(Gothic) check that the sheet, the pick and both cards fit in every language. What only the Scribe can tell (read grimoire.log over SSH; it names no file):
+
+1. **The Kindle's own fonts folder**: copy a `.ttf` text font into the storage's `fonts/` over USB (or use one the
+   Kindle's own font feature added there), and note what the two folders hold: over SSH, `ls -la /mnt/us/fonts
+   /mnt/us/grimoire/fonts` (`-a` lists dot-names too, which a computer's file browser may hide). Open Grimoire,
+   Settings (Classic) > Display > Font: under "Your fonts (grimoire/fonts)" the last row is Add a font... (under
+   the folder's text while it is empty). Tap it: the picker's title is "Add a font...", and its first row is Kindle
+   fonts, with `fonts` under it. Inside, each font is a row with its size and date; a tap opens its card: Add to
+   fonts, Cancel (no Rename, no Delete). Note that nothing in the picker is drawn in the font itself.
+2. **The copy and the check**: Add to fonts: the sheet comes back, the row an hourglass while the copy runs (for a
+   moment: a font copies in well under a second), then the new file's row says "Checking..." with "Checking 1
+   font..." above the buttons, then shows its name drawn in itself. The font in use has not changed: tap the row to
+   apply it, and every screen comes back in it. Note the times in grimoire.log (`bg: a file copied into fonts: N KB
+   in T ms`, then the check's lines), and that the pen and the sheet stay quick meanwhile. Afterwards, over SSH,
+   `ls -la /mnt/us/fonts /mnt/us/grimoire/fonts`: `fonts/` holds what it held at step 1 (the same names, sizes and
+   dates), and `grimoire/fonts` holds the copy and no `.grimoire-copy-*.part`.
+3. **From Documents**: copy an `.otf` into `documents/` over USB and add it the same way through Documents; then
+   add the first font again: the copy is "<name> 2" and the first file is as it was.
+4. **Files**: with the Files card shown, Files > Kindle fonts > a font's card: Add to fonts and Cancel; Add to
+   fonts says "Copied to Fonts." once it is in, and Settings > Font lists it (checked by then, or "Checking...").
+   Files > Fonts > that file's card: Rename, Delete and Cancel, and no Add to fonts.
+5. **A file that is no font**: rename a text file `notafont.ttf`, copy it into `documents/`, and add it: it is
+   copied, then its row says "Unreadable font." and takes no tap; the font in use is as it was.
+6. **Kinds not offered**: if the Kindle's folder holds a `.ttc` or `.otc` collection, or a `.woff` or `.woff2`, the
+   picker does not list it (Files lists it only with Show: all files, greyed, as another file); note which kinds
+   the Kindle's own folder holds on this firmware.
+7. **Nearly full storage** (optional, only with a storage to spare that can be filled and emptied safely): with
+   under 100 MB free plus the font's size, Add to fonts says "Couldn't copy file. Is the storage full?" at once and
+   the picker stays up; nothing is added to `grimoire/fonts`.
+8. **What a copy cut short leaves**: a copy lasts well under a second, so what a power cut in the middle of one
+   would leave is put there by hand instead. With Grimoire closed, over SSH, `cd /mnt/us/grimoire/fonts`, then
+   `cp /mnt/us/fonts/<a font>.ttf .grimoire-copy-2147483647.part` (a whole copy) and `head -c 5000
+   /mnt/us/fonts/<a font>.ttf > .grimoire-copy-2147483646.part` (the start of one; no process has either number).
+   Start Grimoire: Settings > Font lists no row for either, and no check counts them (a font check's last line in
+   grimoire.log, `... font file(s) in all`, counts the folder's fonts alone). Add any font (step 2), then `ls -la
+   /mnt/us/grimoire/fonts`: the font is there, and neither `.part` file.
+9. **Rotate** with the sheet up and with the picker up over it: both lay out again; the row is after the last font
+   (two abreast sideways), and Back at the picker's root returns to the sheet.
+10. **Over a notebook**: open a notebook, Settings from its panel > Display > Font: the sheet has no Add a font...
+    row, and is otherwise as it was.
+
+## 2.2, Home (issue #160): device checks
+
+Not run on a Scribe yet. Automated: `home.rs`'s, `browser.rs`'s and `library.rs`'s unit tests, `test_store.rs`
+`home_key`, and the scenarios `files_*_home_*` from `files_19_home_set` (docs/DESIGN.md, Files: home).
+What only the Scribe can tell: the walk to a home on its storage (vfat under the FUSE proxy), a start at home after a
+reboot and after KOReader's hand-over, and what a USB connection does to a home inside Files. With Grimoire open and
+Files' card shown (New > From a file... > Show Files in Library), on a folder made over USB first
+(`/mnt/us/documents/Home probe`, with one PDF in it):
+
+1. **Set from Files**: Files > Documents > Home probe, tap the path's last part: the Go to sheet's first row reads
+   "Home: Notebooks", and Set as home is after the folders. Tap it: no toast, the Back button goes, and the sheet
+   opened again reads "Home: Home probe" with Reset home to Notebooks. Over SSH
+   `grep '^home=' /mnt/us/grimoire/settings.ini` shows `home=files/documents/Home probe`.
+2. **A start at home**: Exit, start Grimoire from the Kindle's home screen: Files opens at Home probe with no Back
+   button, within the start's usual time (grimoire.log's `first frame presented` against an earlier start's), and
+   with no toast. Esc on a paired keyboard (or a key bound to back) asks "Exit Grimoire?"; No leaves Files as it was.
+   The path bar's Documents and Files lead up; Files' root's Back reaches the Library, and the Go to sheet's Home
+   row comes back.
+3. **A notebook closed**: from the Library open a notebook and close it: the Library, where it was left, not Files.
+   With a keyboard paired, Settings > Shortcuts > Enable shortcuts on and a key bound to `home` (shortcuts.ini
+   `key.h=home`), H goes back to Home probe.
+4. **KOReader**: with home set, open a page with Annotate this page in Grimoire: the page opens, as without a home;
+   closing it shows Files at Home probe. Then Open this book in Grimoire on a PDF KOReader hands over by its path:
+   the import's notice counts, and the book's page opens by itself as without a home (Files does not open over the
+   Library first); closing it shows Files at Home probe.
+5. **Gone**: with Grimoire closed, rename the folder over USB to `Home probe 2`; start Grimoire: the Library's top,
+   one toast "Home folder not found.", and `grep '^home=' /mnt/us/grimoire/settings.ini` shows nothing. The next
+   start says nothing.
+6. **A link**: with Grimoire closed, `ln -s "Home probe 2" "/mnt/us/documents/Home link"` and write
+   `home=files/documents/Home link` into settings.ini by hand: the start shows the Library's top and the toast, and
+   grimoire.log has `home: the home folder was not found` (and no name). Remove the link. If `ln -s` is refused,
+   the storage takes no links, and none can be there: skip this step.
+7. **Renamed in Grimoire**: make an empty folder over USB, `/mnt/us/grimoire/photos/Home probe 3` (Documents is read
+   only, so Rename is offered in Grimoire's own folders). Files > Photos > its card > Set as home, then its card >
+   Rename to `Home probe 4`: settings.ini names `files/grimoire/photos/Home probe 4`, and a restart opens Files
+   there. Delete it from its card in Photos: only "Moved to grimoire/trash" is said, settings.ini has no home line
+   at once, and the next start opens at the Library's top with no toast. Restore in Files > Trash puts the folder
+   back, not as home (set it again to make it home).
+8. **A Library folder**: a folder's menu in the Library > Set as home; restart: the Library opens in it, with its
+   Back button; Esc goes up to the Library's top, as that button does. Rename it from its menu: the next start opens
+   in it under its new name. Its menu > Reset home to Notebooks: the next start opens at the top.
+9. **USB while running** (Esc and H on a paired keyboard, with Settings > Shortcuts > Enable shortcuts on and
+   `key.h=home` in shortcuts.ini): set `Home probe 2` as home again and have Files open at it; connect USB and, from
+   the computer, rename it to `Home probe 5`; disconnect. Press Esc: no "Exit Grimoire?"; Files goes to the nearest
+   folder above that opens (Documents, with its Back button), with no crash and no stuck screen. H (the `home`
+   action) shows the Library's top with "Home folder not found.". Set `Home probe 5` as home, open it, rename it over
+   USB to `Home probe 6`, then tap its PDF > Import as notebook: "File changed. Try again.", and Files goes up to
+   Documents the same way.
+10. **Spanish**: Settings > Language > Español: the Go to sheet's "Inicio: ...", "Usar como inicio" and "Restablecer
+    el inicio a Cuadernos", the folder's card and the Library folder's menu read whole, upright and sideways.
+11. **Other spellings of a refused folder** (with Grimoire closed, over SSH): the walk refuses a path part ending in
+    a dot or a space, and knows the refused folders by identity as well as by name. Write in turn into settings.ini
+    `home=files/documents.` and `home=files/documents ` (a space at its end), then, for a refused folder with a long
+    name that is there (Grimoire's `bluetooth`, `extensions` at the storage's top), its short name on the storage:
+    `home=files/grimoire/BLUETO~1`, `home=files/EXTENS~1` (`ls -d /mnt/us/grimoire/BLUETO~1` shows that the storage
+    takes it). Each start shows the Library's top with "Home folder not found.", and the line is gone afterwards.

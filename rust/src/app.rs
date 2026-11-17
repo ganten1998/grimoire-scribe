@@ -87,6 +87,9 @@ pub struct App {
     pub frames: u32,
     /// promote to FULL every 30
     pub ui_refreshes_since_full: i32,
+    /// what waits to be flushed is only what fills in by itself (app_invalidate_filling): its Ui is never the one
+    /// promoted to the cleaning Full
+    pub dirty_filling: bool,
     /// what fast refreshes left on the panel that only a flash wipes (display.rs, issue #11): the
     /// editor adds to it and cleans it; every Full, and a Clean over it, wipes it here at the flush
     pub du_wear: DuWear,
@@ -166,6 +169,25 @@ pub struct App {
     /// sends (set over its touch-down too, which the keyboard then takes as a contact on no key; None the rest of
     /// the time).
     pub kb_inject: Option<KbInput>,
+    /// The question on the screen that asks before something is deleted (app_ask), and how far its frame is:
+    /// drawn, or on the panel since when. A contact answers it only once it has been shown (app_asked_seen).
+    pub asked: Asked,
+}
+
+/// A question that asks before something is deleted (`Delete "name"?`, Files' and the Library's) must be seen
+/// before it is answered: the tap that opens it changes what the next tap lands on at once, and the panel shows
+/// the question later, so the second of two taps at one place would answer a question nobody saw. The screen
+/// says it drew one (app_ask), app_flush notes when the frame that carries it goes to the panel, and the screen
+/// lets go a contact that came down before it was shown (app_asked_seen).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Asked {
+    /// no question asked: nothing is held back
+    #[default]
+    No,
+    /// drawn into App.screen, its frame not sent yet
+    Drawn,
+    /// its frame went to the panel then (now_ms)
+    Shown(u32),
 }
 
 
@@ -420,6 +442,13 @@ fn app_host() -> &'static str {
     } else {
         ""
     }
+}
+
+/// Whether KOReader started this session on a page to annotate or on a book (the launcher's GRIMOIRE_ANNOTATE or
+/// GRIMOIRE_BOOK, with GRIMOIRE_HOST): its notebook opens by itself over the Library's cards (annotate_at_start,
+/// book_tick), so a home inside Files does not open over them first (library.rs, home_waits).
+pub fn app_handed_over() -> bool {
+    !app_host().is_empty() && ["GRIMOIRE_ANNOTATE", "GRIMOIRE_BOOK"].iter().any(|k| getenv(k).as_deref() == Some("1"))
 }
 
 // The sleep screen to use. Hosted, KOReader keeps the Kindle UI paused for its whole session and
@@ -768,6 +797,9 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let book = getenv("GRIMOIRE_BOOK");
     book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book,
     );
+    // (a home inside Files waited for the notebook KOReader hands over: when none opened and none is coming, it opens
+    // now, 2.2)
+    crate::library::library_handover_tried(a, a.scr != ScreenId::Library || a.book.state == BookState::Running);
     // Beta.1 could leave the passcode off after a restart: the launcher says so (GRIMOIRE_PASSCODE), and
     // the log notes it, with no toast (the owner, 2026-11-04). Current standalone sessions leave it
     // enabled and yield to the native keypad on sleep.
@@ -776,7 +808,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     if passcode.as_deref() == Some("left-off") {
         qlog!("device passcode: left off by an earlier session");
     }
-    if annotate_failed {
+    if crate::library::library_home_said(a) {
+        // (the start said "Home folder not found." as it went home: that toast stays, as it says why the main menu
+        // is not at home; none of the ones below is put over it, 2.2)
+    } else if annotate_failed {
         app_toast(a, &note, 8000);
     } else if a.book.state == BookState::Failed {
         book_failed(a);
@@ -2186,10 +2221,15 @@ fn poll_jobs(a: &mut App) -> i32 {
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
-        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo, a sheet's From a file...):
-        // a copy that failed is said wherever the user is (by its cause where a sentence names it), one that went in
-        // by its folder's name (unless its sheet is in front, which shows it). Never the PDF's toast.
+        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo, a sheet's From a file...)
+        // or into fonts (#161: Add to fonts, the Font sheet's Add a font...): a copy that failed is said wherever
+        // the user is (by its cause where a sentence names it), one that went in by its folder's name (unless its
+        // sheet is in front, which shows it). Never the PDF's toast.
         copy_told(a, crate::bgwork_copy::CopyTo::of(done_id.as_str()), r);
+        return 0;
+    }
+    if done == BgKind::FilePreviews as i32 {
+        // (a file's preview: Files' Covers view looks at its tiles' jobs at each tick; never the PDF's toast)
         return 0;
     }
     if done == BgKind::FontCheck as i32 {
@@ -2234,7 +2274,14 @@ fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
         return;
     }
     let Some(to) = to.filter(|_| r > 0) else { return };
-    // (the sheet of that folder in front shows the new picture itself: its From a file... tile)
+    // A font copied in is a file of the fonts folder as one put there over USB is: the folder is looked at for it,
+    // and the check that decides whether Grimoire ever reads it runs as for every file there (userfonts_added).
+    // The copy itself applies nothing.
+    if to == CopyTo::Fonts {
+        crate::userfonts::userfonts_added(a.dpi);
+    }
+    // (the sheet of that folder in front shows the new picture itself: its From a file... tile; the Font sheet the
+    // new font's row, which says "Checking..." until its check has ended)
     if crate::library::library_sheet_folder(a) == Some(to) || crate::editor::editor_sheet_folder(a) == Some(to) {
         return;
     }
@@ -2244,8 +2291,8 @@ fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
         CopyTo::Fonts => tr("Fonts"),
     };
     let mut msg = String::new();
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders;
-    // %s is that folder's name as Files shows it (Templates, Photos).
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders,
+    // or a font file into its fonts; %s is that folder's name as Files shows it (Templates, Photos, Fonts).
     csnprintf!(&mut msg, 256, tr("Copied to %s."), place);
     app_toast(a, &msg, 3000);
 }
@@ -2403,6 +2450,25 @@ pub fn app_invalidate(a: &mut App, r: Rect, m: RefreshMode) {
     if rect_is_empty(r) {
         return;
     }
+    a.dirty_filling = false; // (whatever else is waiting, this refresh is one something asked for)
+    invalidate_in(a, r, m);
+}
+
+/// A part of the screen that fills in by itself, nobody having touched anything (Files' Covers tiles as their
+/// previews arrive): a Ui refresh of `r` like any other, and counted like any other, but never the one that
+/// becomes the cleaning Full (app_flush: every 30th Ui), which would flash the whole panel in the middle of a
+/// screen that is still arriving. The count runs on, and the next refresh that anything else asks for (a page
+/// turn, a tap) is the Full instead. Only while nothing else waits to be flushed with it.
+pub fn app_invalidate_filling(a: &mut App, r: Rect) {
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    if rect_is_empty(r) {
+        return;
+    }
+    a.dirty_filling = rect_is_empty(a.dirty) || a.dirty_filling;
+    invalidate_in(a, r, RefreshMode::Ui);
+}
+
+fn invalidate_in(a: &mut App, r: Rect, m: RefreshMode) {
     // Keep the strongest mode requested since the last flush.
     if rect_is_empty(a.dirty) || m.strength() > a.dirty_mode.strength() {
         a.dirty_mode = m;
@@ -2447,9 +2513,11 @@ fn app_flush_in(a: &mut App) {
         a.dirty = rect_union(a.dirty, self_dirty);
         with(|s| s.self_dirty = RECT_EMPTY);
     }
+    // (a refresh of what fills in by itself, alone: counted, and never promoted: app_invalidate_filling)
+    let filling = std::mem::take(&mut a.dirty_filling) && rect_is_empty(self_dirty);
     if m == RefreshMode::Ui {
         a.ui_refreshes_since_full += 1;
-        if a.ui_refreshes_since_full >= 30 {
+        if a.ui_refreshes_since_full >= 30 && !filling {
             m = RefreshMode::Full;
         }
     }
@@ -2493,6 +2561,9 @@ fn app_flush_in(a: &mut App) {
     live_toast_sync(a, overlay, reached, noticed.is_some());
     display_present(&a.screen, a.dirty, m);
     du_wear_presented(&mut a.du_wear, a.dirty, m);
+    if a.asked == Asked::Drawn {
+        a.asked = Asked::Shown(now_ms()); // (a question's frame is on its way to the panel: app_asked_seen)
+    }
     if overlay {
         canvas_blit(&mut a.screen, &a.toast_under, Rect { x: 0, y: 0, w: a.toast_rect.w, h: a.toast_rect.h ,
             }, a.toast_rect.x, a.toast_rect.y,
@@ -2572,6 +2643,31 @@ pub fn app_press_release(a: &mut App, pressed: &mut Option<Rect>) -> Rect {
             r
         }
         None => RECT_EMPTY,
+    }
+}
+
+/// A question that asks before something is deleted was just drawn into a.screen for the first time, or at a new
+/// place, and its place invalidated in the same call (Asked): it has not been shown. The next present is the
+/// frame that carries it (app_flush presents all that is dirty); app_asked_seen is false until then.
+pub fn app_ask(a: &mut App) {
+    a.asked = Asked::Drawn;
+}
+
+/// Whether the contact that comes down as `ev` can be an answer to the question app_ask named: the question's
+/// frame has gone to the panel, and the contact came down PEN_REOPEN_MS or more after it did, which is how long
+/// the Graph too waits before a second tap at one place counts (the panel takes about 270 ms of it to show a
+/// frame, docs/INK-PERFORMANCE.md; the second of two taps at one place comes sooner than the rest). By the
+/// kernel's time of the contact's frame where the kernel says (InEvent.k_ms: a contact read late came down when
+/// the kernel saw it, not when the app got to it), else by when it was read. A screen lets go a contact this is
+/// false for, down to its lift: it answers nothing, and the question stays.
+pub fn app_asked_seen(a: &App, ev: &InEvent) -> bool {
+    match a.asked {
+        Asked::No => true,
+        Asked::Drawn => false,
+        Asked::Shown(at) => {
+            let down = if ev.k_ms != 0 { ev.k_ms } else { ev.t_ms };
+            down.wrapping_sub(at) as i32 >= PEN_REOPEN_MS as i32
+        }
     }
 }
 
@@ -3058,6 +3154,15 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
     } else if key == "settings.font_bold" {
         csnprintf!(out, cap, "%s", st.font_bold.as_str());
+    } else if key == "settings.home" {
+        // the home folder as settings.ini keeps it (2.2): empty for Notebooks, notebooks/<folder>, files/<path>
+        csnprintf!(out, cap, "%s", st.home.as_str());
+    } else if key == "settings.saved.home" {
+        // the home= line settings.ini has on disk now (empty without one), what a start would read: a change saved
+        // when it was made, before quit saves everything (2.2)
+        let text = read_file_max(&format!("{}/settings.ini", store_root()), 1 << 20).unwrap_or_default();
+        let line = text.split(|&c| c == b'\n').find_map(|l| l.strip_prefix(b"home=")).unwrap_or_default();
+        csnprintf!(out, cap, "%s", String::from_utf8_lossy(line).as_ref());
     } else if key == "font" {
         // Classic's font in use: a family's id, or file:<path> while a font of the owner's own draws
         if font_own() && crate::userfonts::userfonts_in_use(st.font_file.as_str()) {
@@ -3282,6 +3387,95 @@ mod tests {
         let mut out = String::new();
         assert_eq!(app_probe(a, key, &mut out, 256), 0, "{key}");
         out
+    }
+
+    /// A question that asks before something is deleted (app_ask) has been shown once a present carried it, and is
+    /// answered only by a contact that came down PEN_REOPEN_MS or more after that present: by the kernel's time
+    /// of the contact where it says, else by when it was read. A flush that presents nothing shows nothing, nor
+    /// does one held back by the sleep screen; a later present does not move the time; with nothing asked,
+    /// nothing is held back.
+    #[test]
+    fn a_question_is_answered_once_its_frame_went_to_the_panel() {
+        let mut a = notice_app();
+        let down = |t_ms: u32, k_ms: u32| InEvent { type_: InType::TouchDown, t_ms, k_ms, ..Default::default() };
+        assert_eq!(a.asked, Asked::No);
+        assert!(app_asked_seen(&a, &down(5, 0)), "nothing asked");
+        app_ask(&mut a);
+        assert_eq!(a.asked, Asked::Drawn);
+        let late = now_ms().wrapping_add(60_000);
+        assert!(!app_asked_seen(&a, &down(late, 0)) && !app_asked_seen(&a, &down(late, late)), "not on the panel: no contact answers");
+        app_flush(&mut a);
+        assert_eq!(a.asked, Asked::Drawn, "a flush with nothing to present showed nothing");
+        let r = Rect { x: 100, y: 100, w: 400, h: 300 };
+        a.asleep = true;
+        app_invalidate(&mut a, r, RefreshMode::Ui);
+        app_flush(&mut a);
+        assert_eq!(a.asked, Asked::Drawn, "the sleep screen is up: nothing went out");
+        a.asleep = false;
+        let before = now_ms();
+        app_flush(&mut a);
+        let Asked::Shown(at) = a.asked else { panic!("the present that carried it: {:?}", a.asked) };
+        assert!(at.wrapping_sub(before) < 5000);
+        assert!(!app_asked_seen(&a, &down(at.wrapping_sub(1), 0)));
+        assert!(!app_asked_seen(&a, &down(at, 0)));
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(PEN_REOPEN_MS - 1), 0)));
+        assert!(app_asked_seen(&a, &down(at.wrapping_add(PEN_REOPEN_MS), 0)));
+        // the kernel's time of the contact, where it says: read late, it came down before the question was shown
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(9_000), at.wrapping_sub(3))));
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(9_000), at.wrapping_add(PEN_REOPEN_MS - 1))));
+        assert!(app_asked_seen(&a, &down(at.wrapping_add(9_000), at.wrapping_add(PEN_REOPEN_MS))));
+        // a later present (a toast going, a row redrawn) is not its frame
+        app_invalidate(&mut a, r, RefreshMode::Ui);
+        app_flush(&mut a);
+        assert_eq!(a.asked, Asked::Shown(at));
+        // asked anew (another question, or this one at a new place): not shown again until its own frame
+        app_ask(&mut a);
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(PEN_REOPEN_MS), 0)));
+        canvas_free(&mut a.screen);
+    }
+
+    /// A refresh of what fills in by itself (Files' Covers tiles as their previews arrive) is a Ui like any other
+    /// and counted like any other, but never the one promoted to the cleaning Full: the 30th and the ones after
+    /// it stay Ui, and the next refresh something asked for is the Full instead. With anything else waiting to be
+    /// flushed with it, before or after, it is an ordinary refresh.
+    #[test]
+    fn a_filling_refresh_is_counted_and_never_the_cleaning_full() {
+        let mut a = notice_app();
+        let r = Rect { x: 100, y: 500, w: 400, h: 300 };
+        let other = Rect { x: 900, y: 900, w: 50, h: 50 };
+        a.ui_refreshes_since_full = 28;
+        for want in [29, 30, 31, 32] {
+            app_invalidate_filling(&mut a, r);
+            assert!(a.dirty_filling && a.dirty_mode == RefreshMode::Ui && a.dirty == r);
+            app_flush(&mut a);
+            assert_eq!(a.ui_refreshes_since_full, want, "counted, and no Full to start the count again");
+            assert!(!a.dirty_filling && rect_is_empty(a.dirty));
+        }
+        // the next refresh something asked for is the cleaning Full (the count starts again)
+        app_invalidate(&mut a, other, RefreshMode::Ui);
+        assert!(!a.dirty_filling);
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        // with something else waiting, before it or after it: an ordinary 30th, the Full
+        a.ui_refreshes_since_full = 29;
+        app_invalidate(&mut a, other, RefreshMode::Ui);
+        app_invalidate_filling(&mut a, r);
+        assert!(!a.dirty_filling && a.dirty == rect_union(r, other));
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        a.ui_refreshes_since_full = 29;
+        app_invalidate_filling(&mut a, r);
+        app_invalidate(&mut a, other, RefreshMode::Ui);
+        assert!(!a.dirty_filling);
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        // under the 30th it is one more Ui in the count, as any
+        app_invalidate_filling(&mut a, r);
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 1);
+        // nothing of it off the screen
+        app_invalidate_filling(&mut a, Rect { x: -500, y: 0, w: 100, h: 100 });
+        assert!(!a.dirty_filling && rect_is_empty(a.dirty));
     }
 
     /// Shown at the next flush; drawn again only for a new text, at most once every 2 s; none of it counted

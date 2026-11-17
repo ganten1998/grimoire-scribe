@@ -60,6 +60,7 @@ root/import/.annotate/                  a page KOReader sends to annotate, and i
 root/trash/                             deleted notebooks and pages, moved here, never unlinked; from 2.2 also files and folders of import/, templates/, photos/ and fonts/, each with its record (The trash)
 root/PDFs/                              the PDF mirror (an export, not data)
 root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposable (2.1.0-beta.2)
+root/.cache/files/                      Files' previews of the files its Covers view shows, disposable (2.2; Files' previews)
 ```
 
 `root` is `/mnt/us/grimoire` on the Kindle. A notebook id is the folder's name: letters, digits,
@@ -643,7 +644,12 @@ Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not cha
 them there: below), each file named by the FNV-1a 64 hash (16 hex digits) of the font's path under the folder,
 its size and its time (`<path>/<size>/<mtime>`), so a file replaced by another is checked afresh. It is a
 cache: deleting it loses nothing, and has every font checked again. The background job writes it; the app
-itself only renames a `.checking` mark to `.bad` when that job died.
+itself only renames a `.checking` mark to `.bad` when that job died, and, when Files renames a font file or a
+folder of them (2.2), renames what is kept under the old path's key to the new path's key, here and where the
+verdicts are (the size and the time are the same, so only the path's part of the key changes): the font is not
+checked again. The SHA-256 in a verdict is what ties it to the file's bytes, compared at every load, so a verdict
+under the key of other bytes loads nothing. A file renamed over USB has no verdict under its new name and is
+checked again.
 
 - `<key>.font`, the verdict, text, at most 8 KiB, read strictly: it is a verdict only when it is, byte for
   byte, a text the check writes (every line below there once and in this order, every number in range and
@@ -1497,7 +1503,8 @@ owner's to copy back or delete. Older versions ignore it.
 | `files_card` | `1`: the Files card is the Library's last card (2.2). The line is not there unless the card is shown: "Show Files in Library" in the file picker's root writes it, the card's Hide from Library takes it away. `0` reads as absent. Any other value is not used (the card is hidden) and is written back as it was. Written after `font_bold`. Since 2.2; older versions keep the line as one they do not know |
 | `files_sort` | Files' order: `newest` (the newest first) or `size` (the largest first); absent, or `name`, by name (the default, not written). Folders come first in each. Read exactly as written: any other value (another case, a later version's) sorts by name and is written back as it was until the order is changed. Written after `files_card`. Since 2.2, as `files_card` |
 | `files_show` | what Files lists: `all` (every file, the ones Grimoire cannot use greyed, links as "link, not followed"); absent, or `usable`, the PDFs, pictures, fonts and folders (the default, not written). Any other value: as for `files_sort`. Written after `files_sort`. Since 2.2, as `files_card` |
-| `files_view` | how Files lists: absent, or `list`, rows (the default, not written). Any other value (a later version's `covers`) shows the list and is written back as it was. Written after `files_show`. Since 2.2, as `files_card` |
+| `files_view` | how Files lists: `covers`, a grid of previews (Files' previews, below); absent, or `list`, rows (the default, not written). Any other value: as for `files_sort`. Written after `files_show`. Since 2.2, as `files_card` |
+| `home` | the home folder, where the main menu opens at each start (2.2, issue #160): `notebooks/<folder>`, a Library folder by its path (`notebooks/School/2026`), or `files/<path>`, a folder of the Kindle's storage by its path from the storage root (`files/documents/Planners`); absent, empty or `notebooks`, the Library's top (the default, not written). Read strictly: UTF-8, under 608 bytes, no control character, no absolute path, no empty, `.` or `..` part, never the storage root; a Library folder is looked up by name in the Library's list, a storage folder reached only by Files' walk (no link followed, no refused place, not the trash). A value that is not one of these, or names a folder that is gone or refused, is not used: the Library's top with the toast "Home folder not found.", and the line is taken out at once (unlike `files_sort`'s, it is not written back; a folder that could not be read for another reason keeps it). Written after `files_view`. Since 2.2, as `files_card` |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Pair > Bluetooth controller, Settings > Controller before 2.0.0-beta.2; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
@@ -1983,9 +1990,11 @@ What 2.0.0 and 2.1.0-beta.1 do with data 2.1.0-beta.2 writes (read in their code
 | the mirror PDF | a notebook with colour pages is made again there, with those pages gray (the colour comes back when 2.1.0-beta.2 makes it again) |
 | `font=file:<name>` in `settings.ini`, `font_bold=` | kept as they are (2.0.0: unknown keys; 2.1.0-beta.1: a font it does not have, drawn as Terminess, and it logs the value once); the file is never loaded there |
 
-What 2.1 does with what 2.2's Files writes: the `settings.ini` keys `files_card`, `files_sort`, `files_show` and
-`files_view` are lines it does not know, kept as they are on its saves (so turning back and forward keeps them).
-Files writes nothing else: it reads the storage.
+What 2.1 does with what 2.2's Files writes: the `settings.ini` keys `files_card`, `files_sort`, `files_show`,
+`files_view` and `home` are lines it does not know, kept as they are on its saves (so turning back and forward keeps
+them; 2.1 opens at the Library's top whatever `home` says).
+Files writes nothing else of its own but its previews, `.cache/files/`, a folder 2.1 never looks in: it reads the
+storage.
 
 What 2.1.0 and the versions before it do with what the hardening round of 2026-11 writes (annotate.rs, which
 reads and writes `source.ini`, is 2.1.0's own, unchanged by the round; for the versions before it, this file's
@@ -2305,3 +2314,49 @@ download); a file past 4 GiB fails (its length is not said on the 32-bit Kindle)
 with a data descriptor (flag bit 3) as stored deflate blocks, its sizes known only at its end. A zip has no
 zip64: an entry past 4 GiB, an entry that fails midway (its header is already out) or a central directory past
 32 bits fails the whole zip, never answered as good.
+
+## Files' previews: `.cache/files/` (2.2)
+
+The previews Files' Covers view shows (docs/DESIGN.md, "Files: previews and the Covers view"), each of one file of
+the Kindle's storage as it was listed. For each, two files named by its key, the FNV-1a 64 hash (16 lowercase hex
+digits) of the file's path from the storage root's bytes followed by `/<size>/<mtime>` (its size in bytes and its
+modification time in seconds, in decimal): a file changed or replaced has another key, and its old entry goes with
+the sweep (below).
+
+- `<key>.pgm`: the preview, a P5 PGM with the header `P5\n<w> <h>\n255\n` and w x h gray bytes, at most 300 x
+  400 (a PDF's first page, a picture or a font's sample, each on a 300 x 400 white page: 120,015 bytes). Present
+  only beside a `.info` that says `made`.
+- `<key>.info`: five lines of text, each ended by a line break, at most 760 bytes:
+
+  ```text
+  grimoire-preview 1
+  of <size> <mtime>
+  kind pdf|picture|font
+  made <w> <h>
+  path <the file's path from the storage root>
+  ```
+
+  The fourth line is `made <w> <h>` (the picture beside it), or `none refused|slow|ended` for a file that has no
+  preview (its worker refused it, took too long on it, or ended on it): a mark, kept so the file is not tried
+  again until it changes; or `once slow|ended`: one try on record, no mark yet (a worker took too long or ended on
+  the file once: the job of another visit tries once more, and a second time in a row writes the mark). Numbers
+  are decimal, without a sign (a time before 1970 has a minus) or a leading zero. The path is UTF-8 without a
+  control character (a file whose name has one is never listed). The first line's number stands for this text and
+  for the rules a mark was made by (the time a preview may take): an entry of another number is no entry.
+
+So the folder holds, for each file a Covers screen showed, that file's path and a small picture of it. An entry
+goes when its file is gone or changed (the sweep), when the folder is past its limits (the prune), or when the
+folder is deleted.
+
+Only the background job writes the folder, each file atomically (`<file>.tmp`, fsync, rename), the picture first
+and then the `.info`; it is made where it is missing, and neither read nor written through a link. A `.info` and
+its picture are read only when each is a plain file within its size (the `.info` 760 bytes, the picture its header
+and 120,000 bytes), the `.info` exactly the text above for what it says and of the file as listed (its path, size,
+time and kind), the picture exactly the size the `.info` says: anything else is no preview, and the file is asked
+for again and its entry made again. After a job that wrote, the job tidies the folder. The sweep, once a day (its
+stamp is the file `.swept`: empty, its time the last whole sweep's; or the key a sweep that ran out of its 2 s
+stopped after) and whenever the folder is past a limit, reads each `.info` and removes the entry when the file it
+names is no longer there with that size and time. Past 2,000 files or 64 MiB still, the oldest entries go (by
+their files' newest time, both files of an entry together), down to 1,500 files and 48 MiB. Deleting
+`.cache/files/` loses nothing: the previews are made again as their files show in Covers. No other version reads
+it.

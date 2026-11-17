@@ -1,16 +1,24 @@
 //! A file copied into one of Grimoire's folders for the user's files (BgKind::CopyFile, 2.2, issue #117): what a
 //! picture's Use as template and Use as photo in Files, and the From a file... tiles of the Templates and Photos
-//! sheets, ask for (issue #146; the Font sheet's Add a font... comes later). The request (UI thread) checks the
-//! source is still the plain file listed, that it is no bigger than its folder takes (CopyTo::max_bytes: a bigger
+//! sheets, ask for (issue #146), and a font's Add to fonts in Files and the Font sheet's Add a font... (issue #161).
+//! The request (UI thread) checks the
+//! source is still the plain file listed, that its name is one Files' Rename would give a file there
+//! (fsview_name_check), that it is no bigger than its folder takes (CopyTo::max_bytes: a bigger
 //! one could never be used there), that the storage keeps its floor after it (fsview_room_for), and queues the
 //! job. The job (a background child) opens
 //! the source again through fsview's walk (no link, one device, never Grimoire's notebooks, PDFs or trash),
-//! checks it is still that file, no bigger than that, and that there is room, copies it to a temporary name in the folder
+//! checks it is still that file, its name, that it is no bigger than that, and that there is room, copies it to a temporary name in the folder
 //! (`.grimoire-copy-<pid>.part`), checks the source did not change while it was read, syncs, and renames it to
 //! the source's name with a rename that replaces nothing (" 2", " 3"... when taken). On any failure the
 //! temporary file goes: nothing is left behind. The log has the folder, sizes and times, never a name. What the
 //! screen says of a copy that was not made is copy_refusal's: the sentence for its cause where one exists
 //! (CopyFail, which the job's exit status carries), else the one for a full storage.
+//!
+//! The copy reads the file as bytes and nothing more. A font copied into grimoire/fonts is no font to Grimoire
+//! yet: it is one once the font check's worker has passed these very bytes (userfonts.rs), as for a file put there
+//! over USB. While it is written the copy has the temporary name, a dot-name with the ending `.part`: no listing
+//! shows it and the fonts folder's scan takes no such name, so a copy cut short (a failed write, the power) is
+//! never taken for a font, and the next copy into that folder removes what a dead one left.
 
 use crate::fsview::*;
 use crate::prelude::*;
@@ -44,6 +52,15 @@ impl CopyTo {
         match self {
             CopyTo::Templates | CopyTo::Photos => crate::bgwork_template::TEMPLATE_MAX_BYTES as u64,
             CopyTo::Fonts => crate::fontcheck::FONT_FILE_MAX as u64,
+        }
+    }
+    /// The longest name a copy may have in the folder, " 2" and the like included: what the storage takes, and for
+    /// fonts what the fonts folder's scan takes of a font's path there (settings.ini keeps it). A longer name would
+    /// be copied and never listed, so it is refused as "Path too long.".
+    pub fn name_max(self) -> usize {
+        match self {
+            CopyTo::Templates | CopyTo::Photos => FS_NAME_MAX,
+            CopyTo::Fonts => crate::userfonts::USERFONT_REL_MAX.min(FS_NAME_MAX),
         }
     }
 }
@@ -90,13 +107,16 @@ pub fn copy_refusal(why: CopyFail, to: CopyTo) -> String {
     match why {
         // TRANSLATORS: (also) a toast (one line of about 1000 px at 44 px in bold): the picture picked for Use as
         // template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
-        // so it is not copied; %d is 16.
+        // or the font file picked for Add to fonts or Settings > Font's Add a font... is bigger than Grimoire takes
+        // as a font, so it is not copied; %d is 16 for a picture, 24 for a font.
         CopyFail::TooBig => cformat!(tr("Too big (over %d MB)."), (to.max_bytes() >> 20) as i32),
-        // TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
-        // picture changed, or went, between the moment it was picked and the copy.
+        // TRANSLATORS: (also) a toast when a copy of a picture into Grimoire's templates or photos, or of a font file
+        // into its fonts, was not made because the file changed, or went, between the moment it was picked and the
+        // copy.
         CopyFail::Changed => tr("File changed. Try again.").to_string(),
-        // TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
-        // path, folders and name together, is longer than Grimoire can hand to the copy.
+        // TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos, or a font
+        // file into its fonts, because its path, folders and name together, is longer than Grimoire can hand to the
+        // copy, or its name is longer than that folder takes.
         CopyFail::TooLong => tr("Path too long.").to_string(),
         CopyFail::Other => copy_failed().to_string(),
     }
@@ -105,8 +125,9 @@ pub fn copy_refusal(why: CopyFail, to: CopyTo) -> String {
 /// What a copy that could not be made says when no other sentence names its cause (the floor is the likely one).
 pub fn copy_failed() -> &'static str {
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
-    // Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
-    // 100 MB free, so the likely cause is that it is nearly full.
+    // Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...), or a font file into
+    // its fonts (Add to fonts, Settings > Font's Add a font...); the storage keeps 100 MB free, so the likely cause
+    // is that it is nearly full.
     tr("Couldn't copy file. Is the storage full?")
 }
 
@@ -121,13 +142,13 @@ const TMP_STALE_SECS: i64 = 3600;
 
 /// The job's path: the source as listed ("<dev>.<ino>.<size>.<mtime>:") and its storage path, None when the path
 /// is not text or the whole would not fit the job's 600 bytes.
-fn job_path(src: &StoragePath, listed: &FsStat) -> Option<String> {
+pub(crate) fn job_path(src: &StoragePath, listed: &FsStat) -> Option<String> {
     let s = std::str::from_utf8(src.as_bytes()).ok()?;
     let p = format!("{}.{}.{}.{}:{}", listed.dev, listed.ino, listed.size, listed.mtime, s);
     (p.len() < FS_PATH_MAX).then_some(p)
 }
 
-fn job_parse(path: &str) -> Option<(FsStat, StoragePath)> {
+pub(crate) fn job_parse(path: &str) -> Option<(FsStat, StoragePath)> {
     let (head, src) = path.split_once(':')?;
     let f: Vec<&str> = head.split('.').collect();
     let [dev, ino, size, mtime] = f[..] else { return None };
@@ -160,7 +181,7 @@ fn seam(set: &std::sync::atomic::AtomicU64, var: &str) -> Option<u64> {
     std::env::var(var).ok().and_then(|v| v.parse::<u64>().ok())
 }
 
-fn free_bytes(st: &FsStorage) -> Option<u64> {
+pub(crate) fn free_bytes(st: &FsStorage) -> Option<u64> {
     #[cfg(any(test, feature = "sim"))]
     if let Some(f) = seam(&SEAM_FREE, "GRIMOIRE_COPY_FREE_BYTES") {
         return Some(f);
@@ -181,10 +202,12 @@ fn fail_after() -> u64 {
 
 /// Asks for the file at `src` (as listed: `listed`) to be copied into Grimoire's folder `to`, in the background
 /// (BgKind::CopyFile, reported through bg_poll as a job the user waits on). Refused now when the source is in a
-/// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, is
-/// bigger than the folder takes (`to.max_bytes()`), or would leave less than the floor free (100 MB after it); or
-/// when its path is too long for a job (`TooLong`; one that is not text, which no listing shows, is `Refused`).
-/// What can never be copied is said before the room is looked at.
+/// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, has a
+/// name the rules for a name in Grimoire's folders refuse (`Name`, with the rule: the copy keeps the source's
+/// name), is bigger than the folder takes (`to.max_bytes()`), or would leave less than the floor free (100 MB
+/// after it); or when its path is too long for a job or its name longer than the folder takes (`TooLong`,
+/// `to.name_max()`; a path that is not text, which no listing shows, is `Refused`). What can never be copied is
+/// said before the room is looked at.
 pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: CopyTo) -> Result<(), FsWriteErr> {
     if src.is_root() || st.zone(src, true) == FsZone::Refused {
         return Err(FsWriteErr::Refused);
@@ -196,9 +219,17 @@ pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: Copy
     if now.mode & libc::S_IFMT as u32 != libc::S_IFREG as u32 {
         return Err(FsWriteErr::Walk(FsErr::NotFile));
     }
+    // (the copy has the source's name: one Files' Rename would refuse is not made in Grimoire's folders by a copy)
+    if let Some(rule) = src.split_last().and_then(|(_, name)| name_rule(name)) {
+        return Err(FsWriteErr::Name(rule));
+    }
     // (said before the room: a file too big is refused however much room there is)
     if now.size > to.max_bytes() {
         return Err(FsWriteErr::TooBig);
+    }
+    // (a name longer than the folder takes: copied, it would never be listed there)
+    if src.split_last().is_some_and(|(_, name)| name.len() > to.name_max()) {
+        return Err(FsWriteErr::TooLong);
     }
     let text = std::str::from_utf8(src.as_bytes()).is_ok();
     let path = job_path(src, &now).ok_or(if text { FsWriteErr::TooLong } else { FsWriteErr::Refused })?;
@@ -208,6 +239,12 @@ pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: Copy
     }
     bg_queue(BgKind::CopyFile, Some(to.folder()), Some(&path), 0.0, true);
     Ok(())
+}
+
+/// The rule a source's name breaks as the name of its copy (`fsview_name_check`, with the name as its own old
+/// name: the copy keeps the extension), None for a name the rules allow.
+fn name_rule(name: &[u8]) -> Option<NameRule> {
+    fsview_name_check(name, name, false).err()
 }
 
 /// BgKind::CopyFile, in the background child: 0 when the file is in its folder; when not, a CopyFail's number
@@ -268,6 +305,13 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
     if st.zone(&dest.join(name).ok_or_else(|| long("a path too long"))?, false) != FsZone::Writable {
         return Err("not one of Grimoire's folders".into());
     }
+    // (the request refused such a name with its rule's words: one that reached the job is not copied either)
+    if name_rule(name).is_some() {
+        return Err("its name is not one a file in Grimoire's folders can have".into());
+    }
+    if name.len() > to.name_max() {
+        return Err(long("a name longer than the folder takes"));
+    }
     // the source: the walk again, a plain file, the one listed, no bigger than the folder takes
     let file = st.open_file(&src, true).map_err(|e| if e == FsErr::NotFound { changed(&walk_why(e)) } else { walk_why(e).into() })?;
     let mut f = std::fs::File::from(file);
@@ -301,7 +345,7 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
         // the source's name, or " 2", " 3"... before its extension where taken (a file: never a folder's form)
         for k in 1..=99u32 {
             let want = if k == 1 { name.to_vec() } else { numbered(name, k, false) };
-            if want.len() > FS_NAME_MAX || dest.join(&want).is_none() {
+            if want.len() > to.name_max() || dest.join(&want).is_none() {
                 return Err(long("a name too long"));
             }
             let cw = CString::new(want).map_err(|_| "a name")?;

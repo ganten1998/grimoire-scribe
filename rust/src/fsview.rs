@@ -4,18 +4,20 @@
 //! time-sliced listing, stats and free space; the picker (L8) and the PDF import (L5) read through it. Since
 //! 2.2 (issue #117) it also writes, inside Grimoire's folders for the user's files only: a rename that never
 //! replaces an entry, the trash with its record, restore, and the name rules (the copy job is
-//! bgwork_copy.rs). Nothing on screen calls the writes yet.
+//! bgwork_copy.rs). Files' cards call rename and trash, and its Trash place restore and the trash's sizes
+//! (browser.rs, issue #144).
 //!
 //! - One root: /mnt/us on the Kindle (when Grimoire's own folder is inside it); elsewhere GRIMOIRE_STORAGE,
 //!   a hook compiled out of the Kindle build. Never "/".
 //! - One walk, no links: each component opened with openat(O_DIRECTORY|O_NOFOLLOW) from the one before, the
 //!   file with O_NOFOLLOW, so a link anywhere fails (O_NOFOLLOW covers the last component only; the Scribe's
 //!   kernel, 4.9, has no openat2). Each directory must be on the root's device, and none may be Grimoire's
-//!   notebooks (nor, for a pick, its PDFs or trash), compared by st_dev and st_ino: a path cased differently
-//!   on a case-insensitive storage cannot reach them by name.
-//! - Zones: lists hide by a deny-list (dot-entries, *.sdr, the system's folders, Grimoire's own); writes go
-//!   by an allow-list (what is inside Grimoire's import, templates, photos and fonts), so safety never
-//!   depends on the deny-list being complete.
+//!   notebooks, a system folder or one of Grimoire's own refused folders (nor, for a pick, its PDFs or trash),
+//!   compared by st_dev and st_ino as well as by name: a path spelled differently, which the storage takes for
+//!   one of them (another case on a case-insensitive storage, another name of the same folder), cannot reach them.
+//! - Zones: lists hide by a deny-list (dot-entries, *.sdr, a name ending in a dot or a space, the system's
+//!   folders, Grimoire's own); writes go by an allow-list (what is inside Grimoire's import, templates, photos
+//!   and fonts), so safety never depends on the deny-list being complete.
 //! - Never a hard delete, never an overwrite: delete is a rename into the trash, and every rename is
 //!   renameat2(RENAME_NOREPLACE), or where the storage refuses that call (and on the Mac) renameat over a
 //!   reservation of the new name made first (an O_EXCL create, or mkdirat), so nothing another writer puts
@@ -213,10 +215,13 @@ fn eq_nocase(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// The zone of a path, given where Grimoire's own folder is (relative to the root). Names compare without
-/// regard to ASCII case, as a case-insensitive storage finds them.
+/// regard to ASCII case, as a case-insensitive storage finds them. A part that ends in a dot or a space is
+/// refused: no name on the Kindle's storage ends so (vfat drops both), and such a part would name another entry.
+/// (The system's folders and Grimoire's own are refused by identity too: `FsStorage::open_dir`.)
 fn zone_of(grimoire: Option<&StoragePath>, p: &StoragePath, pick: bool) -> FsZone {
     let comps: Vec<&[u8]> = p.components().collect();
-    if comps.iter().any(|n| n.first() == Some(&b'.') || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) {
+    let odd_end = |n: &[u8]| matches!(n.last(), Some(b'.' | b' '));
+    if comps.iter().any(|n| n.first() == Some(&b'.') || odd_end(n) || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) {
         return FsZone::Refused;
     }
     if comps.first().is_some_and(|n| SYSTEM.iter().any(|s| eq_nocase(n, s))) {
@@ -252,6 +257,10 @@ pub struct FsStorage {
     not_picked: Vec<(u64, u64)>,
     /// (dev, ino) of Grimoire's trash, where the writes put what is deleted
     trash: Option<(u64, u64)>,
+    /// (dev, ino) of the refused folders that are there as the storage is opened: the system's at the root (SYSTEM)
+    /// and Grimoire's own (OWN_REFUSED). The walk refuses them by identity as well as by name, so no other spelling
+    /// of a name that the storage takes for one of them reaches it.
+    refused: Vec<(u64, u64)>,
 }
 
 fn open_dir_at(dirfd: i32, name: &[u8]) -> Result<OwnedFd, FsErr> {
@@ -315,6 +324,10 @@ impl FsStorage {
         let rel = grimoire.strip_prefix(base).and_then(|r| r.strip_prefix('/')).map(|r| r.trim_end_matches('/'));
         let g = grimoire.trim_end_matches('/');
         let trash = identity(&format!("{g}/trash"));
+        // (the system's folders as the root has them, no link followed; Grimoire's own by its own root, which it trusts)
+        let system = SYSTEM.iter().filter_map(|n| CString::new(*n).ok().and_then(|c| stat_at(root_fd.as_raw_fd(), &c).ok()));
+        let mut refused: Vec<(u64, u64)> = system.filter(|s| s.kind() == FsKind::Dir).map(|s| (s.dev, s.ino)).collect();
+        refused.extend(OWN_REFUSED.iter().filter_map(|n| identity(&format!("{g}/{}", String::from_utf8_lossy(n)))));
         Ok(FsStorage {
             root: root_fd,
             dev,
@@ -322,6 +335,7 @@ impl FsStorage {
             notebooks: identity(&format!("{g}/notebooks")),
             not_picked: [identity(&format!("{g}/PDFs")), trash].into_iter().flatten().collect(),
             trash,
+            refused,
         })
     }
 
@@ -336,7 +350,8 @@ impl FsStorage {
     }
 
     /// The folder at `p`, opened one component at a time from the root, never through a link, each on the
-    /// root's device and none of Grimoire's own folders; a refused zone is not entered.
+    /// root's device and none of Grimoire's own folders; a refused zone is not entered, and a refused folder is
+    /// known by its identity as well as by its name (`refused`).
     pub fn open_dir(&self, p: &StoragePath, pick: bool) -> Result<OwnedFd, FsErr> {
         if self.zone(p, pick) == FsZone::Refused {
             return Err(FsErr::Refused);
@@ -349,7 +364,7 @@ impl FsStorage {
                 return Err(FsErr::OtherDevice);
             }
             let id = Some((st.dev, st.ino));
-            if id == self.notebooks || (pick && self.not_picked.iter().any(|&o| Some(o) == id)) {
+            if id == self.notebooks || self.refused.iter().any(|&o| Some(o) == id) || (pick && self.not_picked.iter().any(|&o| Some(o) == id)) {
                 return Err(FsErr::Refused);
             }
             fd = next;
@@ -398,6 +413,27 @@ impl FsStorage {
         let dir = self.open_dir(&folder, pick)?;
         let c = CString::new(name).map_err(|_| FsErr::NotFound)?;
         stat_at(dir.as_raw_fd(), &c)
+    }
+
+    /// The folder at `p` for a setting that names one to open at (home, 2.2, issue #160): reached by the walk Files
+    /// itself enters folders with (`open_dir`, not as a pick: no link on the way, the root's device, no refused
+    /// zone, not Grimoire's notebooks), never the storage root itself, and never Grimoire's trash or what is in it
+    /// (nothing is entered there). Its stat. Nothing is listed, read or made.
+    pub fn folder(&self, p: &StoragePath) -> Result<FsStat, FsErr> {
+        if p.is_root() {
+            return Err(FsErr::Refused);
+        }
+        let fd = self.open_dir(p, false)?;
+        // (the trash by its identity: with no link on the way, only the path's first parts can lead to it, as many
+        // as its own path has)
+        if let (Some(t), Some(id)) = (self.trash_dir(), self.trash) {
+            let n = t.components().count();
+            let head: Vec<&[u8]> = p.components().take(n).collect();
+            if head.len() == n && StoragePath::new(&head.join(&b'/')).is_none_or(|q| self.stat(&q, false).is_ok_and(|s| (s.dev, s.ino) == id)) {
+                return Err(FsErr::Refused);
+            }
+        }
+        fstat_fd(fd.as_raw_fd())
     }
 
     /// The size of the storage in bytes, None when it cannot tell.
@@ -453,6 +489,11 @@ pub struct FsListing {
     grimoire: Option<StoragePath>,
     pick: bool,
     spent_ms: u32,
+    /// the trash's own listing (`start_trash`): an order key for each entry, as `fsview_trash_entries` orders them
+    /// (a name of no known form after the others, then the newest first), and how many entries were let go past
+    /// the cap
+    keys: Option<Vec<(bool, std::cmp::Reverse<i64>)>>,
+    over: usize,
 }
 
 impl Drop for FsListing {
@@ -489,7 +530,19 @@ impl FsListing {
             grimoire: st.grimoire.clone(),
             pick,
             spent_ms: 0,
+            keys: None,
+            over: 0,
         })
+    }
+
+    /// Opens Grimoire's trash to be listed (Files' Trash place). The trash only grows (every deleted page is an
+    /// entry), so past FS_LIST_MAX entries this listing reads on to the folder's end and keeps the newest by the
+    /// time in each name, never just the first the storage gives: what was deleted last is always listed, and can
+    /// be restored. `capped` says entries were let go.
+    pub fn start_trash(st: &FsStorage) -> Result<FsListing, FsErr> {
+        let mut l = FsListing::start(st, &st.trash_dir().ok_or(FsErr::NotFound)?, false)?;
+        l.keys = Some(Vec::new());
+        Ok(l)
     }
 
     /// Reads entries for at most `budget_ms` (FS_SLICE_MS a tick); true once the folder is read.
@@ -504,14 +557,21 @@ impl FsListing {
         }
         let t0 = clock();
         loop {
-            if self.entries.len() >= FS_LIST_MAX {
+            if self.entries.len() >= FS_LIST_MAX && self.keys.is_none() {
                 self.capped = true;
                 self.finish();
                 break;
             }
+            // (the trash: twice the cap read, the older half is let go, and the reading goes on)
+            if self.entries.len() >= 2 * FS_LIST_MAX {
+                self.keep_newest();
+            }
             // SAFETY: dir is open; readdir's entry is read before the next call.
             let e = unsafe { libc::readdir(self.dir) };
             if e.is_null() {
+                if self.entries.len() > FS_LIST_MAX {
+                    self.keep_newest();
+                }
                 self.finish();
                 break;
             }
@@ -548,13 +608,40 @@ impl FsListing {
             }
             return;
         }
+        if let Some(keys) = self.keys.as_mut() {
+            let t = trash_parse(&name);
+            keys.push((t.kind == TrashKind::Other, std::cmp::Reverse(t.time)));
+        }
         self.entries.push(FsEntry { name, kind, stat: None });
+    }
+
+    /// The trash's listing past its cap: the FS_LIST_MAX entries that `fsview_trash_entries` puts first stay (the
+    /// newest by the time in each name, names in byte order where times are equal, a name of no known form last),
+    /// in the order they were read; the others are let go.
+    fn keep_newest(&mut self) {
+        let Some(keys) = self.keys.as_mut() else { return };
+        let n = self.entries.len();
+        if n <= FS_LIST_MAX {
+            return;
+        }
+        let mut ix: Vec<usize> = (0..n).collect();
+        ix.sort_unstable_by(|&a, &b| keys[a].cmp(&keys[b]).then_with(|| self.entries[a].name.cmp(&self.entries[b].name)));
+        let mut keep = vec![false; n];
+        for &i in &ix[..FS_LIST_MAX] {
+            keep[i] = true;
+        }
+        let mut at = keep.iter();
+        self.entries.retain(|_| *at.next().unwrap_or(&false));
+        let mut at = keep.iter();
+        keys.retain(|_| *at.next().unwrap_or(&false));
+        self.over += n - FS_LIST_MAX;
+        self.capped = true;
     }
 
     fn finish(&mut self) {
         self.done = true;
         // (counts and timings only: never a name)
-        qlog!("files: listed %d entries (%d usable) in %u ms", (self.entries.len() + self.hidden) as i32, self.entries.len() as i32, self.spent_ms);
+        qlog!("files: listed %d entries (%d usable) in %u ms", (self.entries.len() + self.hidden + self.over) as i32, self.entries.len() as i32, self.spent_ms);
     }
 
     /// Stats the entries in `range` that have none yet (fstatat on the open folder, no link followed), for at
@@ -609,7 +696,7 @@ pub enum FsWriteErr {
     Walk(FsErr),
     /// it is no longer the item listed: device, inode, size or time ("File changed. Try again.")
     Changed,
-    /// an import holds it ("Importing now.")
+    /// an import holds it, or a page still waits for its picture ("Importing now.")
     Busy,
     /// the new name breaks a rule
     Name(NameRule),
@@ -1201,10 +1288,18 @@ impl FsStorage {
         ["import", "templates", "photos", "fonts"].into_iter().find(|w| eq_nocase(comps[gl], w.as_bytes()))
     }
 
+    /// Whether rename and trash may act on `p` (the allow-list, `write_zone`): what Files' cards offer Rename and
+    /// Delete on.
+    pub fn can_write(&self, p: &StoragePath) -> bool {
+        self.write_zone(p).is_some()
+    }
+
     /// Whether an import holds `p` (browser.md 8.14, "Importing now."): a PDF import or a picture import queued or
     /// running in this process works on it, inside it, or on the folder it is in (the job table's paths, and the
     /// PDF import's own list); or a previous run's import still holds the lock (pdfimport's detached state), and
     /// then everything in Grimoire's import folder counts as held, since what that one works on is not known here.
+    /// A template or photo picked for a page counts the same until the job that copies its picture into the
+    /// notebook has ended (`bg_job_pictures`): renamed or trashed before, the page would draw white.
     pub fn busy(&self, p: &StoragePath) -> bool {
         if std::str::from_utf8(p.as_bytes()).is_ok_and(crate::pdfimport::is_queued) {
             return true;
@@ -1213,6 +1308,7 @@ impl FsStorage {
         let own = store_root();
         let held: Vec<Vec<u8>> = bg_job_paths(&[BgKind::PdfImport, BgKind::ImportFolder])
             .into_iter()
+            .chain(bg_job_pictures())
             .filter_map(|j| match j.strip_prefix(own.trim_end_matches('/')).and_then(|r| r.strip_prefix('/')) {
                 // (a folder of import/ a scan queued: its absolute path, under Grimoire's own folder)
                 Some(rel) if j.starts_with('/') => g.as_ref().map(|g| [&g[..], b"/", rel.as_bytes()].concat()),
@@ -1240,6 +1336,22 @@ impl FsStorage {
             return Err(FsWriteErr::Refused);
         }
         Ok(fd)
+    }
+
+    /// The trash's sizes, to be read from now on a slice at a time (`TrashSizes::step`), from the trash opened by
+    /// the walk and known by its identity.
+    pub fn trash_sizes(&self) -> Result<TrashSizes, FsWriteErr> {
+        let fd = self.trash_fd()?;
+        let raw = std::os::fd::IntoRawFd::into_raw_fd(fd);
+        // SAFETY: raw is an open folder descriptor; fdopendir takes it over (closedir closes it).
+        let dir = unsafe { libc::fdopendir(raw) };
+        if dir.is_null() {
+            let e = errno();
+            // SAFETY: fdopendir failed, so raw is still ours to close.
+            unsafe { libc::close(raw) };
+            return Err(FsWriteErr::Io(e));
+        }
+        Ok(TrashSizes { entries: Vec::new(), total: 0, done: false, open: vec![(dir, usize::MAX)], dev: self.dev, files: 0, spent_ms: 0 })
     }
 
     /// Grimoire's notebooks folder, opened from its own folder (by the walk) and known by its identity: the one
@@ -1542,6 +1654,120 @@ impl FsStorage {
         sync_dir(nb.as_raw_fd());
         qlog!("files: notebook %s came back from the trash", id);
         Ok(())
+    }
+}
+
+/// How deep a size walk goes inside a trash entry (a notebook's folder holds two levels).
+const SIZE_DEPTH: usize = 16;
+
+/// The bytes the trash holds, entry by entry (there is no Empty, so the user sees its size and cleans it over
+/// USB): the regular files at any depth in each entry, by their size (a `files-...` entry's record left out: its size
+/// is its item's), read a slice at a time with the folders being read kept open between ticks. Nothing is opened but
+/// folders (O_DIRECTORY|O_NOFOLLOW, from the one above), no link is followed or counted, and no folder on another
+/// device, or deeper than 16, is entered.
+pub struct TrashSizes {
+    /// (an entry's name in the trash, its bytes so far), in the order the trash gives them
+    entries: Vec<(Vec<u8>, u64)>,
+    /// every entry's bytes so far
+    pub total: u64,
+    /// the trash is read to its end: `total` is its size
+    pub done: bool,
+    /// the folders being read, the trash's own first, each with the entry it counts for
+    open: Vec<(*mut libc::DIR, usize)>,
+    dev: u64,
+    files: u32,
+    spent_ms: u32,
+}
+
+impl Drop for TrashSizes {
+    fn drop(&mut self) {
+        for &(d, _) in &self.open {
+            // SAFETY: each came from fdopendir and is closed once, here.
+            unsafe { libc::closedir(d) };
+        }
+    }
+}
+
+impl TrashSizes {
+    /// Reads on for at most `budget_ms` (FS_SLICE_MS a tick); true once the trash is read.
+    pub fn step(&mut self, budget_ms: u32) -> bool {
+        self.step_clocked(budget_ms, &mut real_now_ms)
+    }
+
+    /// The same by `clock` (the tests' own).
+    pub fn step_clocked(&mut self, budget_ms: u32, clock: &mut dyn FnMut() -> u32) -> bool {
+        if self.done {
+            return true;
+        }
+        let t0 = clock();
+        while let Some(&(dir, owner)) = self.open.last() {
+            // SAFETY: dir is open while it is in `open`; readdir's entry is read before the next call.
+            let e = unsafe { libc::readdir(dir) };
+            if e.is_null() {
+                // SAFETY: dir came from fdopendir; it leaves `open` here, so it is closed once.
+                unsafe { libc::closedir(dir) };
+                self.open.pop();
+                continue;
+            }
+            // SAFETY: e points at a dirent whose d_name is NUL-terminated.
+            let name = unsafe { std::ffi::CStr::from_ptr((*e).d_name.as_ptr()).to_bytes().to_vec() };
+            if name == b"." || name == b".." {
+                continue;
+            }
+            // (an entry of the trash itself counts for itself; what is inside one, for the entry it is in)
+            let ix = if self.open.len() == 1 {
+                self.entries.push((name.clone(), 0));
+                self.entries.len() - 1
+            } else {
+                owner
+            };
+            // (a file's or folder's entry counts the item, not the few bytes of its record beside it)
+            if self.open.len() == 2 && name == TRASH_RECORD.as_bytes() && self.entries[ix].0.starts_with(TRASH_FILES) {
+                continue;
+            }
+            // SAFETY: dir is open; its descriptor stays its own.
+            let dfd = unsafe { libc::dirfd(dir) };
+            if let Ok(c) = CString::new(name) {
+                match stat_at(dfd, &c) {
+                    Ok(st) if st.kind() == FsKind::File => {
+                        self.entries[ix].1 += st.size;
+                        self.total += st.size;
+                        self.files += 1;
+                    }
+                    Ok(st) if st.kind() == FsKind::Dir && st.dev == self.dev && self.open.len() <= SIZE_DEPTH => {
+                        if let Some(d) = open_sub(dfd, &c).ok().filter(|fd| fstat_fd(fd.as_raw_fd()).is_ok_and(|s| s.dev == self.dev)) {
+                            let raw = std::os::fd::IntoRawFd::into_raw_fd(d);
+                            // SAFETY: raw is an open folder descriptor; fdopendir takes it over (closedir closes it).
+                            let sub = unsafe { libc::fdopendir(raw) };
+                            if sub.is_null() {
+                                // SAFETY: fdopendir failed, so raw is still ours to close.
+                                unsafe { libc::close(raw) };
+                            } else {
+                                self.open.push((sub, ix));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if clock().wrapping_sub(t0) >= budget_ms {
+                break;
+            }
+        }
+        self.spent_ms = self.spent_ms.wrapping_add(clock().wrapping_sub(t0));
+        if self.open.is_empty() {
+            self.done = true;
+            // (counts and timings only: never a name)
+            qlog!("files: the trash holds %d entries, %d files, %s KB (read in %u ms)", self.entries.len() as i32, self.files as i32, &(self.total >> 10).to_string(), self.spent_ms);
+        }
+        self.done
+    }
+
+    /// The bytes of the trash entry `name`, once it is read to its end (None before, and for no such entry).
+    pub fn size_of(&self, name: &[u8]) -> Option<u64> {
+        let i = self.entries.iter().position(|e| e.0 == name)?;
+        let reading = !self.done && self.open.len() > 1 && i + 1 == self.entries.len();
+        (!reading).then_some(self.entries[i].1)
     }
 }
 

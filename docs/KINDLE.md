@@ -529,7 +529,8 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
   process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
-  required (never on the Kindle).
+  required (never on the Kindle). `work: sandboxed without root (...)` is a platform's build with the
+  `linux-kernel` feature (rust/PORTING.md), never the Kindle's.
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
@@ -627,7 +628,8 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
   <id>: page N of M: no sandboxed worker can be had; nothing imported` and `import: <id>: no try is counted; a
   later scan takes the folder again`. Off the Kindle, where the sandbox is not required, the same failure reads
   `work: pictures decode in the writer (<why>); the sandbox is unavailable` and the pictures decode in the writer
-  as in 2.0. Only a picture that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs
+  as in 2.0. A build with the `linux-kernel` feature (rust/PORTING.md) takes the Kindle's way here: its pictures
+  wait, and its writer decodes none. Only a picture that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs
   are still drawn by the UI.
 - `bg: PDF import of <id> (pid N)` once per slice; `bg: PDF import pid N done`.
 
@@ -705,9 +707,11 @@ deleting `grimoire/fonts/.cache/` has every font checked again.
 ## Files: rename, trash, restore and copy (2.2, the storage layer)
 
 Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
-`fonts/` folders (docs/DESIGN.md, Files' storage writes). On screen so far only the copy is used: a picture's Use
-as template and Use as photo in Files, and the Templates and Photos sheets' From a file... tile (docs/DESIGN.md,
-From a file... and Use as template). grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). Files' cards rename and delete, and its Trash place
+restores and shows the trash's size (docs/DESIGN.md, Files: rename, delete and restore); the copy is a picture's
+Use as template and Use as photo in Files, and the Templates and Photos sheets' From a file... tile
+(docs/DESIGN.md, From a file... and Use as template). grimoire.log says (never a file's name: the folder, sizes,
+timings, reasons):
 
 - `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
   back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
@@ -725,6 +729,17 @@ From a file... and Use as template). grimoire.log says (never a file's name: the
   the next number free), to rename by hand. A crash in the middle of one leaves it the same way.
 - `files: a trash entry that held nothing was removed`: Restore on an entry a trash cut off by a crash left (its
   record alone, or an empty folder); the item never left its folder.
+- `files: the trash holds N entries, N files, N KB (read in T ms)`: Files' root or its Trash place read the
+  trash's size (once a session, and again after a delete or a restore), a slice at a time; T is the time of the
+  slices added up. `files: notebook <id> is back, its notebook.ini did not read`: a restored notebook whose own
+  file could not be read: it is back in `notebooks/`, the Library does not list it, and no toast named a folder
+  for it. `files: notebook <id> is back under a name another notebook of its folder has: the new name could not be
+  written`: its " 2" could not be saved (a full storage), so two notebooks of that folder have one name until one
+  is renamed.
+- `fonts: a rename in Files: what the check found of N font file(s) went with them`: a font file, or a folder of
+  them, was renamed in Files, and N verdicts went to the new names' keys, so those fonts are not checked again (0:
+  none was kept for it, a file not checked yet). With a font Settings names, `font: custom font loaded: ...`
+  follows, the font read again from its new path.
 - `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
   copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
   was listed, or while it was copied; it is over N MB; a name too long; it is no plain file; a link on its way; a
@@ -740,6 +755,37 @@ From a file... and Use as template). grimoire.log says (never a file's name: the
 - `templates: <folder> read again after a copy (N files, one|none new)`: a Templates or Photos sheet whose From a
   file... tile waited for a copy, once the copy ended; `one new` is the picture copied in (its tile waits for its
   preview as a picture copied over USB does), `none new` a copy that failed.
+
+## Files: previews and the Covers view (2.2)
+
+Files' View chip, Covers, shows a folder as a grid of previews, each made by the sandboxed worker in the
+background (docs/DESIGN.md, "Files: previews and the Covers view") and kept in `grimoire/.cache/files/`, which may
+be deleted at any time (the previews are made again). That folder holds, for each file a Covers screen showed, the
+file's path and a small picture of it (a PDF's first page, the picture, a font's sample) until the file is gone and
+the cache's daily sweep ran, or the folder is deleted. A preview is work behind everything else Grimoire does in
+the background (an export, the PDF copies, an import, a font check), and is given 3 s (a PDF's page, a font) or 6 s
+(a picture) at most. grimoire.log says, for each file of the screen that had none (never a file's name: the kind,
+timings, memory, reasons):
+
+- `bg: file previews of a file (pid N)`, then `bg: file previews pid N done` or `FAILED`.
+- `file previews: a pdf|picture|font made in T ms (the worker's peak N kB, this job's M kB)`: T is the whole job (the
+  worker's start, the file read or mapped, the page or picture or sample drawn, the cache written); the worker's
+  peak is its resident memory at most.
+- `file previews: a pdf|picture|font gave no preview (slow|ended) in T ms; one more try at another visit`: the
+  worker ran out of the preview's time on the file, or ended on it, for the first time. The tile shows the kind's
+  icon for this visit; the next time the folder is opened in Covers the file is tried once more.
+- `file previews: a pdf|picture|font has no preview (refused|slow|ended), marked, in T ms`: the worker refused the
+  file (no file of that kind it reads, a password, too big for its worker), or it was the second try in a row that
+  ran out of time or ended. The tile shows the kind's icon, and the file is not tried again until it changes.
+- `file previews: nothing made (<why>)`: no sandboxed worker could be had, no memory, the storage is nearly full,
+  the Kindle slept while the page was waited for, or the file changed since it was listed (among others: it is not
+  there, a link on its way). Nothing is written; the next visit asks again.
+- `file previews: N preview(s) of files that are gone or changed dropped from the cache`: the sweep, once a day and
+  whenever the cache is past a limit.
+- `file previews: the cache pruned: N file(s) (M kB) removed of K`: past 2,000 files or 64 MB, the oldest go.
+- `file previews: the cache holds N file(s) more than are looked at`: the folder holds over 8,000 files (it never
+  does by itself); deleting it puts that right.
+- `bg: N file preview(s) dropped (Grimoire ends)`: previews still queued when Grimoire closed; none is made after.
 
 ## Touch gestures and the touch trace
 

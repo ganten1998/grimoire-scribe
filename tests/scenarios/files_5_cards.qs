@@ -5,9 +5,9 @@
 # generate: tests/files_place_tree.py
 # Files' item cards (2.2): a tap on a picture, a font or another file (or its "...") opens its card, which says what
 # the file is with its size and date; a picture's offers Use as template and Use as photo (#146; files_8_use_as
-# copies), a font's and another file's nothing yet but Cancel (Add to fonts waits for #111); a PDF's card imports it as
-# the picker's does; a PDF of the PDF copies opens the notebook it was written from; a link has no card; the trash
-# lists its entries read only, a notebook by its own name.
+# copies), a font's Add to fonts (#161; files_19_add_to_fonts copies), another file's nothing but Cancel; a PDF's card
+# imports it as the picker's does; a PDF of the PDF copies opens the notebook it was written from; a link has no card; the trash
+# lists its entries, a notebook by its own name, whose card offers Restore alone (issue #144).
 # rust-only
 wait 300
 tap library files-card
@@ -30,7 +30,7 @@ tap library files.item.d.ttf
 wait 300
 expect files.card is font
 expect files.card.details has Font, 1 KB,
-expect files.card.rows is Cancel
+expect files.card.rows is Add to fonts|Cancel
 shot 02-font
 tap library files.card.cancel
 wait 200
@@ -62,9 +62,12 @@ expect files.row.1 is Gone
 expect files.kind.1 is trashed
 tap library files.row.1
 wait 200
-expect files.card is
+expect files.card is trashed
+expect files.card.rows is Restore|Cancel
 expect files.place is grimoire/trash
 shot 04-trash
+tap library files.card.cancel
+wait 200
 tap library files.crumb.1
 wait 300
 tap library files.item.PDF_copies

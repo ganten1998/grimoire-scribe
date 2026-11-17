@@ -354,6 +354,112 @@ fn slow_fonts_and_slices() {
     check!(!mark.exists());
 }
 
+/// A font's sample with no time of its own (the font worker's watchdog alone holds it).
+fn sample_of(data: &[u8], w: i32, h: i32) -> Result<Vec<u8>, FontOut> {
+    font_sample(data, w, h, u64::MAX)
+}
+
+// Files' preview of a font (2.2, issue #145): the worker opens the face and draws the fixed sample on a white
+// picture of the size asked for (two lines, "Aa" and "Abc 123", each centred), without the check's walk of the whole
+// font; the same font gives the same picture, a variable and a CFF one are drawn too. A font the check refuses is refused here the
+// same way, a WOFF2 by its format; a worker that never answers is the watchdog's (Slow), one that traps or crashes
+// ended (Dead). Sizes outside the protocol's are refused before any worker.
+fn a_fonts_sample_is_drawn_by_the_worker() {
+    clean_env();
+    let (w, h) = (300, 400);
+    let good = ttf(&test_font("Regular", 400));
+    let px = match sample_of(&good, w, h) {
+        Ok(px) => px,
+        Err(e) => panic!("the sample: {e:?}"),
+    };
+    check!(px.len() == (w * h) as usize);
+    let dark_rows: Vec<usize> = (0..h as usize).filter(|&y| px[y * w as usize..(y + 1) * w as usize].iter().any(|&v| v < 128)).collect();
+    check!(!dark_rows.is_empty());
+    // two lines of ink, apart: a run of rows with ink, a gap, another run
+    let runs = dark_rows.windows(2).filter(|p| p[1] != p[0] + 1).count() + 1;
+    check!(runs == 2);
+    // centred: the ink's left and right margins differ by little
+    let cols: Vec<usize> = (0..w as usize).filter(|&x| (0..h as usize).any(|y| px[y * w as usize + x] < 128)).collect();
+    let (l, r) = (cols[0], w as usize - 1 - cols[cols.len() - 1]);
+    check!(l.abs_diff(r) < 40);
+    // the same font, the same picture; a variable font and a CFF one are drawn too
+    check!(sample_of(&good, w, h).ok() == Some(px.clone()));
+    check!(matches!(sample_of(&ttf(&test_font_variable()), w, h), Ok(p) if p.iter().any(|&v| v < 128)));
+    check!(matches!(sample_of(&otf(&test_font("Regular", 400), 2, false), w, h), Ok(p) if p.iter().any(|&v| v < 128)));
+    // refused as the check refuses
+    check!(matches!(sample_of(&woff2(), w, h), Err(FontOut::Refused(Refuse::Format))));
+    check!(matches!(sample_of(&ttf(&symbol_cmap()), w, h), Err(FontOut::Refused(Refuse::NoLatin))));
+    check!(matches!(sample_of(&ttf(&empty_letters()), w, h), Err(FontOut::Refused(Refuse::Unreadable))));
+    check!(matches!(sample_of(b"not a font at all", w, h), Err(FontOut::Refused(_))));
+    // sizes the protocol does not take: refused here
+    check!(matches!(sample_of(&good, 7, h), Err(FontOut::Refused(_))));
+    check!(matches!(sample_of(&good, w, 801), Err(FontOut::Refused(_))));
+    // a worker that hangs on the sample: the watchdog's; one that traps or crashes: ended
+    std::env::set_var("GRIMOIRE_FONT_TEST_HANG", "0");
+    std::env::set_var("GRIMOIRE_FONT_WATCHDOG_MS", "500");
+    let t = std::time::Instant::now();
+    check!(matches!(sample_of(&good, w, h), Err(FontOut::Slow)));
+    check!(t.elapsed().as_millis() >= 400 && t.elapsed().as_secs() < 20);
+    std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
+    std::env::remove_var("GRIMOIRE_FONT_WATCHDOG_MS");
+    std::env::set_var("GRIMOIRE_FONT_TEST_CRASH", "0");
+    check!(matches!(sample_of(&good, w, h), Err(FontOut::Dead(_))));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_CRASH");
+    // a time of its own, shorter than the watchdog: the worker that hangs is ended when that time is up
+    std::env::set_var("GRIMOIRE_FONT_TEST_HANG", "0");
+    let t = std::time::Instant::now();
+    check!(matches!(font_sample(&good, w, h, grimoire::sandbox::mono_ms() + 500), Err(FontOut::Slow)));
+    check!(t.elapsed().as_millis() >= 400 && t.elapsed().as_secs() < 20);
+    std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
+    // (the check's hooks at glyph 0 never fire there: glyph 0 is no character's)
+    std::env::set_var("GRIMOIRE_FONT_TEST_HANG", "0");
+    check!(matches!(check_font(&good, 44), FontOut::Passed { .. }));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
+}
+
+// The sample is held to the check's glyph limit (#111): each glyph it draws goes through the check's own walk in
+// the worker first, its draw timed against the limit the writer sends. A letter of the sample over the limit ends
+// the sample as too slow (never as a dead worker, never as a picture); a glyph the sample does not draw is not
+// walked; a draw that is dear and under the limit changes nothing. The worker takes `T` only with its limit.
+fn a_fonts_sample_is_held_to_the_glyph_limit() {
+    use grimoire::sandbox::{mono_ms, WorkKind, Worker};
+    clean_env();
+    let (w, h) = (300, 400);
+    let f = test_font_latin1("Regular", 400);
+    let font = ttf(&f);
+    std::env::set_var("GRIMOIRE_FONT_GLYPH_US", LIMIT_US.to_string());
+    let plain = sample_of(&font, w, h).expect("the sample, nothing charged");
+    // "Aa" and "Abc 123": each of their letters and digits over the limit is a sample that takes too long
+    for ch in ['A', 'a', 'b', 'c', '1', '2', '3'] {
+        slow_charge("slow", glyph_index(&f, ch), LIMIT_US + 1);
+        check!(matches!(sample_of(&font, w, h), Err(FontOut::SlowGlyphs { letter: true, slowest_us, .. }) if slowest_us > LIMIT_US));
+    }
+    // a glyph the sample does not draw is not walked for it: the same picture
+    slow_charge("slow", glyph_index(&f, 'Z'), LIMIT_US + 1);
+    check!(sample_of(&font, w, h).ok().as_ref() == Some(&plain));
+    slow_charge("slow", glyph_index(&f, '\u{a4}'), LIMIT_US + 1);
+    check!(sample_of(&font, w, h).ok().as_ref() == Some(&plain));
+    // dear and under the limit: the same picture
+    slow_charge("slow", glyph_index(&f, 'A'), LIMIT_US / 2);
+    check!(sample_of(&font, w, h).ok().as_ref() == Some(&plain));
+    // slow at the first try only: measured again, as the walk does, and drawn
+    slow_charge("once", glyph_index(&f, 'A'), LIMIT_US + 1);
+    check!(sample_of(&font, w, h).ok().as_ref() == Some(&plain));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_SLOW");
+    std::env::remove_var("GRIMOIRE_FONT_GLYPH_US");
+    // the command's grammar: a `T` without its limit, with a limit of 0 or no number, or with a field more
+    for command in ["T 10 300 400\n", "T 10 300 400 0\n", "T 10 300 400 x\n", "T 10 300 400 5000 1\n"] {
+        let mut wk = Worker::spawn(WorkKind::Font, None, &limits(10)).expect("a worker starts");
+        let deadline = mono_ms() + 15_000;
+        check!(wk.read_line(512, deadline).unwrap_or_default().starts_with(b"B "));
+        let sandbox = wk.read_line(512, deadline).unwrap_or_default();
+        check!(sandbox == b"S 0" || sandbox == b"S 1");
+        check!(wk.send(command));
+        check!(wk.read_line(512, deadline).unwrap_or_default() == b"E protocol");
+        wk.kill_and_reap();
+    }
+}
+
 // A sandbox step that fails is not the font's fault: nothing is checked, nothing is marked, the job says no
 // worker can be had (4), and a worker that cannot start at all is the same.
 fn a_failed_sandbox_step_checks_nothing() {
@@ -1032,6 +1138,8 @@ fn test_fontcheck() {
     run!(slow_glyphs_through_the_job);
     run!(a_first_trys_mark_counts_only_for_its_own_check);
     run!(the_worker_refuses_a_command_of_another_grammar);
+    run!(a_fonts_sample_is_drawn_by_the_worker);
+    run!(a_fonts_sample_is_held_to_the_glyph_limit);
     // (last: it leaves the session without workers, as a failed step does)
     run!(a_failed_sandbox_step_checks_nothing);
     done();

@@ -5,6 +5,9 @@
 // A "gone" pin is a phrase a file must no longer hold: a sentence that said what the code does not do. It catches
 // the old words coming back (a merge settled the wrong way), not the old meaning in new words. A "present" pin is
 // a name the code itself has (a constant, a file's name), never prose, so a reworded sentence does not fail here.
+// A "told on" pin is a sentence that states a safety rule, held with the code that makes it true (a line, or a
+// whole function with its comments aside): it fails when the code changes and when the sentence is reworded or
+// goes, so that the two are read again together.
 // A phrase is looked for in the file with every run of white space made one space, and in a source file without
 // the marks that open its comment lines, so a paragraph or a comment wrapped anew is the same text. Each test
 // gathers every pin that fails and prints them together.
@@ -24,13 +27,21 @@ const RELEASING: File = ("docs/RELEASING.md", include_str!("../../docs/RELEASING
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
 const USERFONTS: File = ("rust/src/userfonts.rs", include_str!("../src/userfonts.rs"));
+const FSVIEW: File = ("rust/src/fsview.rs", include_str!("../src/fsview.rs"));
+const BROWSER: File = ("rust/src/browser.rs", include_str!("../src/browser.rs"));
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
+const BGWORK_COPY: File = ("rust/src/bgwork_copy.rs", include_str!("../src/bgwork_copy.rs"));
+const APP: File = ("rust/src/app.rs", include_str!("../src/app.rs"));
+const PREVIEWS: File = ("rust/src/bgwork_previews.rs", include_str!("../src/bgwork_previews.rs"));
+const ADDFONT_TESTS: File = ("rust/tests/test_addfont.rs", include_str!("test_addfont.rs"));
 const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
 const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
 const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
+const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
+const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -73,6 +84,57 @@ fn present(fails: &mut Vec<String>, f: File, name: &str) {
 fn stands_on(fails: &mut Vec<String>, f: File, words: &str, on: File, base: &str) {
     if flat(f).contains(words) && !flat(on).contains(base) {
         fails.push(format!("{} says \"{words}\", and {} no longer says \"{base}\": the first is to follow", f.0, on.0));
+    }
+}
+
+/// A sentence that stands on a line of code and is itself held: `f` must still say `words` (a sentence reworded or
+/// gone fails here, so that its pin is reworded with it), and `on` must still say `base`.
+fn told_on(fails: &mut Vec<String>, f: File, words: &str, on: File, base: &str) {
+    if !flat(f).contains(words) {
+        fails.push(format!("{} no longer says \"{words}\": its pin is to follow it", f.0));
+    }
+    stands_on(fails, f, words, on, base);
+}
+
+/// The code of the function whose first line is the first to hold `sig` in a source file: that line to the brace
+/// that closes the function, its comment lines left out and every run of white space made one space. None when no
+/// line holds `sig`.
+fn code_of(f: File, sig: &str) -> Option<String> {
+    let (mut depth, mut opened, mut words) = (0i32, false, Vec::new());
+    for line in f.1.lines().skip_while(|l| !l.contains(sig)) {
+        let text = line.trim_start();
+        if text.starts_with("//") {
+            continue;
+        }
+        words.extend(text.split_whitespace());
+        for ch in text.chars() {
+            match ch {
+                '{' => (depth, opened) = (depth + 1, true),
+                '}' => depth -= 1,
+                _ => {}
+            }
+        }
+        if opened && depth <= 0 {
+            return Some(words.join(" "));
+        }
+    }
+    None
+}
+
+/// A sentence that stands on a whole function and is itself held: `f` must still say `words`, and the function
+/// `sig` opens in `on` must still be `code` to the letter (its comments aside). Any change to that function's code
+/// fails here, a line added to it too, so that the sentence is read again against it and its pin follows.
+fn told_on_code(fails: &mut Vec<String>, f: File, words: &str, on: File, sig: &str, code: &str) {
+    if !flat(f).contains(words) {
+        fails.push(format!("{} no longer says \"{words}\": its pin is to follow it", f.0));
+    }
+    match code_of(on, sig) {
+        None => fails.push(format!("{} has no line with \"{sig}\"", on.0)),
+        Some(now) if now != code => fails.push(format!(
+            "{} says \"{words}\", and the code of {}'s \"{sig}\" is no longer what it stood on: the first is to follow\n    now: {now}",
+            f.0, on.0
+        )),
+        Some(_) => {}
     }
 }
 
@@ -467,6 +529,80 @@ fn the_one_skrifa_is_the_one_hayro_brings() {
 
 // Sentences that said what the code does not do, each gone from the file that held it, and one file name the
 // code writes that FORMAT.md did not list.
+// Files' rename, delete and restore (issue #144): its public text names no label or file of the private plan, and
+// says what the screens do now.
+#[test]
+fn files_rename_delete_and_restore_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    gone(&mut fails, BACKLOG, "**Not in 2.2** (D31)");
+    gone(&mut fails, BACKLOG, "browser.md 17 has it as an optional extra");
+    gone(&mut fails, FSVIEW, "browser.md D4");
+    // the Trash place has Restore: it is not read only
+    gone(&mut fails, DESIGN, "lists `grimoire/trash` read only, through");
+    // Delete asks first (the Library's question): it is not one tap
+    gone(&mut fails, DESIGN, "**Delete** is one tap on the card");
+    gone(&mut fails, TESTING, "its card > Delete (moves it to grimoire/trash): \"Moved to grimoire/trash\"");
+    // the rename's words: a name taken (a folder's too), a name too long for the keyboard
+    gone(&mut fails, DESIGN, "A file with that name is already here.");
+    gone(&mut fails, BACKLOG, "A file with that name is already here.");
+    gone(&mut fails, TESTING, "A file with that name is already here.");
+    gone(&mut fails, DESIGN, "is not offered to it (\"Couldn't rename file.\")");
+    // after a write the rows follow from the listing held: the folder is not read again at one go
+    gone(&mut fails, DESIGN, "Renamed: the folder is read again, with its rows' page kept.");
+    gone(&mut fails, DESIGN, "\"Moved to grimoire/trash\" and the folder read again.");
+    // which is the folder shown, no more: a font renamed, the font in use and a notebook restored read what DESIGN
+    // lists (userfonts_renamed, userfonts_apply, store_restored and the Library's reload)
+    gone(&mut fails, DESIGN, "After a write nothing is read again.");
+    gone(&mut fails, DESIGN, "no folder is listed and no row stat-ed anew");
+    gone(&mut fails, BROWSER, "the listing held: nothing is read again");
+    // who writes where the font check keeps its results: the job, but for the UI's renames (a .checking mark to
+    // .bad, and what the check found of a font renamed in Files, to its new key)
+    gone(&mut fails, USERFONTS, "but for the UI's rename of a .checking mark to .bad when that job died; deleting it");
+    gone(&mut fails, USERFONTS, "background job alone.");
+    gone(&mut fails, USERFONTS, "the UI never writes there");
+    // the font in use: not deleted, and a rename takes its setting along
+    gone(&mut fails, BACKLOG, "a font in use goes back to Terminess, as it does when its file goes over USB.");
+    none_failed(&fails, "Files' rename, delete and restore");
+}
+
+// Files' home folder (issue #160): the safety sentences of DESIGN.md and FORMAT.md name what the code has (the value
+// read strictly, what it names reached one way only, nothing opened at a home that fails, the refused folders known
+// by identity as well as by name), the figure of the value's limit is the constant's, and the sentences the change
+// replaced, and a label of the private plan, are gone.
+#[test]
+fn files_home_is_told_as_it_is() {
+    let mut fails = Vec::new();
+    // the value's limit, as DESIGN.md and FORMAT.md give it
+    let max = grimoire::home::HOME_MAX.to_string();
+    beside(&mut fails, DESIGN, "`HOME_MAX`", &max);
+    present(&mut fails, FORMAT, &format!("under {max} bytes"));
+    // the names the sentences give, and the code that has them
+    present(&mut fails, DESIGN, "`Home::parse`");
+    present(&mut fails, HOME, "pub fn parse(v: &[u8]) -> Option<Home>");
+    present(&mut fails, DESIGN, "`FsStorage::folder`");
+    present(&mut fails, FSVIEW, "pub fn folder(&self, p: &StoragePath) -> Result<FsStat, FsErr>");
+    present(&mut fails, DESIGN, "`Browser::enter_home`");
+    present(&mut fails, BROWSER, "pub fn enter_home(&mut self, p: &StoragePath) -> bool");
+    present(&mut fails, DESIGN, "`home_folder_ok`");
+    present(&mut fails, HOME, "pub fn home_folder_ok(st: &FsStorage, p: &StoragePath) -> bool");
+    // nothing opened at a home that fails: home_files walks to it first
+    present(&mut fails, DESIGN, "`home_files` walks to it (`home_folder_there`) before Files is opened");
+    present(&mut fails, LIBRARY, "home_folder_there(p)?;");
+    // the refused folders by identity as well as by name, and a path part ending in a dot or a space refused
+    present(&mut fails, DESIGN, "`FsStorage.refused`");
+    present(&mut fails, FSVIEW, "refused: Vec<(u64, u64)>,");
+    present(&mut fails, FSVIEW, "self.refused.iter().any(|&o| Some(o) == id)");
+    present(&mut fails, DESIGN, "a name ending in a dot or a space");
+    present(&mut fails, FSVIEW, "matches!(n.last(), Some(b'.' | b' '))");
+    // what the change replaced: the action's old place, Esc at a Library home, a delete that left home set
+    gone(&mut fails, DESIGN, "`home` is the Library's top for now.");
+    gone(&mut fails, BACKLOG, "Today `home` (the action) goes to the Library's top");
+    gone(&mut fails, DESIGN, "At a Library folder that is home Esc asks \"Exit Grimoire?\" too");
+    gone(&mut fails, DESIGN, "home folder moved to the trash in Files is gone until Restore puts it back");
+    gone(&mut fails, DESIGN, "the owner's D31");
+    none_failed(&fails, "Files' home folder");
+}
+
 #[test]
 fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();
@@ -563,4 +699,77 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
         "\"From the Rust crates Cargo.lock names for the Grimoire binary.",
     );
     none_failed(&fails, "the documents and comments");
+}
+
+// Add a font... and Add to fonts (2.2, issue #161): a font file copied into grimoire/fonts by the copy job is no
+// font until its check has passed. The sentences that say what keeps a copy from being taken for a font stand on
+// the code that does it: the temporary name's form (bgwork_copy.rs) and the scan's refusal of a dot-name
+// (userfonts.rs); the look the copy asks for, which sets a time and nothing else; the limit with its figure; the
+// Kindle's own fonts folder outside the folders a write may touch (fsview.rs); and what reads a font file as a font
+// (nothing before its check has passed it) and what draws its preview in Files' Covers view (the sandboxed worker).
+// The day one of those changes, the sentence fails here until it is read again and follows.
+#[test]
+fn a_font_added_from_a_file_is_told_as_it_is() {
+    let mut fails = Vec::new();
+    let tmp_head = "const TMP_HEAD: &str = \".grimoire-copy-\";";
+    let tmp_tail = "const TMP_TAIL: &str = \".part\";";
+    let dot_name = "if name.starts_with('.') { return NameKind::Other; }";
+    let words = "a dot-name, which no listing shows and which the fonts folder's scan takes for no font";
+    for base in [(BGWORK_COPY, tmp_head), (BGWORK_COPY, tmp_tail), (USERFONTS, dot_name)] {
+        stands_on(&mut fails, DESIGN, words, base.0, base.1);
+    }
+    stands_on(&mut fails, BGWORK_COPY, "a dot-name with the ending `.part`: no listing shows it and the fonts folder's scan takes no such name", USERFONTS, dot_name);
+    stands_on(&mut fails, USERFONTS, "a copy still being written has a dot-name ending in `.part`", BGWORK_COPY, tmp_tail);
+    // what the copy asks of the font check: a time to look at the folder, nothing more. What follows a copy that went
+    // in is copy_told (app.rs), whose one call for a font is userfonts_added, which sets that time and the scale:
+    // both held whole, so that a line that applied, loaded or read the font there would fail here.
+    const COPY_TOLD: &str = r#"fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) { use crate::bgwork_copy::{copy_failed, copy_refusal, CopyFail, CopyTo}; if r < 0 { let msg = to.map_or_else(|| copy_failed().to_string(), |to| copy_refusal(CopyFail::of_exit(bg_last_exit()), to)); app_toast(a, &msg, 4000); return; } let Some(to) = to.filter(|_| r > 0) else { return }; if to == CopyTo::Fonts { crate::userfonts::userfonts_added(a.dpi); } if crate::library::library_sheet_folder(a) == Some(to) || crate::editor::editor_sheet_folder(a) == Some(to) { return; } let place = match to { CopyTo::Templates => tr("Templates"), CopyTo::Photos => tr("Photos"), CopyTo::Fonts => tr("Fonts"), }; let mut msg = String::new(); csnprintf!(&mut msg, 256, tr("Copied to %s."), place); app_toast(a, &msg, 3000); }"#;
+    const USERFONTS_ADDED: &str = r#"pub fn userfonts_added(dpi: f32) { with(|st| { st.dpi = dpi; st.added_ms = Some(now_ms().wrapping_add(added_wait_ms()).max(1)); }); }"#;
+    for (f, words) in [
+        (DESIGN, "**The copy gives a font nothing.**"),
+        (USERFONTS, "the copy gives it nothing (`userfonts_added` only says when the folder is looked at)"),
+    ] {
+        told_on_code(&mut fails, f, words, APP, "fn copy_told(", COPY_TOLD);
+        told_on_code(&mut fails, f, words, USERFONTS, "pub fn userfonts_added(", USERFONTS_ADDED);
+    }
+    // the limit a font over is refused at, before a byte is copied
+    beside(&mut fails, DESIGN, "`FONT_FILE_MAX`", &format!("{} MB", grimoire::fontcheck::FONT_FILE_MAX >> 20));
+    // and the longest name a copy may have there, which is what the scan takes of a font's path
+    beside(&mut fails, DESIGN, "`USERFONT_REL_MAX`", &format!("{} bytes", grimoire::userfonts::USERFONT_REL_MAX));
+    stands_on(&mut fails, DESIGN, "so it is refused as \"Path too long.\"", BGWORK_COPY, "CopyTo::Fonts => crate::userfonts::USERFONT_REL_MAX.min(FS_NAME_MAX),");
+    // the Kindle's fonts folder: a write is allowed only inside Grimoire's own folders. A rename or a delete asks
+    // write_zone (the allow-list, inside Grimoire's folder only), which asks zone_of (writable only below Grimoire's
+    // own folder, never at the storage's root): both held whole. The copy job writes only into Grimoire's folder of
+    // its kind, and only where zone_of says writable.
+    const ZONE_OF: &str = r#"fn zone_of(grimoire: Option<&StoragePath>, p: &StoragePath, pick: bool) -> FsZone { let comps: Vec<&[u8]> = p.components().collect(); let odd_end = |n: &[u8]| matches!(n.last(), Some(b'.' | b' ')); if comps.iter().any(|n| n.first() == Some(&b'.') || odd_end(n) || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) { return FsZone::Refused; } if comps.first().is_some_and(|n| SYSTEM.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if let Some(g) = grimoire { let gc: Vec<&[u8]> = g.components().collect(); if !gc.is_empty() && comps.len() > gc.len() && gc.iter().zip(&comps).all(|(a, b)| eq_nocase(a, b)) { let n = comps[gc.len()]; if OWN_REFUSED.iter().any(|s| eq_nocase(n, s)) || (pick && OWN_NOT_PICKED.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if OWN_WRITABLE.iter().any(|s| eq_nocase(n, s)) { return FsZone::Writable; } if comps.len() == gc.len() + 1 && n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".ini") { return FsZone::Refused; } } } FsZone::ReadOnly }"#;
+    const WRITE_ZONE: &str = r#"fn write_zone(&self, p: &StoragePath) -> Option<&'static str> { let g = self.grimoire.as_ref()?; if zone_of(Some(g), p, false) != FsZone::Writable { return None; } let gl = g.components().count(); let comps: Vec<&[u8]> = p.components().collect(); if comps.len() < gl + 2 || (comps.len() == gl + 2 && eq_nocase(comps[gl], b"import") && eq_nocase(comps[gl + 1], b"done")) { return None; } ["import", "templates", "photos", "fonts"].into_iter().find(|w| eq_nocase(comps[gl], w.as_bytes())) }"#;
+    let read_only = "**The Kindle's fonts folder is read only**, as every folder outside Grimoire's own is";
+    told_on_code(&mut fails, DESIGN, read_only, FSVIEW, "fn zone_of(", ZONE_OF);
+    told_on_code(&mut fails, DESIGN, read_only, FSVIEW, "fn write_zone(", WRITE_ZONE);
+    told_on(&mut fails, DESIGN, read_only, BGWORK_COPY, r#"let dest = g.join(to.folder().as_bytes()).ok_or("a path too long")?;"#);
+    told_on(&mut fails, DESIGN, read_only, BGWORK_COPY, r#"if st.zone(&dest.join(name).ok_or_else(|| long("a path too long"))?, false) != FsZone::Writable {"#);
+    // Nothing in the writer or the UI parses, applies, measures or loads a copied font before its check has passed
+    // it: what reads a font file as a font in this process is load_file, which takes only bytes that hash to a
+    // passing verdict's, and guarded_face, the one maker of a face from them. A preview of it in Files' Covers view
+    // is the sandboxed worker's sample (font_preview, by font_sample's worker). Those sentences are held with that
+    // code; the words that said a copied font is "not sampled" and has "no preview" are gone (Covers makes one).
+    const LOAD_FILE: &str = r#"fn load_file(st: &FsStorage, rel: &str, dpi: f32, room: usize) -> Result<Loaded, LoadErr> { if !userfont_rel_ok(rel) { return Err(LoadErr::Missing); } let sp = StoragePath::new(rel.as_bytes()).ok_or(LoadErr::Missing)?; let s = st.stat(&sp, false).map_err(|_| LoadErr::Missing)?; let l = Listed { rel: rel.to_string(), size: s.size, mtime: s.mtime, key: key_of(rel, s.size, s.mtime) }; if name_kind(rel.rsplit('/').next().unwrap_or("")) != NameKind::Font || l.size == 0 || l.size > FONT_FILE_MAX as u64 || guard_out(l.key) { return Err(LoadErr::Refused); } let Some(v) = VerdictDir::open(false).ok().and_then(|vd| verdict_for(&vd, l.key, l.size)) else { let bad = std::path::Path::new(&cache_file(l.key, "bad")).exists(); if bad { return Err(LoadErr::Refused); } queue_check("", dpi); return Err(LoadErr::Checking); }; let VerdictKind::Passed(facts) = v.what else { return Err(LoadErr::Refused) }; if l.size as usize > room { return Err(LoadErr::Memory); } let data = read_listed(st, &l).ok_or(LoadErr::Missing)?; if font_hash(&data) != v.hash { qlog!("font: a font file is not the one that was checked: checking it again"); queue_check(&format!("recheck:{:016x}", l.key), dpi); return Err(LoadErr::Checking); } Ok(Loaded { data: Rc::new(data), facts: Rc::new(facts), key: l.key }) }"#;
+    const GUARDED_FACE: &str = r#"fn guarded_face(l: &Loaded, bold: bool) -> Option<SafeFace> { if !guard_arm_keys(&[l.key]) { qlog!("font: the guard's mark could not be written: your font is not used"); return None; } let face = SafeFace::new(l.data.clone(), l.facts.clone(), bold); if face.is_none() && !bold { guard_disarm_keys(&[l.key]); } face }"#;
+    const FONT_PREVIEW: &str = r#"fn font_preview(data: &[u8]) -> Result<Canvas, Fail> { use crate::fontcheck::*; match font_sample(data, PREVIEW_W, PREVIEW_H, mono_ms() + preview_limit_ms(PreviewKind::Font)) { Ok(px) => gray_of(&px, PREVIEW_W, PREVIEW_H, 1), Err(FontOut::Refused(_)) => Err(Fail::Refused), Err(FontOut::Slow | FontOut::SlowGlyphs { .. }) => Err(Fail::Strike(NoPreview::Slow)), Err(FontOut::Dead(_)) => Err(Fail::Strike(NoPreview::Ended)), Err(FontOut::NoWorker(_)) => Err(Fail::Later(NO_WORKER)), Err(_) => Err(Fail::Later("out of memory")), } }"#;
+    let covers = "a preview of it in Files' Covers view is made by the sandboxed worker, as for any font in Files (issue #145)";
+    let covers_cap = "A preview of it in Files' Covers view is made by the sandboxed worker, as for any font in Files (issue #145)";
+    for (f, parses, covers) in [
+        (DESIGN, "Nothing in the writer or the UI parses, applies, measures or loads the file before its check has passed it", covers_cap),
+        (USERFONTS, "Nothing in the writer or the UI parses, applies, measures or loads it before then", covers),
+        (ADDFONT_TESTS, "Until then nothing in the writer or the UI parses, applies, measures or loads it", covers_cap),
+    ] {
+        told_on_code(&mut fails, f, parses, USERFONTS, "fn load_file(", LOAD_FILE);
+        told_on_code(&mut fails, f, parses, USERFONTS, "fn guarded_face(", GUARDED_FACE);
+        told_on_code(&mut fails, f, covers, PREVIEWS, "fn font_preview(", FONT_PREVIEW);
+        told_on(&mut fails, f, covers, FONTCHECK, "let mut wk = match start_worker_until(data.len(), until) {");
+    }
+    gone(&mut fails, DESIGN, "not applied, not sampled, not measured, no preview, no tap");
+    gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
+    gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
+    none_failed(&fails, "a font added from a file");
 }

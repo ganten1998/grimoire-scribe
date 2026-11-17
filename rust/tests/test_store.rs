@@ -831,9 +831,9 @@ fn font_key() {
     unlink(&path);
 }
 
-// Files' keys (2.2): files_card, files_sort, files_show and files_view are absent by default and written only away
-// from their defaults; they are read strictly, so a value other than this build's own (another case, a later
-// version's) is the default, written back as it was until the setting changes.
+// Files' keys (2.2): files_card, files_sort, files_show and files_view (list or covers) are absent by default and
+// written only away from their defaults; they are read strictly, so a value other than this build's own (another
+// case, a later version's) is the default, written back as it was until the setting changes.
 fn files_keys() {
     let path = format!("{}/settings.ini", store_root());
     let mut s = Settings::default();
@@ -845,23 +845,66 @@ fn files_keys() {
     check!(settings_load(&mut s) == 0 && s.files_card && s.files_sort == 1 && s.files_show == 1 && s.files_view == 0);
     check!(settings_save(&s) == 0 && has_pins_line(&path, "files_card=1") && has_pins_line(&path, "files_sort=newest"));
     check!(has_pins_line(&path, "files_show=all") && !has_pins_line(&path, "files_view=list"));
+    // Covers (issue #145): read, and written while it is the view
+    check!(write_file_atomic(&path, b"files_view=covers\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.files_view == 1);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "files_view=covers"));
+    s.files_view = 0;
+    check!(settings_save(&s) == 0 && !any_files_line(&path));
     check!(write_file_atomic(&path, b"files_sort=size\nfiles_card=0\n") == 0);
     check!(settings_load(&mut s) == 0 && s.files_sort == 2 && !s.files_card);
     check!(settings_save(&s) == 0 && has_pins_line(&path, "files_sort=size") && !has_pins_line(&path, "files_card=0"));
-    // strictly: another case, another word, a later version's view
-    check!(write_file_atomic(&path, b"files_card=yes\nfiles_sort=Newest\nfiles_show=everything\nfiles_view=covers\n") == 0);
+    // strictly: another case, another word ("Covers" is not the view's word)
+    check!(write_file_atomic(&path, b"files_card=yes\nfiles_sort=Newest\nfiles_show=everything\nfiles_view=Covers\n") == 0);
     check!(settings_load(&mut s) == 0 && !s.files_card && s.files_sort == 0 && s.files_show == 0 && s.files_view == 0);
     check!(settings_kept("files_sort").as_deref() == Some(&b"Newest"[..]));
     check!(settings_save(&s) == 0 && has_pins_line(&path, "files_card=yes") && has_pins_line(&path, "files_sort=Newest"));
-    check!(has_pins_line(&path, "files_show=everything") && has_pins_line(&path, "files_view=covers"));
+    check!(has_pins_line(&path, "files_show=everything") && has_pins_line(&path, "files_view=Covers"));
     // changed, each is written as set; set back to its default, its line goes
     s.files_card = true;
     s.files_sort = 2;
     check!(settings_save(&s) == 0 && has_pins_line(&path, "files_card=1") && has_pins_line(&path, "files_sort=size"));
-    check!(has_pins_line(&path, "files_view=covers"));
+    check!(has_pins_line(&path, "files_view=Covers"));
     s.files_card = false;
     s.files_sort = 0;
     check!(settings_save(&s) == 0 && !has_pins_line(&path, "files_card=0") && !has_pins_line(&path, "files_sort=name"));
+    unlink(&path);
+}
+
+// The home folder (2.2, issue #160): absent by default and written only while it is not Notebooks; read strictly
+// (home.rs), so a line that names no home is Notebooks, marked for the Library's one toast, and not written back
+// (unlike files_sort's: kept, it would be said at every start). No file or folder is looked at to read it.
+fn home_key() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    let any_home_line = |p: &str| read_file(p).is_some_and(|t| find(&t, "\nhome=").is_some());
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.home.is_empty() && !s.home_refused);
+    check!(settings_save(&s) == 0 && !any_home_line(&path));
+    for v in ["notebooks/School", "notebooks/School/2026", "files/documents/Planners", "files/documents/Not there"] {
+        check!(write_file_atomic(&path, format!("home={v}\n").as_bytes()) == 0);
+        check!(settings_load(&mut s) == 0 && s.home.as_str() == v && !s.home_refused);
+        check!(settings_save(&s) == 0 && has_pins_line(&path, &format!("home={v}")));
+    }
+    // Notebooks, said either way, is no line
+    check!(write_file_atomic(&path, b"home=notebooks\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.home.is_empty() && !s.home_refused);
+    check!(settings_save(&s) == 0 && !any_home_line(&path));
+    // a line that names no home: refused, and gone at the next save
+    for v in ["/mnt/us/documents", "files/../etc", "files//etc", "files/", "notebooks/", "Files/documents", "files/doc\tuments", "files/a/./b"] {
+        check!(write_file_atomic(&path, format!("invert=1\nhome={v}\n").as_bytes()) == 0);
+        check!(settings_load(&mut s) == 0 && s.home.is_empty() && s.home_refused);
+        check!(settings_kept("home").is_none());
+        check!(settings_save(&s) == 0 && !any_home_line(&path) && has_pins_line(&path, "invert=1"));
+    }
+    let long = format!("home=files/{}\n", "a/".repeat(400));
+    check!(write_file_atomic(&path, long.as_bytes()) == 0);
+    check!(settings_load(&mut s) == 0 && s.home.is_empty() && s.home_refused);
+    // set, and set back to Notebooks
+    s.home.set("files/grimoire/photos/Trip");
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "home=files/grimoire/photos/Trip"));
+    s.home.clear();
+    check!(settings_save(&s) == 0 && !any_home_line(&path));
     unlink(&path);
 }
 
@@ -1352,6 +1395,7 @@ fn test_store() {
     run!(shape_corner_key);
     run!(font_key);
     run!(files_keys);
+    run!(home_key);
     run!(whatsnew_due_after_every_update);
     run!(gesture_keys);
     run!(rotation_lock_key);

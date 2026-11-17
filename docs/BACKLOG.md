@@ -4,30 +4,87 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Files' rename, delete and restore (2.2, issue #144): what waits
+
+Built: Rename and Delete on the cards inside Grimoire's folders for the user's files, the name rules' words, Delete's
+question, "Importing now.", a folder card's check by identity, the Trash place's sizes and the trash's on its row,
+Restore for files, folders and notebooks, the font in use (docs/DESIGN.md, "Files: rename, delete and restore").
+Waiting:
+
+- **Not in 2.2** (the owner's decision): Move (Import to Templates or Photos by kind, between them, to Import)
+  and New folder in Import. **Never**: Empty (the trash is cleaned over USB). **Not built**: Restore for a page
+  (its place in its notebook was never kept; an optional extra in the plan).
+- **A held item's row is not greyed**: its card still offers Rename and Delete, and each says "Importing now." when
+  tapped (the busy check is one per tap, not one per row drawn).
+- **The Delete question's wait is a fixed time**: an answer counts 450 ms after the question's frame was sent to the
+  panel (`PEN_REOPEN_MS`, docs/DESIGN.md, "The question is seen before it is answered"), not when the panel says the
+  frame is up. A frame takes about 270 ms to show at room temperature and longer in the cold
+  (docs/INK-PERFORMANCE.md); the driver's books know when a grayscale update has ended, and only display_fbink.rs
+  reads them (`display_fast_busy` tells of fast updates alone). Asking the display would make the wait exact. Not
+  timed on the Scribe (TESTING.md, the device checks' step 2 has the two taps). The Library's own question is asked
+  once, as it opens: turned while it is up, it is drawn at its new place and its Delete answers at once, where Files'
+  is asked anew.
+- **A name taken on rename** says "That name is taken." and keeps the keyboard up with the name; the plan's "offer
+  Name 2" is not built (Restore does give " 2").
+- **Names the keyboard cannot show as they are** are not offered to it: 96 bytes and more ("Name too long."), or
+  with a control character ("Name can't contain U+0009"). Rename them over USB.
+- **The trash past 5,000 entries**: the Trash place lists the newest 5,000 (its listing reads the whole folder, a
+  slice at a time, and lets the oldest go); the older ones are reached over USB. The size walk counts every entry.
+- **The size walk** runs once a session (from Files' root or its Trash place) and again, whole, after each delete or
+  restore (a slice a tick, while the root or the Trash place shows; the rows keep the sizes they had meanwhile).
+  Adding and taking one entry's bytes in place would spare the walks, at the price of a total that can drift from
+  what is on the storage. A row whose entry the walk did not see (put there over USB since) shows no size, and is
+  looked up again each tick among the walk's entries (at most a screen of rows, each against at most the trash's
+  names). A trash changed over USB while Files is open is measured again only at the next write. Not timed on the
+  Scribe (TESTING.md, "2.2, Files' rename, delete and restore (issue #144): device checks").
+- **A folder named as Grimoire's on a storage that keeps case apart**: the allow-list knows Grimoire's folders by
+  name without regard to ASCII case (fsview's zones, from the storage writes), so a second folder such as
+  `Grimoire/photos` beside the real one would be offered Rename and Delete too. Everything stays inside the user's
+  own files and can be restored; knowing the folders by identity, as notebooks and the trash are known, is the
+  storage layer's to add.
+- **A trash entry's row** says its size and date, not what it is (a notebook, a file), and a file restored as " 2"
+  is told with its folder alone: both would need new words.
+- **The font in use** (Settings' `font`, and its `font_bold`): Delete refuses it ("Font in use."), and Rename takes
+  the setting and what its check found along. Left: a Bold file Grimoire found by itself (no `font_bold` line) can
+  be deleted, and bold is then the regular overprinted from the next start; a font renamed or deleted over USB
+  leaves the setting as it was, as before ("File missing." in the Font sheet). A folder of fonts renamed has its
+  files listed and stat-ed at once on the UI thread (a font folder is small; at most 5,000 names).
+- **Japanese** for the new words: nebuff's (#55); they show in English until then.
+
 ## Files (2.2, issue #124): what waits
 
 Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
 level), the path bar inside Files only, Go to, Sort, Show, a card for every kind of file, the trash listed read
-only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"). Waiting,
-each for its own issue:
+only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"); previews and
+the Covers view (issue #145; "Files: previews and the Covers view"); the home folder (issue #160; "Files: home").
+Waiting, each for its own issue:
 
-- **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
-  folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
-  (the action) goes to the Library's top (`library_home`, where a set home starts).
-- **Rename and Trash on screen** in Grimoire's writable folders (Import, Templates, Photos, Fonts), with the name
-  rules and "Importing now.", on the storage layer's writes (issue #117); **Restore** on the trash's rows
-  (`RowKind::Trashed`) for files and notebooks, never Empty; the trash's size on its row. Pages in the trash are
-  listed by their notebook's name; their Restore is optional.
-- **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
-  the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
-  font's sample and coverage).
-- **Add to fonts** on a font's card, with the Font sheet's Add a font... and its Kindle fonts row: not built. They
-  waited for the font check's hardening (#111), which is merged now. The From a file... tiles and a picture's Use
-  as template and Use as photo are built (#146, the section below).
+- **Home (issue #160): calls for the owner to confirm**, each the smallest coherent reading: a Library folder
+  that is home keeps its Back button (the Library has no path bar to lead up), and Esc there goes up as that button
+  does ("Exit Grimoire?" is asked at a home inside Files, which has no Back button, and at the Library's top); no
+  Set folder as home on a file's card (the Go to sheet's row sets the folder shown); a home inside Files opens Files
+  even while its card is hidden; a home that is gone goes back to Notebooks at once, not kept for a folder that may
+  come back; a home folder deleted in Grimoire puts home back to Notebooks at once and quietly (a Restore does not
+  make it home again). Not tried on the Scribe: docs/TESTING.md, "2.2, Home (issue #160): device checks".
+- **Rename and Trash on screen** and **Restore** in the Trash place: built with issue #144 (above).
+- **After the previews (issue #145)**: the details a card can only have from the worker (a PDF's pages, a
+  picture's size, a font's coverage) and a preview on a file's card; Covers as the default for Templates and Photos
+  (today one View setting holds for every place); a second child for file previews beside the first (bgjob's
+  `extra_slot` takes page previews only), so previews need not wait for a long import; the previews' times (3 s a
+  PDF's page and a font's sample, 6 s a picture) set from the Scribe's own numbers, which docs/TESTING.md asks for;
+  the last screens' previews kept in memory, so that a turn back shows them with the turn's own refresh (today a
+  screen that comes back is read from the cache in a second refresh); the preview of a file Files itself renames
+  or trashes dropped at once (today the daily sweep takes it); the cache's folder held by a descriptor and its
+  entries reached with the `*at` calls (today a link check by path, then the path); a whole session without
+  previews once a worker's sandbox step failed in a previews job (today each file is asked for once a visit, and
+  a step that failed in the app's own process stops them); the language fit check of the path bar's three chips
+  (y_all_screens visits the picker's root only, not a place of Files); the font sample's text is fixed Latin
+  ("Aa", "Abc 123"), so a font of kana or kanji alone is refused as the check refuses it. Not timed on the
+  Scribe: docs/TESTING.md, "2.2, Files' previews and the Covers view (issue #145): device checks".
 - **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
-  Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files; Esc at a home root asking "Exit
-  Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
-  too far, the other reading (the last card of the first screen) is a change in `reload` alone.
+  Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files. The card is the last card of the top level,
+  which in a big Library is the last screen: if that is too far, the other reading (the last card of the first
+  screen) is a change in `reload` alone.
 - **Not timed on the Scribe**: Sort by newest or size stats a whole folder (up to 5,000 entries) in 20 ms slices
   on the UI thread; the Go to sheet reads the storage root at once on the tap, at most 200 ms in all (a root that
   takes longer lists the folders read by then). TESTING.md, "2.2, Files (issue #124): device checks".
@@ -38,10 +95,6 @@ Built: a picture's Use as template and Use as photo in Files, and the From a fil
 Templates and Photos sheets, over New notebook and over a notebook's page (docs/DESIGN.md, From a file... and Use
 as template). Waiting:
 
-- **Add a font...** in the Font sheet (with the Kindle fonts row) and **Add to fonts** on a font's card in Files:
-  the same copy job into `grimoire/fonts` (it refuses a font over the font check's limit already), on the Font
-  sheet as nebuff's Settings work has it. The font check's hardening they waited for (#111) is merged now; they are
-  a change of their own.
 - **Defaults taken here, for the owner to confirm**: the tile is the sheet's last (no picture's tile moves for it;
   in a big folder it is on the last page); the picture pick's title is "From a file..." and its root has no Import
   place; a copy that went in is told by "Copied to Templates." (or Photos) unless its sheet is in front; a copy
@@ -56,6 +109,32 @@ as template). Waiting:
   offers the other way. No new string was the rule here; the sentence may be reworded with the next strings.
 - **Not timed on the Scribe**: a big photo's copy and preview. docs/TESTING.md, "2.2, From a file... and Use as
   template (issue #146): device checks".
+
+## Add a font... and Add to fonts (2.2, issue #161): what waits
+
+Built: the Font sheet's Add a font... row and the font pick it opens (the Kindle's own fonts folder first), and a
+font's Add to fonts in Files, both by the copy job into `grimoire/fonts`, where the font check decides as for a
+file copied over USB (docs/DESIGN.md, Add a font... and Add to fonts). Waiting:
+
+- **Defaults taken here, for the owner to confirm**: the row is the list's last item (no font's row moves for
+  it; with a full last page it is the next page's only row) and a plain row with a plus, as the Templates sheet's
+  tile is its last; the pick opens at its root, the Kindle's fonts folder its first row, and has no Import; after a
+  copy asked the user is back on the sheet, the row waiting (an hourglass, no tap) until the copy has ended, then
+  the new file listed with "Checking..." and its page shown; an added font is listed, never applied by the copy (a
+  tap applies it); a name taken in `grimoire/fonts` gives " 2", as every copy does; a copy that went in while the
+  sheet is in front is told by its row, elsewhere by "Copied to Fonts."; the Kindle's folder lists `.ttf` and
+  `.otf` only.
+- **Not offered**: collections (`.ttc`, `.otc`), which the check takes (their first face) when copied over USB, and
+  which the Kindle's own font feature may have put in its folder: the pick and Files' cards keep to the `.ttf` and
+  `.otf` the sheet's own text names. Offering them is a change in `is_font` (browser.rs), with fonts.md 7.I (each
+  face its own row) the larger step.
+- **Over a notebook's page** (Settings opened from the editor) the Font sheet has no Add a font... row: the
+  Library's picker is drawn on the Library's screen only. The editor hosts a picker of its own for its Paper
+  sheets; hosting the font pick there too would bring the row back.
+- **After a job's "File changed. Try again."** the pick, like Files, still lists the folder as it was read (the
+  section above has the same for pictures).
+- **Not run on the Scribe**: docs/TESTING.md, "2.2, Add a font... (issue #161): device checks" (the Kindle's own
+  folder on a real firmware, a copy's time, what a copy cut short leaves).
 
 ## After the release of 2.1.0 (2026-11-13): what waits
 
@@ -75,35 +154,31 @@ as template). Waiting:
 ## Files' storage writes (2.2, issue #117): what waits
 
 The storage layer writes now (docs/DESIGN.md, Files' storage writes): rename, trash with its record, restore,
-the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on screen calls them yet.
+the name rules, the busy check and the copy job (`BgKind::CopyFile`). Files' cards and its Trash place call rename,
+trash and restore since issue #144, and a picture's Use as template and Use as photo and the From a file... tiles
+call the copy since issue #146 (each its own section, above).
 
 - **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
   font...):
-  - Their words for each refusal: "File changed. Try again." (`Changed`), "Importing now." (`Busy`), "Name can't
-    contain %s" (`NameRule::Char`) and words for the other rules (empty, too long, a space at either end, a dot at
-    the start or the end, the extension kept), a name taken on rename (`Exists`: offer " 2"), "Couldn't restore.
-    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
-    a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
-    storage full?" for a failed copy with no sentence of its own (the job's exit status names the others since
-    issue #146). None is a string yet.
-  - The Trash place (issue #124) lists through `fsview_trash_entries` and reads, for the rows on screen, a
-    file's record (`FsStorage::trash_record`) and a notebook's `trash/<entry>/notebook.ini` (no store function
-    reads a notebook there yet); Restore on its rows waits. The Trash's size on its row is a walk of its own, not
-    built. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only grows
-    (every deleted page is an entry), so past 5,000 the place would sort an arbitrary 5,000, not the newest: the
-    screens decide what it shows then.
-  - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
-    check) brings it back to the Graph; its mirror PDF is made at its next change.
+  - The refusals' words came with issue #144 (rename, trash, restore; "Restored to %s.", and nothing said for an
+    entry a cut-off trash left) and, for a copy, with issue #146: "Couldn't copy file. Is the storage full?" for a
+    failed copy with no sentence of its own (the job's exit status names the others).
+  - The Trash place's Restore, its sizes, and the Library read again after a notebook's restore (with
+    `libindex_revalidate()` in `store_restored`) came with issue #144; a restored notebook's mirror PDF is made at
+    its next change. The trash only grows (every deleted page is an entry): past 5,000 entries its listing
+    (`FsListing::start_trash`) keeps the newest 5,000, so what was deleted last is always listed.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
     sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
-  - A held item: its row greyed and its card's Rename and Delete saying "Importing now.", from `FsStorage::busy`.
 - **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,
   between them, to Import) and New folder in Import (the owner decides whether they are 2.2's); Restore for a
   page (its place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2
   reads that form and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
-- **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
-  that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
-  shows.
+- **What counts as busy**: what an import works on, and since issue #144 a template or photo picked for a page
+  until the job that copies its picture into the notebook has ended (`bg_job_pictures`). Not the source of a copy
+  into Grimoire's folders (`BgKind::CopyFile`: Use as template, Use as photo and the From a file... tiles since
+  issue #146): that job refuses a source that changed or is gone and leaves nothing behind, so a picture of
+  Grimoire's folders renamed or deleted in Files before its copy has opened it is not copied ("File changed. Try
+  again.").
 - **The fallback's last moment.** Where the storage refuses the no-replace flag, a rename reserves the new name
   and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
   copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the
@@ -233,6 +308,24 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
+
+## The sandbox's steps for a platform kept in another crate (`linux-kernel`, #148): what waits
+
+- **The picture and font workers have not run on such a device.** Only the PDF worker did (three runs, PR
+  #150). They take the same steps and the same filter, with other parsing code, so another call of that
+  platform's C library may show up there.
+- **The address-space limit counts only what is mapped after the first step.** On such a device the
+  allocator reserves its regions when the program starts; memory it hands out from them later is not counted
+  (`as_limit`). The CPU limit, NOFILE 0, NPROC 0 and the allow-list hold as on the Kindle. A bound on the
+  allocator's own use would need its own setting there.
+- **No test runs the feature's rules.** CI's sandbox job type-checks the library and the tests with the
+  feature (`cargo check --features "sim linux-kernel"`); nothing runs a real worker that says `S 2`. A run
+  under the feature in the Linux job (not as root, not required) would need the unit tests that assume the
+  feature off split by it.
+- **The whole sandbox with the feature (`GRIMOIRE_SANDBOX=require`, as root) has not been run on such a
+  device.**
+- **The prctl numbers for arm and x86_64** in `LINUX_KERNEL_ENOSYS` are the kernel's; only aarch64's was seen
+  on a device.
 
 ## Hardening round (2026-11), sandbox: what waits
 
@@ -582,7 +675,6 @@ the device checks. Where the plan did not settle a thing, what the lane chose, f
 
 What waits:
 
-- **Add a font...** (the Kindle's own fonts folder, copied in) comes with 2.2's Files (the plan's D30).
 - **The Japanese slot** (a custom or bundled smooth Japanese face in Classic, the plan's L14, with nebuff).
   Kana and kanji of a custom font are already drawn at DotGothic16's em.
 - **Kerning for custom fonts** (GPOS pairs through read-fonts, fonts.md 7.G): none today; the bundled fonts
@@ -1575,8 +1667,8 @@ items of Document links. Left:
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
   one line in `Browser::work` if the Scribe says so.
 - **Pictures as files, fonts, the path bar, Go to, Sort, Show, View and item cards on every file** are built in
-  2.2's Files (issue #124, below). **Rename, Trash, Set as home, Covers, previews and "Making previews..."** wait
-  for the later Files work ("Files (2.2, issue #124): what waits").
+  2.2's Files (issue #124, below), and so are Rename, Trash, Covers, previews and "Making previews..." (issues
+  #144 and #145) and Set as home (issue #160); what is left waits in "Files (2.2, issue #124): what waits".
 - **A PDF being imported still offers Import as notebook** on its card in the Import place; a second tap while it
   runs is `AlreadyRunning` and says nothing (its row says Waiting or Importing).
 - **A picked folder's import has no progress** (the picture import never had: its row says Waiting until the

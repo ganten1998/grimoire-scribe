@@ -28,12 +28,37 @@
   Files, a picture's card offers Use as template and Use as photo. A copy that would leave less than 100 MB free is
   refused: "Couldn't copy file. Is the storage full?". A picture over 16 MB, which Grimoire could not use as a
   template or a photo, is not copied: "Too big (over 16 MB).".
+- **Fonts from a file.** In the Library, Settings > Font ends with Add a font...: pick a `.ttf` or `.otf` file
+  anywhere on the Kindle, the Kindle's own fonts folder first (Kindle fonts), and it is copied into
+  `grimoire/fonts`, where it is checked as a font copied over USB is: its row says "Checking..." until it can be
+  used, and nothing changes until you tap it. In Files, a font's card offers Add to fonts. The Kindle's fonts folder
+  is never changed.
+- **Files: Rename, Delete and Restore.** Inside Grimoire's own folders (Import, Templates, Photos, Fonts) a file's or
+  folder's card renames it, saying which rule a name breaks and never replacing another file, or moves it to the trash
+  after asking as the Library does for a notebook; what an import is working on says "Importing now." instead. A
+  Delete question, here and the Library's, is answered once it has been shown: the second of two quick taps at one
+  place answers nothing. The font in use is not deleted ("Font in use."), and renamed it stays the font, with no new
+  check. Files > Trash shows each entry's size, and its row the trash's, and puts a file, a folder or a notebook back
+  with Restore (" 2" when its name is taken); notebooks deleted in the Library come back the same way. No Empty: the
+  trash is cleaned over USB.
+- **Files' Covers view**: the View chip on Files' path bar shows a folder as a grid of previews (a PDF's first
+  page, a picture, a font's sample), made in the background by the sandboxed reader for the files on screen only,
+  after any export, import or font check and for a few seconds a file at most, with "Making previews..." while
+  they come. Previews are kept in `grimoire/.cache/files/` (each with its file's path), which can be deleted.
+- **Files: a home folder** (#160). Set as home, in Files' Go to sheet, on a folder's card in Files or in a Library
+  folder's menu, makes that folder the place Grimoire opens at each start and where the `home` action goes; Reset
+  home to Notebooks puts it back. At a home inside Files there is no Back button, and Esc asks "Exit Grimoire?" as
+  at the Library's top. A home that is gone shows the Library with "Home folder not found." and is Notebooks again;
+  a home folder renamed in Grimoire stays home, and one deleted in Grimoire puts home back to Notebooks.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
   `photos/` or `import/` that is a link is no longer taken: copy the file in.
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- Housekeeping: a platform kept in another crate whose system runs a Linux kernel under another name can
+  build the sandbox's steps that need no root for that process (`linux-kernel`, rust/PORTING.md). No change
+  in the app.
 - Housekeeping: the documents of the safe loader and of your own fonts say what the code does (the limit
   on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
   try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check

@@ -191,20 +191,28 @@ pub struct Settings {
     /// clears it.
     pub files_card: bool,
     /// Files' order (files_sort, FILES_SORT_NAMES: name, newest, size), what it lists (files_show,
-    /// FILES_SHOW_NAMES: usable files or all) and how (files_view, FILES_VIEW_NAMES: list). Each line is absent
+    /// FILES_SHOW_NAMES: usable files or all) and how (files_view, FILES_VIEW_NAMES: list or covers). Each line is absent
     /// at its default (the first name), and a value this build does not have is used as the default and
     /// written back as it was.
     pub files_sort: i32,
     pub files_show: i32,
     pub files_view: i32,
+    /// The home folder (2.2, issue #160): where the main menu opens at each start, as settings.ini `home=` keeps
+    /// it (home.rs: "" for Notebooks, the Library's top, which is no line in the file; `notebooks/<a Library
+    /// folder>`; `files/<a folder of the Kindle's storage>`). Always a value `Home::parse` takes: the file's line
+    /// is read strictly, and one that names no home is not kept (`home_refused`).
+    pub home: FixedStr<{ crate::home::HOME_MAX }>,
+    /// Memory only, never saved: settings.ini's `home=` named no home (a value `Home::parse` refuses), so home is
+    /// Notebooks, and the Library says "Home folder not found." once as it first shows.
+    pub home_refused: bool,
 }
 
 /// settings.ini files_sort's values, by Settings.files_sort (2.2).
 pub const FILES_SORT_NAMES: [&str; 3] = ["name", "newest", "size"];
 /// files_show's: the files Grimoire can use, or every file.
 pub const FILES_SHOW_NAMES: [&str; 2] = ["usable", "all"];
-/// files_view's: a list (Covers, which needs previews, comes later: a later version's value is kept as it was).
-pub const FILES_VIEW_NAMES: [&str; 1] = ["list"];
+/// files_view's: a list, or the previews in a grid (Covers, 2.2, issue #145).
+pub const FILES_VIEW_NAMES: [&str; 2] = ["list", "covers"];
 
 // ---- state ----
 
@@ -1569,6 +1577,44 @@ pub fn store_delete(id: &str) -> i32 {
         graph_omit_prune(); // (its folder may be gone with it)
     }
     rc
+}
+
+/// A notebook back from the trash (Files' Restore: fsview's restore put `notebooks/<id>` back, from a name
+/// store_delete gave it): a name another notebook of its Library folder has (in any ASCII case, as their PDF copies
+/// would be one file on the Kindle's storage) gets " 2", " 3" and so on, cut to fit; its modified time stays, so it
+/// goes back to its place in the Library's order. The Graph's index reads the notebooks again. Its info, as it is
+/// now, in `out`, and the Library as it is now in `all` (read here once, for the names taken: the caller needs no
+/// read of its own). 0; -1 when its notebook.ini does not read (`out` is left as it was: the Library does not list
+/// such a notebook); -2 when its new name could not be written (`out` has it under its own name, in its folder).
+pub fn store_restored(id: &str, out: &mut NotebookInfo, all: &mut Vec<NotebookInfo>) -> i32 {
+    let mut nb = NotebookInfo::default();
+    let read = store_load_info(id, &mut nb) == 0;
+    store_list(all);
+    libindex_revalidate();
+    if !read {
+        return -1;
+    }
+    *out = nb.clone();
+    let taken = |n: &[u8]| all.iter().any(|o| o.id != nb.id && o.folder == nb.folder && o.name.as_bytes().eq_ignore_ascii_case(n));
+    if taken(nb.name.as_bytes()) {
+        let base = nb.name.as_str().to_string();
+        let free = (2..1000).map(|k| {
+            let suffix = format!(" {k}");
+            format!("{}{suffix}", cut_at_bytes(&base, STORE_NAME_LEN - 1 - suffix.len()))
+        });
+        if let Some(name) = free.into_iter().find(|n| !taken(n.as_bytes())) {
+            clean_line(&mut nb.name, name.as_bytes());
+            if write_info(&nb) != 0 {
+                return -2;
+            }
+            if let Some(o) = all.iter_mut().find(|o| o.id == nb.id) {
+                o.name = nb.name.clone();
+            }
+            *out = nb;
+            libindex_revalidate();
+        }
+    }
+    0
 }
 
 fn cmp_modified(x: &NotebookInfo, y: &NotebookInfo) -> Ordering {
@@ -4910,6 +4956,20 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"files_sort" => s.files_sort = keep_named("files_sort", v, &FILES_SORT_NAMES),
         b"files_show" => s.files_show = keep_named("files_show", v, &FILES_SHOW_NAMES),
         b"files_view" => s.files_view = keep_named("files_view", v, &FILES_VIEW_NAMES),
+        // 2.2: the home folder (issue #160), read strictly (home.rs). A value that names no home is not used and
+        // not kept: home is Notebooks, the Library says so once, and the next save leaves the line out. (The
+        // value is never logged: it may hold a name.)
+        b"home" => match crate::home::Home::parse(v) {
+            Some(h) => {
+                s.home.set(&h.value());
+                s.home_refused = false;
+            }
+            None => {
+                s.home.clear();
+                s.home_refused = true;
+                qlog_once!("settings: home= names no home (%d bytes): Notebooks", v.len() as i32);
+            }
+        },
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
         b"clock_12h" => s.clock_12h = keep_bool("clock_12h", v),
         b"shapes" => s.shapes = keep_bool("shapes", v),
@@ -5302,6 +5362,11 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_unless_default(&mut b, "files_sort", named(&FILES_SORT_NAMES, s.files_sort), FILES_SORT_NAMES[0]);
     put_unless_default(&mut b, "files_show", named(&FILES_SHOW_NAMES, s.files_show), FILES_SHOW_NAMES[0]);
     put_unless_default(&mut b, "files_view", named(&FILES_VIEW_NAMES, s.files_view), FILES_VIEW_NAMES[0]);
+    // 2.2: the home folder (issue #160), a line only while home is not Notebooks. Written only when it still reads
+    // as a home (whatever set the field), so the file never gains a value this build would refuse.
+    if crate::home::Home::parse(s.home.as_bytes()).is_some() {
+        put_unless_default(&mut b, "home", s.home.as_str(), "");
+    }
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

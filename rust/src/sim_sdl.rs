@@ -2277,6 +2277,25 @@ fn script_step_in(st: &mut State) -> Step {
             st.power_key(InType::PowerHeld, INPUT_POWER_HOLD_MS);
             st.power_key(InType::PowerUp, INPUT_POWER_HOLD_MS + 200);
             return Step::Batch;
+        } else if a == b"storage" && b == b"move" {
+            // storage move SRC DST: a path on the storage root (GRIMOIRE_STORAGE) renamed to another, as a writer over
+            // USB would while Grimoire runs (each a storage path, _ for a space; nothing replaced, no link followed:
+            // the rename is of the entry itself). A move that fails, or a path that is no storage path, fails the line.
+            let w: Vec<String> = [sc.word(599), sc.word(599), sc.word(15)].into_iter().flatten().map(|x| String::from_utf8_lossy(x).replace('_', " ")).collect();
+            let root = crate::pdfimport::storage_root();
+            let ok = match (root, w.as_slice()) {
+                (Some(root), [from, to]) if crate::fsview::StoragePath::new(from.as_bytes()).is_some_and(|p| !p.is_root())
+                    && crate::fsview::StoragePath::new(to.as_bytes()).is_some_and(|p| !p.is_root()) =>
+                {
+                    let (f, d) = (format!("{}/{from}", root.trim_end_matches('/')), format!("{}/{to}", root.trim_end_matches('/')));
+                    std::fs::symlink_metadata(&d).is_err() && std::fs::rename(&f, &d).is_ok()
+                }
+                _ => false,
+            };
+            if !ok {
+                err(&bformat("script: storage move failed: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+            }
         } else if a == b"storage" {
             // storage full: every file write fails from now on (a full userstore); storage ok
             SIM_STORAGE_FULL.store(b == b"full", Ordering::Relaxed);

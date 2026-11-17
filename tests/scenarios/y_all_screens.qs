@@ -1445,7 +1445,8 @@ expect library.sheet is folder-more
 shot 53-folder-more-landscape
 expect library.ui_at.1240.690 is fmore.move
 expect library.ui_at.1240.850 is fmore.graph
-expect library.ui_at.1240.1170 is done
+expect library.ui_at.1240.1010 is fmore.home
+expect library.ui_at.1240.1330 is done
 tap library done
 wait 50
 expect library.sheet is none
