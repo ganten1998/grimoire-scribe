@@ -233,7 +233,8 @@ pub fn pdf_pages_counted(t: &[Template]) -> bool {
 
 // ---- the job ----
 
-// (tests) What runs in this thread after each page a job made, with the page's number: a test changes the file there.
+// (tests) What runs in this thread right after a slice's page count (with 0) and after each page a job made (with the
+// page's number): a test changes the file, or the room, there.
 #[cfg(feature = "sim")]
 type AfterPage = Option<Box<dyn FnMut(u32)>>;
 #[cfg(feature = "sim")]
@@ -241,7 +242,8 @@ thread_local! {
     static AFTER_PAGE: std::cell::RefCell<AfterPage> = const { std::cell::RefCell::new(None) };
 }
 
-/// (tests) `f` runs in this thread after each page the next jobs make, until `sim_after_page_clear`.
+/// (tests) `f` runs in this thread right after the next jobs' page counts (with 0) and after each page they make (with
+/// its number), until `sim_after_page_clear`.
 #[cfg(feature = "sim")]
 pub fn sim_after_page(f: impl FnMut(u32) + 'static) {
     AFTER_PAGE.with(|a| *a.borrow_mut() = Some(Box::new(f)));
@@ -386,6 +388,7 @@ impl Run<'_> {
         self.limits = Limits { as_bytes: worker_as_bytes(size, band_mode), cpu_secs: s1::SLICE_CPU_SECS, mapped, file_len: size };
         // the page count: the worker's probe, which every slice asks again (the slice's first worker)
         let n = self.count()?;
+        after_page(0);
         if n > TEMPLATE_PDF_MAX_PAGES {
             return Err(Stop::Bad(format!("{n} pages, more than the {TEMPLATE_PDF_MAX_PAGES} a template PDF may have")));
         }

@@ -381,6 +381,19 @@ fn a_pdf_changed_while_its_pages_are_made() {
         let t = scan();
         check!(names(&t) == ["Swap p. 1", "Swap p. 2", "Swap p. 3", "Swap p. 4"] && t.iter().all(|t| t.ready));
     }
+    // written over right after its pages were counted, before any page: the count is not kept (nor said), nothing is
+    // made or marked
+    folder(&[("Swap.pdf", pdffix::planner(3))]);
+    let dir = tpl();
+    sim_after_page(move |k| {
+        if k == 0 {
+            std::fs::write(format!("{dir}/Swap.pdf"), pdffix::planner(4)).unwrap();
+        }
+    });
+    let (rc, log) = with_log("swap-count", || job("Swap.pdf"));
+    sim_after_page_clear();
+    check!(rc == -1 && log.contains("a PDF changed while its pages were made"));
+    check!(!log.contains("a PDF of 3 page(s)") && cache_names().is_empty());
     clean_env();
 }
 
@@ -403,6 +416,22 @@ fn no_room_makes_nothing() {
     check!(rc == -1 && cache_names().len() == 4 && log.contains("not enough room on the storage"));
     clean_env();
     check!(job_to_end("Planner.pdf").0 == 0 && scan().len() == 2);
+    // no room from the middle of a slice on (after page 1 of a slice that could take all three): the floor is looked
+    // at again before each page's worker is asked, so page 2's is never asked (here it would crash it, twice, and the
+    // page would be marked); page 1 is kept, page 2 neither drawn nor marked
+    std::env::set_var("GRIMOIRE_PDF_TEST_CRASH_PAGE", "2");
+    folder(&[("Three.pdf", pdffix::planner(3))]);
+    let h = hash("Three.pdf");
+    sim_after_page(|k| {
+        if k == 1 {
+            std::env::set_var("GRIMOIRE_PDF_FREE_BYTES", "50000000");
+        }
+    });
+    let (rc, log) = with_log("room-in-slice", || job("Three.pdf"));
+    sim_after_page_clear();
+    check!(rc == -1 && log.contains("not enough room on the storage") && !log.contains("page 2 of a PDF"));
+    check!(cache_names() == [format!("{h}-p0001.key"), format!("{h}-p0001.pgm"), format!("{h}-p0001.png"), format!("{h}.pages")]);
+    clean_env();
 }
 
 /// clean_env, with the slice length given kept.

@@ -803,6 +803,17 @@ fn pdfs_as_templates_are_told_as_they_are() {
     // written only in Grimoire's own folder, reached with no link; the floor before every page
     told_on(&mut fails, DESIGN, "into a cache folder reached with no link on the way", TPLPDF, "if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {");
     told_on(&mut fails, DESIGN, "the free-space floor before every page", TPLPDF, "Some(free) if !crate::fsview::fsview_room_for(free, need) =>");
+    // ... at each of its two places: before a page's worker is asked, and with the page's real size before it is kept
+    told_on(&mut fails, DESIGN, "room for a page before its worker is asked", TPLPDF, "self.room(PAGE_ROOM)?; match self.page(k)? {");
+    told_on(&mut fails, DESIGN, "and for its picture and preview before they are written", TPLPDF, "if let Err(e) = self.room(need) {");
+    // a file changed while its pages are made: the count is not kept either
+    told_on(
+        &mut fails,
+        DESIGN,
+        "The job checks before it keeps the count and before it keeps each page",
+        TPLPDF,
+        "if !self.same() { return Err(Stop::Changed); } if known != Some(n) {",
+    );
     // a file changed while its pages are made: nothing of it after the change is kept
     told_on(
         &mut fails,
