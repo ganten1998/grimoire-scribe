@@ -18,7 +18,7 @@
 //! the layout follow automatically, and so do the submenus built from `MenuRow`s (they are drawn with
 //! the same `ui_row`). `Show::ClassicOnly` hides a row in Gothic, as the Font row already is.
 
-use crate::i18n::n_;
+use crate::i18n::{n_, nc_};
 use crate::light::Services;
 use crate::store::Settings;
 use crate::ui::IconKind;
@@ -87,6 +87,8 @@ pub enum Label {
     SideButton,
     Eraser,
     Mirror,
+    /// Darker lines in imported PDFs, with the level in use (2.2, issue #173).
+    DarkerLines,
 }
 
 /// What a row does. `library::setting_hit` maps it to the hit id that `act` already handles.
@@ -113,6 +115,7 @@ pub enum SettingId {
     KOReader,
     Updates,
     AboutDevice,
+    DarkerLines,
 }
 
 /// The state a check row shows, or None for a row drawn as text.
@@ -197,6 +200,18 @@ pub static ERASER_LABELS: [&str; 2] = [
     n_("Takes away only what it touches"),
 ];
 
+/// Darker lines in imported PDFs (settings.ini pdf_gamma, by `pdfwork::Gamma`'s index): the levels, as the row shows
+/// the one in use and its list offers them (2.2, issue #173). Translated with their context, `c_(DARKER_CTX, ..)`.
+pub const DARKER_CTX: &str = "darker lines";
+pub static DARKER_NAMES: [&str; 3] = [
+    // TRANSLATORS: Settings' System category, the row that opens the darker lines choices, with the one in use
+    // ("Darker lines in imported PDFs: Off"), and its list's three choices: the gray pages of a PDF imported from
+    // now on are drawn as they are, a little darker, or darker still (faint lines read better on the Kindle).
+    nc_("darker lines", "Off"),
+    nc_("darker lines", "Medium"),
+    nc_("darker lines", "Strong"),
+];
+
 /// The style row's two labels: the current theme in parentheses, as Rotation names its two
 /// orientations.
 pub const STYLE_GOTHIC: &str = n_("Style (Gothic)");
@@ -213,7 +228,8 @@ pub const DISPLAY_NO_LIGHT: &str = n_("Display");
 // (language, updates, Wi-Fi), Display's (front light, theme, dark mode, font, rotation, zoom), Sleep &
 // Clock's (sleep screen, timer, clock), the Pen's (tool settings, its button, the eraser, calibration),
 // Controls'
-// (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring, about the device).
+// (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring, about the device, darker lines in
+// imported PDFs).
 pub static CATEGORIES: &[Category] = &[
     Category::new(n_("General"), IconKind::Gear, &[
         Item::value(IconKind::Language, Label::Language, SettingId::Language),
@@ -259,6 +275,7 @@ pub static CATEGORIES: &[Category] = &[
         // TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
         // storage used.
         Item::open(IconKind::Castle, n_("About: device and storage"), SettingId::AboutDevice),
+        Item::value(IconKind::Pdf, Label::DarkerLines, SettingId::DarkerLines),
     ]),
 ];
 
@@ -317,8 +334,8 @@ mod tests {
         assert_eq!(ids(2), vec![SettingId::SleepSettings, SettingId::ClockSettings]);
         assert_eq!(ids(3), vec![SettingId::PenFeel, SettingId::SideButton, SettingId::EraserMode, SettingId::Calibration]);
         assert_eq!(ids(4), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
-        assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror, SettingId::AboutDevice]);
-        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 21);
+        assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror, SettingId::AboutDevice, SettingId::DarkerLines]);
+        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 22);
 
         assert_eq!(text(2, 0), "Sleep settings");
         assert_eq!(text(2, 1), "Clock settings");
@@ -353,6 +370,9 @@ mod tests {
         assert!(matches!(CATEGORIES[0].items[0].label, Label::Language));
         assert!(matches!(CATEGORIES[5].items[1].label, Label::Mirror));
         assert!(matches!(CATEGORIES[5].items[1].check, Check::MirrorPdf));
+        assert!(matches!(CATEGORIES[5].items[3].label, Label::DarkerLines));
+        assert!(matches!(CATEGORIES[5].items[3].show, Show::Always));
+        assert_eq!(DARKER_NAMES, ["Off", "Medium", "Strong"]);
         assert_eq!((SIDE_BUTTON_NAMES.len(), SIDE_BUTTON_LABELS.len()), (4, 4));
         assert_eq!((ERASER_NAMES.len(), ERASER_LABELS.len()), (2, 2));
     }

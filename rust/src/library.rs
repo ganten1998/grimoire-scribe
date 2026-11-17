@@ -58,6 +58,9 @@ enum Modal {
     LinkQr = 395,
     /// The Files card's menu (2.2, Rust only; a number of its own as LinkQr's): Open, Hide from Library, Cancel
     FilesMore = 397,
+    /// Settings > System > Darker lines in imported PDFs (2.2, issue #173, Rust only; a number of its own, beside the
+    /// eraser's): Off, Medium, Strong, as the eraser's list
+    DarkerLines = 385,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -228,6 +231,11 @@ const H_FILES_HIDE: i32 = 198;
 // A folder's menu's home row (2.2, issue #160): Set as home, or on the folder that is home, Reset home to Notebooks
 // (arg: 1 for the reset). Numbered apart from the ids above, which other work adds after.
 const H_FMORE_HOME: i32 = 210;
+// Settings > System's Darker lines in imported PDFs row (2.2, issue #173), its list's choices (arg: the level, 0 Off,
+// 1 Medium, 2 Strong: pdfwork::Gamma's index) and its Back. (Numbered in 250 to 259, apart from other work's ids.)
+const H_SET_DARKER: i32 = 250;
+const H_DARKER_PICK: i32 = 251;
+const H_DARKER_BACK: i32 = 252;
 // Settings > Wi-Fi's top controls and lists: Nearby/Saved (arg: 0 or 1), Rescan, Other... (a hidden
 // network), a saved row's trash (arg: a row), and a network a scan found (arg: an index of
 // WifiSheet.near). The saved rows keep H_WIFI_NET.
@@ -4816,6 +4824,7 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
         KOReader => H_KOREADER,
         Updates => H_UPDATES,
         AboutDevice => H_SET_DEVICE,
+        DarkerLines => H_SET_DARKER,
     }
 }
 
@@ -4964,6 +4973,19 @@ fn draw_settings(a: &mut App) {
                     160,
                     tr("Eraser: %s"),
                     tr(settingsmenu::ERASER_NAMES[clampi(settings.eraser_mode, 0, 1) as usize])
+                );
+                &label_buf
+            }
+            settingsmenu::Label::DarkerLines => {
+                label_buf.clear();
+                csnprintf!(
+                    &mut label_buf,
+                    160,
+                    // TRANSLATORS: Settings' System category row that opens the darker lines choices, with the one in
+                    // use ("Darker lines in imported PDFs: Medium"): how dark the gray pages of a PDF imported from now
+                    // on are drawn. A PDF already imported stays as it is.
+                    tr("Darker lines in imported PDFs: %s"),
+                    c_(settingsmenu::DARKER_CTX, settingsmenu::DARKER_NAMES[clampi(settings.pdf_gamma, 0, 2) as usize])
                 );
                 &label_buf
             }
@@ -6115,6 +6137,19 @@ fn draw_modal(a: &mut App) {
             // TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
             draw_pick_sheet(a, tr("Eraser"), &rows, H_ERASER_PICK, H_ERASER_BACK);
         }
+        Modal::DarkerLines => {
+            let cur = clampi(a.settings.pdf_gamma, 0, 2);
+            let rows: Vec<(String, i32, bool)> = settingsmenu::DARKER_NAMES
+                .iter()
+                .enumerate()
+                .map(|(i, label)| (c_(settingsmenu::DARKER_CTX, label).to_string(), i as i32, i as i32 == cur))
+                .collect();
+            // TRANSLATORS: the title of the list of how dark the gray pages of a PDF imported from now on are drawn
+            // (Settings > System): Off, Medium, Strong.
+            let title = tr("Darker lines in imported PDFs");
+            // (one column, so the levels read in their order)
+            draw_pick_cards(a, title, &rows, H_DARKER_PICK, H_DARKER_BACK, 1);
+        }
         Modal::DeviceInfo => draw_device(a),
         Modal::LinkQr => draw_link(a),
         Modal::Kb => {
@@ -6378,6 +6413,12 @@ fn draw_link(a: &mut App) {
 /// A Settings submenu of choices, as Language's: the page's chrome, the choices as cards in two
 /// columns (the chosen one filled), and a tap picking one. `rows` is (label, arg, chosen).
 fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick: i32, back: i32) {
+    draw_pick_cards(a, title, rows, pick, back, 2);
+}
+
+/// `draw_pick_sheet` with the cards in `cols` columns (1 or 2), each filled top to bottom before the next: one
+/// column for choices that read as a scale (Darker lines' Off, Medium, Strong, issue #173).
+fn draw_pick_cards(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick: i32, back: i32, cols: i32) {
     let (aw, ah) = (a.w, a.h);
     let App { screen: c, lib, .. } = a;
     let s = lib.as_deref_mut().unwrap();
@@ -6387,8 +6428,9 @@ fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick:
     let in_ = page.content;
     let gap = ui_px(16.0);
     let n = rows.len() as i32;
-    let per = (n + 1) / 2;
-    let cw = (in_.w - gap) / 2;
+    let cols = cols.clamp(1, 2);
+    let per = (n + cols - 1) / cols;
+    let cw = (in_.w - (cols - 1) * gap) / cols;
     let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(90.0), ui_px(130.0));
     for (k, (label, arg, selected)) in rows.iter().enumerate() {
         let col = k as i32 / per;
@@ -6516,6 +6558,7 @@ fn settings_sheet(m: Modal) -> bool {
             | Modal::Language
             | Modal::SideButton
             | Modal::EraserMode
+            | Modal::DarkerLines
             | Modal::DeviceInfo
             | Modal::LinkQr
             | Modal::Updates
@@ -7404,6 +7447,23 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_ERASER_BACK => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        // Darker lines in imported PDFs (settings.ini pdf_gamma, 2.2): the imports queued from now on draw their gray
+        // pages at it; a PDF already imported, or one queued already, keeps its own.
+        H_SET_DARKER => open_modal(a, Modal::DarkerLines),
+        H_DARKER_PICK => {
+            let pick = clampi(h.arg, 0, 2);
+            if a.settings.pdf_gamma != pick {
+                a.settings.pdf_gamma = pick;
+                settings_save(&a.settings);
+            }
+            crate::pdfimport::set_darker(crate::pdfwork::Gamma::from_index(pick));
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_DARKER_BACK => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -8452,7 +8512,7 @@ pub fn library_back(a: &mut App) -> bool {
             redraw(a, RefreshMode::Ui);
         }
         Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi
-        | Modal::SideButton | Modal::EraserMode | Modal::DeviceInfo => {
+        | Modal::SideButton | Modal::EraserMode | Modal::DarkerLines | Modal::DeviceInfo => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -9291,6 +9351,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "pen-button");
     } else if key == "sheet" && s.modal == Modal::EraserMode {
         csnprintf!(out, cap, "eraser-mode");
+    } else if key == "sheet" && s.modal == Modal::DarkerLines {
+        csnprintf!(out, cap, "darker-lines");
     } else if key == "sheet" && s.modal == Modal::DeviceInfo {
         csnprintf!(out, cap, "about-device");
     } else if key == "sheet" && s.modal == Modal::LinkQr {
@@ -9469,6 +9531,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_SET_LANGUAGE => "language", H_LANG_PICK => "language.", H_LANG_BACK => "language.back",
                 H_SET_SIDE => "pen-button", H_SIDE_PICK => "pen-button.", H_SIDE_BACK => "pen-button.back",
                 H_SET_ERASER => "eraser-mode", H_ERASER_PICK => "eraser-mode.", H_ERASER_BACK => "eraser-mode.back",
+                H_SET_DARKER => "darker-lines", H_DARKER_PICK => "darker-lines.", H_DARKER_BACK => "darker-lines.back",
                 H_SET_PINCH => "pinch", H_SET_MIRROR => "mirror",
                 H_SET_DEVICE => "about-device", H_DEVICE_BACK => "about-device.back",
                 _ => "",
@@ -9476,7 +9539,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             if hit.id == H_LANG_PICK {
                 name.push_str(i18n_language_code(hit.arg).unwrap_or("auto"));
             }
-            if matches!(hit.id, H_SIDE_PICK | H_ERASER_PICK) { name.push_str(&hit.arg.to_string()); }
+            if matches!(hit.id, H_SIDE_PICK | H_ERASER_PICK | H_DARKER_PICK) { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_FONT_PICK {
                 name.push_str(FONT_FAMILIES.get(hit.arg as usize).map_or("", |f| f.id));
             }
@@ -11613,6 +11676,61 @@ mod tests {
         act(&mut a, &Hit { r: RECT_EMPTY, id: H_ERASER_PICK, arg: 1 });
         assert_eq!(a.settings.eraser_mode, 1);
         assert_eq!(lib(&mut a).modal, Modal::Settings);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > System > Darker lines in imported PDFs (2.2, issue #173): the row shows the level in use and opens
+    // its list as the eraser's does; a pick is saved, is what the imports queued from then on are drawn at, and comes
+    // back to Settings. Back changes nothing.
+    #[test]
+    fn darker_lines_row_opens_its_list_and_a_pick_is_kept() {
+        let root = std::env::temp_dir().join(format!("grimoire-darker-lines-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        crate::pdfimport::set_darker(crate::pdfwork::Gamma::Off);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 5;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        assert!(a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SET_DARKER), "the System row");
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_DARKER, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::DarkerLines);
+        for level in 0..3 {
+            assert!(a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_DARKER_PICK && h.arg == level), "choice {level}");
+        }
+        // the levels read in their order: one column, Off at the top, Medium under it, Strong last
+        let card = |a: &App, level: i32| a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_DARKER_PICK && h.arg == level).unwrap().r;
+        let (off, medium, strong) = (card(&a, 0), card(&a, 1), card(&a, 2));
+        assert!(off.x == medium.x && medium.x == strong.x, "one column: {off:?} {medium:?} {strong:?}");
+        assert!(off.y < medium.y && medium.y < strong.y, "Off, Medium, Strong: {off:?} {medium:?} {strong:?}");
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_DARKER_PICK, arg: 2 });
+        assert_eq!(a.settings.pdf_gamma, 2);
+        assert_eq!(crate::pdfimport::darker(), crate::pdfwork::Gamma::Strong);
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+        let ini = std::fs::read_to_string(root.join("settings.ini")).unwrap_or_default();
+        assert!(ini.lines().any(|l| l == "pdf_gamma=2.0"), "saved when picked:\n{ini}");
+        // Back leaves it as it is
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_DARKER, arg: 0 });
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_DARKER_BACK, arg: 0 });
+        assert_eq!((a.settings.pdf_gamma, lib(&mut a).modal), (2, Modal::Settings));
+        // Off again: no line
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_DARKER, arg: 0 });
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_DARKER_PICK, arg: 0 });
+        assert_eq!(crate::pdfimport::darker(), crate::pdfwork::Gamma::Off);
+        let ini = std::fs::read_to_string(root.join("settings.ini")).unwrap_or_default();
+        assert!(!ini.contains("pdf_gamma"), "{ini}");
         library_free(&mut a);
         canvas_free(&mut a.screen);
         i18n_set("en");

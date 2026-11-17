@@ -51,7 +51,7 @@ root/touch-trace                        an empty file the owner makes: asks for 
 root/touch-trace.txt                    the touch trace (docs/KINDLE.md), never exported (2.0)
 root/bluetooth/                         the Bluetooth helper, unpacked by the owner, and its own data (2.0)
 root/.update-failed                     an update KPM could not install: told at the next start, then removed (2.0)
-root/templates/                         pictures the owner copies in to use as paper (Templates)
+root/templates/                         pictures the owner copies in to use as paper, and PDFs, a template a page (Templates; Template PDFs, 2.2)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
 root/fonts/                             font files the owner copies in, for Classic's text (2.1.0-beta.2; Your own fonts)
 root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
@@ -617,6 +617,33 @@ the rename). The editor, which may have the notebook open, writes the card itsel
 the first page or closes the notebook, saving the page first: if it did meanwhile, the job draws
 the card again from the page as it is then, and after three tries leaves the editor's.
 
+### Template PDFs: `root/templates/*.pdf` (2.2)
+
+A file of `templates/` whose name ends in `.pdf` (any case), does not start with a dot and is a plain file is a
+template PDF: one template a page. Its pages are drawn once, by the sandboxed PDF worker, into `templates/.cache/`
+beside the pictures' previews, under the same `<hash>` (of the PDF's name, size and time):
+
+- `<hash>.pages`: the PDF's page count, exactly `<n>` and a line break, n from 1 to 50 in decimal with no sign or
+  leading zero; written once the worker has counted the pages, before any page. Anything else is no count (the
+  pages are counted again).
+- for page n (from 1, four digits: `p0001`): `<hash>-p<nnnn>.png`, the page fitted and centred on a white page of the
+  Kindle's page size, 8-bit gray, or 8-bit RGB for a page with colour (as the PDF import stores its pages);
+  `<hash>-p<nnnn>.key`, the line a template's `.key` has (the hash of that PNG's bytes, 16 hex digits, then its width
+  and height); `<hash>-p<nnnn>.pgm`, its preview (P5 PGM, a sixth of the page). Written in that order: a page is
+  made when its preview is there with the two before it. `<hash>-p<nnnn>.bad` for a page that cannot be drawn: empty,
+  or `died` and a line break when its worker ended or stalled on it twice.
+- `<hash>.bad`, empty, for a PDF that is no template: empty, over 16 MB, more than 50 pages, refused by the worker
+  (no PDF Grimoire reads, a password, no page), a worker that lied, ended or stalled twice opening it, two pages
+  marked `died`, or no page drawn. It then has no `.pages` and no page files.
+
+A page is then a template as a picture is: its path is its `.png` in the cache, its key and preview are beside it,
+and a page given one gets the template's image paper (role 0) with its picture made for the notebook from that PNG
+(Ids). A notebook keeps its own copy (`bg/`): deleting or changing the PDF, or the cache, never changes a page
+already on it. The entries of a PDF that changed (another `<hash>`) or went are removed by the next previews job or
+template PDF job, as a picture's are; a look at the folder that finds the count of a PDF no longer there queues the
+previews job for it. Deleting `templates/.cache/` loses nothing: the pages are drawn again at the
+next look.
+
 ### Photos: `root/photos/` (2.0.0-beta.5 on)
 
 Photos the owner copies in (over USB, while Grimoire is closed), named as templates are. Grimoire
@@ -818,6 +845,20 @@ waits, and within 10 s of the end of a previous run's import):
   colour picture in colour, DeviceRGB (see the notebook PDF below). The pages KOReader draws (Annotate this
   page, and Open this book for DjVu, comics, XPS and any book version 1 sends) stay gray; a PDF KOReader hands over
   by its path (2.2, Whole books) is drawn by this import, in colour.
+- **Darker lines (2.2, issue #173):** `settings.ini`'s `pdf_gamma` (Settings > System > Darker lines in imported
+  PDFs: Off, Medium or Strong) is the gamma a PDF queued from then on draws its gray pages at, `1.5` or `2.0`: each
+  level of a page stored gray becomes 255 (level / 255)^gamma, rounded to the nearest whole level and computed in
+  whole numbers, so every build makes the same bytes; white stays white, black stays black, and the grays between
+  go darker. A page stored in colour (a page with gray and colour on it is one) is stored exactly as at Off, and at
+  Off every page is the import's as before. The level is the one the file was queued at: the UI writes it into the
+  file's mark (a file of `import/` and a pick at the setting, a PDF KOReader hands over at its request's `gamma=`
+  when it has one, Whole books), the first slice keeps it in the import's state, and the notebook keeps it in its
+  `source.ini` as one line after the file record, `gamma=1.5` or `gamma=2.0` (no line at Off). Each of these lines
+  is read strictly: `1.0`, `1.5` or `2.0`, and any other value is no gamma. A fill (below) draws the pages it adds at
+  its notebook's own `gamma=` (no line: Off), whatever the setting or a request says, and leaves the line as it was;
+  a notebook KOReader made by version 1 has no line, so a fill adds its pages at Off even where KOReader drew its
+  own darker. The same PDF again with every page is "PDF already imported." at any level: no page is drawn again (a
+  notebook moved to the trash no longer holds the PDF, which then imports afresh at the setting).
 - **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
   as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
   per page, and `links=1` when the import wrote `doclinks.ini`, so KOReader's Open this book does not ask for
@@ -922,7 +963,8 @@ waits, and within 10 s of the end of a previous run's import):
   `notebooks/.import-<id>/pdf-import.ini` (`src`, the path as it is, as in the mark; `size`, `mtime`, `key`,
   `pages`, `next`, `pics` (the picture
   id of each page made, hex), `blank`, `strikes`, `cpu_ms`, `pick`, `name`, `folder` (a pick's, kept here as in
-  its mark), `bytes` (what the pages made take), `open` (1 while a slice runs) and `stops`; 2.1.0-beta.2's
+  its mark), `bytes` (what the pages made take), `open` (1 while a slice runs), `stops` and from 2.2 `gamma` (darker
+  lines, above: a line only away from Off); 2.1.0-beta.2's
   first builds wrote `owner` and `started`, read by nothing), which a start or a scan that finds the file
   unchanged resumes from; a changed file removes the work. The picture index `bg/index.ini` is saved before any
   state that names its pictures, and a slice that resumes first makes again every page from the first whose
@@ -939,8 +981,9 @@ waits, and within 10 s of the end of a previous run's import):
 - **Marks:** `import/.marks/<16 hex of the source path>` holds `state` (`making`, `waiting` or `done`), `id`,
   `src` (the path from the storage root, as it is: no character of it is changed, and a path with a line feed or
   a carriage return in a name is given no mark and no state, so it is never imported; `id`, `name` and `folder`
-  are written without control characters), `pick`, `name`, `folder`, `page`, `pages`, `at`, and for `done` the
-  file's `size` and `mtime` (another file of that name later is a new file); the coarse progress a detached
+  are written without control characters), `pick`, `name`, `folder`, `page`, `pages`, `at`, for `done` the
+  file's `size` and `mtime` (another file of that name later is a new file), and from 2.2 `gamma` (the darker lines
+  the file was queued at, above: a line only away from Off); the coarse progress a detached
   import leaves, rewritten at most every 20 s. A mark goes when its import ends, whatever the end; `done` stays
   only for a file of `import/` that could not move. A `waiting` mark (a pick made while another process held
   the lock) is queued by the first scan that takes the lock afresh; one whose file name is not the hash of the
@@ -1109,8 +1152,9 @@ its picture. A paged document's count never changes. A line whose page is no lon
 (deleted) is left out of the next write, and that book page is a new page if it is sent again. Lines
 this version does not know are written back as they were: whole lines of up to 255 bytes, 1 KB in
 all. A notebook made from a PDF may also hold one `file=sha256:...` line, the record of the file it was
-made from (Imports: PDFs, the file record): the code that adds book pages does not read it, and writes
-it back with the lines it does not know, after the page lines. The second notebook of a book's key has
+made from (Imports: PDFs, the file record), and from 2.2 one `gamma=` line, the darker lines its gray pages
+were drawn at (Imports: PDFs, darker lines): the code that adds book pages reads neither, and writes them
+back with the lines it does not know, after the page lines. The second notebook of a book's key has
 no `book=` line.
 
 1.0.0-beta and 1.0.0-rc.1 never read or write `source.ini` or `import/.annotate/`: they stay as
@@ -1174,6 +1218,7 @@ title and page count. The request has the lines above (`book`, `title`, `kind`, 
 | key | value |
 |---|---|
 | `file` | the PDF's absolute path as KOReader has it open, once: inside the Kindle's storage (`/mnt/us/...`), with no `.`, `..` or empty part and no control character in it. Its line is read whole (under 1024 bytes), never cut as a longer title is |
+| `gamma` | the darker lines the reader's contrast asks for (2.2, issue #173), at most once: the plugin writes `1.5` for a contrast from 1.25 and `2.0` for one from 1.75 (KOReader's contrast is a gamma on the page; from the file browser, the one the reader would open the book with), and no line for any other (KOReader's own 1, a lighter page). Grimoire takes `1.0`, `1.5` or `2.0`, and any other value as no gamma; without the line its darker lines setting decides (Imports: PDFs, darker lines). A fill of the book's notebook draws at the notebook's own level |
 
 The plugin sends version 2 only for a PDF Grimoire would take, and version 1 otherwise, KOReader drawing the pages,
 so a book that opened before 2.2 still opens. It keeps version 1 for:
@@ -1195,7 +1240,7 @@ Annotate this page stays version 1 for every format.
 
 Grimoire reads a version 2 request strictly. Its version line says exactly `version=2` (a request with that line
 is a version 2 request wherever the line stands; `02` is no version it knows), and each of `version`, `book`,
-`file`, `title`, `pages`, `page`, `kind` and `time` comes once at most. A key said twice, a path that is not
+`file`, `title`, `pages`, `page`, `kind`, `time` and `gamma` comes once at most. A key said twice, a path that is not
 absolute, is not UTF-8, is 1024 bytes or longer or holds a control character (a byte under 0x20, or 0x7F), or a
 `picture.<n>` line, and it does not read. A key it does not know is passed over, as in version 1.
 
@@ -1575,6 +1620,7 @@ owner's to copy back or delete. Older versions ignore it.
 | `files_show` | what Files lists: `all` (every file, the ones Grimoire cannot use greyed, links as "link, not followed"); absent, or `usable`, the PDFs, pictures, fonts and folders (the default, not written). Any other value: as for `files_sort`. Written after `files_sort`. Since 2.2, as `files_card` |
 | `files_view` | how Files lists: `covers`, a grid of previews (Files' previews, below); absent, or `list`, rows (the default, not written). Any other value: as for `files_sort`. Written after `files_show`. Since 2.2, as `files_card` |
 | `home` | the home folder, where the main menu opens at each start (2.2, issue #160): `notebooks/<folder>`, a Library folder by its path (`notebooks/School/2026`), or `files/<path>`, a folder of the Kindle's storage by its path from the storage root (`files/documents/Planners`); absent, empty or `notebooks`, the Library's top (the default, not written). Read strictly: UTF-8, under 608 bytes, no control character, no absolute path, no empty, `.` or `..` part, never the storage root; a Library folder is looked up by name in the Library's list, a storage folder reached only by Files' walk (no link followed, no refused place, not the trash). A value that is not one of these, or names a folder that is gone or refused, is not used: the Library's top with the toast "Home folder not found.", and the line is taken out at once (unlike `files_sort`'s, it is not written back; a folder that could not be read for another reason keeps it). Written after `files_view`. Since 2.2, as `files_card` |
+| `pdf_gamma` | darker lines in imported PDFs (2.2, issue #173; Settings > System's Darker lines in imported PDFs row): `1.5` (Medium) or `2.0` (Strong), the gamma a PDF queued from then on draws its gray pages at (Imports: PDFs); absent, or `1.0`, Off (the default, not written). Read exactly as written: any other value is Off and is written back as it was until the setting changes. Written after `home`. Since 2.2; older versions keep the line as one they do not know |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Pair > Bluetooth controller, Settings > Controller before 2.0.0-beta.2; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
@@ -2115,6 +2161,24 @@ What 2.1.0 and the versions before it do with KOReader's hand-over by path (2.2)
 |---|---|
 | `import/.book/request.ini` version 2 | never sent to them: the plugin sends version 2 only to a launcher whose Capabilities line says `pdf`, and no launcher before 2.2 does (a 2.2 plugin sends them version 1, KOReader drawing the pages). One that reaches them anyway does not read (2.0.0-beta.5 to 2.1.0: "a version of request this Grimoire does not know"): nothing opened, "Couldn't open book from KOReader (see grimoire.log).", the folder emptied. 2.0.0-beta.4 and before never read the folder |
 | a notebook made or filled through version 2 | a notebook the PDF import made or filled (the tables above) |
+
+What 2.1.0 and the versions before it do with darker lines (2.2, issue #173), read in their code at the tag:
+
+| new data (darker lines, 2.2) | 2.1.0 and before |
+|---|---|
+| `pdf_gamma` in `settings.ini` | a line they do not know, kept as it is on their saves; their imports draw every page as at Off |
+| a notebook's pages drawn at 1.5 or 2.0 | ordinary page pictures, shown as they are |
+| `gamma=` in a notebook's `source.ini` | a line they do not know, written back as it was after the page lines (1.1 on), so a later fill by 2.2 still draws at it. Their own fill (2.1.0 has none) and KOReader's version 1 pages never read it |
+| `gamma=` in a mark or in `pdf-import.ini` | passed over as a key they do not know (2.1.0-beta.2 on): an import 2.2 began at 1.5 or 2.0 that one of them takes up draws the pages it makes as at Off, and its notebook has no `gamma=` line. Before 2.1.0-beta.2 the work folder is removed, as any cut-off import's |
+| `gamma=` in a version 2 request | never sent to them (the plugin sends version 2 only to a launcher that says `pdf`) |
+
+What 2.1.0 and the versions before it do with template PDFs (2.2):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| a PDF in `templates/` | not listed: their Templates sheet takes pictures alone, and they never read the file |
+| a template PDF's entries in `templates/.cache/` (`<hash>.pages`, `<hash>-p<nnnn>.*`, `<hash>.bad`) | never read; their previews job, when a picture of the folder lacks its preview, removes them as entries of a file it does not list. Back in 2.2 the pages are drawn again at the next look |
+| a page whose paper came from a template PDF's page | an ordinary page on a template's picture (`bg/`), drawn as any (Image papers) |
 
 ## Highlighter rendering in 1.2.0
 

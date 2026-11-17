@@ -4,6 +4,27 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## PDFs as templates (2.2, issue #172): what waits, and what is for the owner
+
+Built: a PDF in `grimoire/templates` gives a template a page, drawn once by the sandboxed PDF worker; Use as template
+on a PDF's card in Files (docs/DESIGN.md, PDFs as templates). Waiting:
+
+- **Defaults taken here, for the owner to confirm**: at most 50 pages, and a longer PDF is no template as a whole
+  (never its first 50); the templates folder's 16 MB for a PDF too, and so for its copy from Files; the pages drawn
+  at the Kindle's page size, rendered when the Templates sheet looks at the folder, ranked behind imports and font
+  checks with Files' previews, in an import's slices; a page whose worker ends twice is left out alone, two such
+  pages leave the whole PDF out; the tiles named "<file> p. <n>" with no new string; at most 200 tiles of PDF pages
+  on the sheet in all, a PDF past them left out whole; a PDF's tile the sheet cannot use (a refused PDF, one past the
+  200, a page left out) kept crossed out at every opening, where a picture's is left out; darker lines (#173) not
+  applied to template pages (to apply them, the setting's level would join the cache key, and the pages be drawn
+  again when it changes).
+- **From a file...** in the Templates sheet still picks pictures alone: picking a PDF there would need the picture
+  pick to list PDFs, with their own card.
+- **The empty Templates sheet** names only pictures in its text, and `templates/README.txt` (written once) does not
+  mention PDFs: a new string each, for the next round of strings.
+- **Not timed on the Scribe**: a page's drawing and storing at 1860 x 2480. docs/TESTING.md, "2.2, PDFs as templates
+  (issue #172): device checks".
+
 ## Files' rename, delete and restore (2.2, issue #144): what waits
 
 Built: Rename and Delete on the cards inside Grimoire's folders for the user's files, the name rules' words, Delete's
@@ -442,8 +463,6 @@ The smallest coherent reading was taken for each call; each can change without a
   was opened meanwhile stays in front), but it runs to its end. Putting the Kindle to sleep pauses it and stops
   nothing. A Cancel would need a string of its own and a way to stop a running import job, which the job queue
   does not have.
-- **The reader's contrast is not sent**: a PDF by its path is drawn at its own contrast, where version 1 drew it at
-  the reader's. A `gamma=` line waits with the darker lines import option.
 - **The password question** opens the PDF a second time in KOReader (a MuPDF document of the plugin's own, through
   `ffi/mupdf`'s `openDocument`, `needsPassword` and `close`, as KOReader's own PDF reader calls them): read in
   KOReader's code, never run on a Kindle. Every call is guarded, so it cannot stop KOReader. Where it fails
@@ -460,6 +479,30 @@ The smallest coherent reading was taken for each call; each can change without a
 - **Grimoire stopped while the import runs** (the launcher's watchdog, a crash) leaves the import to its detached
   child, as any import; the reader's page does not open, and the next Open this book finds the notebook.
 - **Not built: a card for the notebook being made**, as for a fill (above).
+
+## Darker lines in imported PDFs (2.2, #173): what waits, and what is for the owner
+
+- **The Scribe check has not run** (docs/TESTING.md, "2.2, Darker lines"): the row, an import at each level and how
+  each reads on the panel, a colour page, Files, a fill at the notebook's level, KOReader with and without a darker
+  contrast, Spanish. Whether 1.5 and 2.0 are the right two levels for faint planners is the owner's to judge there.
+- **A PDF already imported is not drawn again** when the setting changes: the same file is "PDF already imported."
+  at any level. To have a notebook at another level, move it to the trash and import the PDF again (its ink stays
+  with the notebook in the trash). A "draw again at this level" for a notebook would need its PDF again and a choice
+  of what becomes of the ink: not built.
+- **One level for every import**, chosen in Settings; no choice at each import. A per-file choice (on a PDF's card in
+  Files, or a sheet before an import) would add strings and a question to every pick, and the import folder's scan
+  asks nothing.
+- **Files' previews of a PDF are not darkened** (they show the file as it is), nor are the pages KOReader draws by
+  version 1 (Annotate this page, DjVu, comics), which come at KOReader's own contrast.
+- **A notebook KOReader made (version 1) is filled at Off**: it has no `gamma=` line, and KOReader drew its pages at
+  the reader's contrast, so where that was darker the pages a fill adds are lighter than KOReader's; a request's
+  `gamma=` does not change a fill. Having such a fill follow the request's level would need the mark to say where its
+  level came from: not built, the owner's call.
+- **A lighter level** (KOReader's contrast under 1) is not offered: a reader's contrast under 1.25 sends no line, and
+  the setting decides.
+- **Going back to 2.1 in the middle of an import** that began at 1.5 or 2.0: 2.1 takes the import up (it passes the
+  state's `gamma=` over) and draws the pages it makes as at Off, and the notebook has no `gamma=` line
+  (docs/FORMAT.md, Moving between versions).
 
 ## Hardening round (2026-11), import: what waits
 

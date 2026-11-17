@@ -682,6 +682,9 @@ pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
         ("junk/Broken.pdf", junk()),
         ("pick/Planner.pdf", planner(2)),
         ("tabs/Tabs Planner.pdf", tabs()),
+        // (2.2, issue #172: a template PDF past the 50 pages a template PDF may have, beside one within them)
+        ("tpl-cap/Long Planner.pdf", planner(51)),
+        ("tpl-cap/Weekly.pdf", planner(2)),
         ("weblinks/Links.pdf", weblinks()),
         ("weblinks_wide/Wide.pdf", weblinks_wide()),
         ("weblinks_overlap/Overlap.pdf", weblinks_overlap()),

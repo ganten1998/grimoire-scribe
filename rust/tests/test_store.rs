@@ -908,6 +908,39 @@ fn home_key() {
     unlink(&path);
 }
 
+// Darker lines in imported PDFs (2.2, issue #173): pdf_gamma is absent at Off and written only away from it; it is read
+// strictly, so only the three known values are taken, and anything else is Off, written back as it was until the
+// setting changes.
+fn pdf_gamma_key() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    let any_line = |p: &str| read_file(p).is_some_and(|t| find(&t, "\npdf_gamma=").is_some());
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.pdf_gamma == 0);
+    check!(settings_save(&s) == 0 && !any_line(&path));
+    for (v, i) in [("1.5", 1), ("2.0", 2)] {
+        check!(write_file_atomic(&path, format!("pdf_gamma={v}\n").as_bytes()) == 0);
+        check!(settings_load(&mut s) == 0 && s.pdf_gamma == i);
+        check!(settings_save(&s) == 0 && has_pins_line(&path, &format!("pdf_gamma={v}")));
+    }
+    // Off, said as the file says it, is no line
+    check!(write_file_atomic(&path, b"pdf_gamma=1.0\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.pdf_gamma == 0);
+    check!(settings_save(&s) == 0 && !any_line(&path));
+    // anything else is Off, and goes back as it was
+    for v in ["2", "1.50", "3.0", "0.8", "strong", "1,5", " 1.5"] {
+        check!(write_file_atomic(&path, format!("pdf_gamma={v}\n").as_bytes()) == 0);
+        check!(settings_load(&mut s) == 0 && s.pdf_gamma == 0);
+        check!(settings_save(&s) == 0 && has_pins_line(&path, &format!("pdf_gamma={v}")));
+    }
+    // changed, it is written as set; set back to Off, its line goes
+    s.pdf_gamma = 2;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "pdf_gamma=2.0"));
+    s.pdf_gamma = 0;
+    check!(settings_save(&s) == 0 && !any_line(&path));
+    unlink(&path);
+}
+
 // What's new after every update (the owner's rule of 2026-11-05): due when a file a Grimoire saved
 // names another version's notes as seen, whatever whatsnew_hide says (the 2.0.0 betas' box, read and
 // written back as it was); not due for this version's, nor for a file without settings_version.
@@ -1396,6 +1429,7 @@ fn test_store() {
     run!(font_key);
     run!(files_keys);
     run!(home_key);
+    run!(pdf_gamma_key);
     run!(whatsnew_due_after_every_update);
     run!(gesture_keys);
     run!(rotation_lock_key);

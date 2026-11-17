@@ -3218,6 +3218,172 @@ Files (`browser.rs`) has the rows that set it and the home folder as the top.
   KOReader start, the Files card hidden, What's new, the Exit question through a turn and a sleep, and a start in
   Covers). docs/TESTING.md has the Scribe's checks.
 
+## Darker lines in imported PDFs (2.2, issue #173)
+
+Faint planners read poorly on e-ink. An option darkens the lines of a PDF as it is imported: a gamma on the gray
+pages, as KOReader's contrast darkens a page it draws. `pdfwork.rs` has the levels and the arithmetic; `pdfimport.rs`
+carries the level from the UI to the notebook; `library.rs` and `settingsmenu.rs` have the row; `annotate.rs` and the
+KOReader plugin carry the reader's contrast.
+
+- **The levels**, `pdfwork::Gamma`: Off, Medium (1.5) and Strong (2.0). Each level of a gray page becomes 255
+  (level / 255)^gamma, rounded to the nearest whole level, from a table computed in whole numbers (2.0 is
+  round(v^2 / 255), 1.5 is round(sqrt(v^3 / 255))), so every build makes the same bytes and neither ever falls on a
+  half. White stays white and black stays black.
+- **Gray pages only** (the owner's ruling of 2026-11-17). The writer applies the gamma to the gray page it already
+  holds (`darken`, after `Session::render` has settled the page gray or colour): no new parse of the PDF, no new
+  decode, and the worker and its protocol are unchanged. A page kept in colour is left exactly as it is, and a page
+  with gray and colour on it is a colour page. At Off nothing is applied: the pages, the card's thumbnail, the
+  notebook's files and the import's screens and refreshes are those of an import before 2.2, byte for byte
+  (Settings > System has one row more). Blank pages (a page whose worker died twice) are white at every level.
+- **Where it lives**: one setting, settings.ini `pdf_gamma`, the last row of Settings > System, "Darker lines in
+  imported PDFs: %s", which opens a list of the three levels as the eraser's row does, in one column so that they read
+  in their order, Off, Medium, Strong (`draw_pick_cards`). It is the smallest place every way in can follow: the
+  import folder's scan (which asks nothing), Files' Import and New notebook's From a file..., and KOReader's
+  hand-over. The app gives it to `pdfimport` at the start and when it is picked (`set_darker`).
+- **The level travels with the file.** The UI decides it as it queues a file and writes it into the file's mark
+  (`gamma=`): the setting, or a level of the caller's own through `pdf_import_queue_at` (KOReader's request). A pick
+  that waits for the lock keeps its level until a later scan queues it, and a file whose mark is lost is drawn at the
+  setting. The first slice keeps the level in the import's state, so every slice, a resume included, draws at it.
+- **Kept with the notebook**: one `gamma=` line in its `source.ini`, after the file record, a line only away from Off.
+  annotate.rs and every version since 1.1 write the lines of `source.ini` they do not know back as they were, so the
+  line stays through KOReader's version 1 pages, an older version's saves and a raw zip. A fill draws the pages it
+  adds at its notebook's own level (`gamma_among`, read when the fill is decided), whatever the setting or the
+  request says: a notebook made before 2.2 or at Off has no line and is filled at Off, as its import drew it. A
+  notebook KOReader made (version 1) has no line either and is filled at Off, though KOReader drew its pages at the
+  reader's contrast: where that was darker, the pages a fill adds are lighter than KOReader's. The same PDF again
+  with every page is "PDF already imported." at any level: a PDF already imported is not drawn again by a change of
+  the setting.
+- **Read strictly**: settings.ini, a mark, an import's state, a notebook's `source.ini` and KOReader's request each
+  say a level as `1.0`, `1.5` or `2.0` (`Gamma::parse`), and any other value is no gamma. settings.ini writes an
+  unknown value back as it was, as it does `files_sort`'s.
+- **KOReader**: the version 2 request (`file=`, the PDF by its path) gains `gamma=`, the reader's contrast as darker
+  lines. KOReader's contrast is a gamma on the page, the one version 1 drew KOReader's pictures at; the plugin sends
+  `1.5` for a contrast from 1.25 and `2.0` for one from 1.75, and no line for any other (KOReader's own 1, a lighter
+  page, which Grimoire does not draw), so Grimoire's setting decides then, as it does for an older plugin. A request's
+  line wins over the setting, and a fill still draws at the notebook's own level. Version 1 is unchanged. From the
+  file browser (Open with) the plugin reads the contrast the reader would open the book with: the book's own, else
+  the default set for books, else KOReader's. A KOReader before 2023.10 kept a book's contrast as its `gamma`
+  setting (its `kopt_contrast` then held 1/contrast) and the default as 1/contrast, until it moves them itself (a
+  book's `gamma` when the book is next opened, the default by its one-time move of 20230901,
+  `last_migration_date`); the plugin reads them as KOReader does until then, a book's `gamma` first and a default
+  not yet moved turned back, so Open with draws (version 1) and asks (version 2) at the reader's contrast there too.
+- **Not darkened**: Files' previews of a PDF (they show the file), and the pages KOReader draws (Annotate this page,
+  Open this book by version 1), which come at KOReader's own contrast. Template pages made from a PDF (issue #172)
+  do not take the level either: the setting is the import's, and a template is paper under the ink.
+- **Logs**: `import: <id>: darker lines: its gray pages are drawn at gamma 1.5 (the import's)` (or `its notebook's`
+  for a fill), and `book: the request asks for darker lines at gamma 2.0`; the plugin's crash.log line ends `with
+  gamma=2.0`. Never a name.
+- **Strings**: Darker lines in imported PDFs: %s, Darker lines in imported PDFs, and Off, Medium and Strong in the
+  context "darker lines".
+- **Tests**: `pdfwork.rs`'s unit tests (each level against the formula, Off byte for byte, a colour page and a mixed
+  page untouched, only the three values read); `pdfimport.rs`'s (the state's and the mark's line);
+  `test_pdf_darker.rs` (each level's pages are the pages at Off through its table, a colour page's picture the same
+  file at every level, the level a pick, a pick of a level of its own, a pick waiting for the lock and one waiting
+  for a copy of its PDF were queued at, a fill at its notebook's level both ways, the same PDF again, the
+  notebook's line read strictly); `test_store.rs`
+  `pdf_gamma_key`; `library.rs`'s row test; `test_annotate.rs` and `test_koreader_pdf.rs` (the request's line);
+  the plugin's stub test; the scenarios `z_pdf_darker_*` and `y_koreader_pdf_darker_*`. docs/TESTING.md has the
+  Scribe's checks.
+
+## PDFs as templates (2.2, issue #172)
+
+A PDF in `grimoire/templates` (copied in over USB, or by Use as template on a PDF's card in Files) gives one template
+a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tplsheet.rs` shows them.
+
+- **Only the worker parses the PDF.** A PDF's pages are drawn by the sandboxed PDF worker an import uses (the same
+  exec, filter, limits and record grammar, validated by the same `Session`), and the writer and the UI never parse
+  PDF syntax. The job opens the PDF once, with no link followed, as a plain file of the templates folder, and that
+  open file is what the worker reads. With no worker to be had (a sandbox step failed, none starts, or one without
+  the sandbox's steps where the sandbox is required) nothing is drawn and nothing is marked: the PDF's tile waits, as
+  a picture's does, and the next look tries again. A sandbox step that fails marks the session broken, the UI's too:
+  the job's child ends with status 4 (`CODE_SANDBOX`), which bgjob.rs turns into the UI's mark, as an import's progress
+  record and a font check's status 4 do. A session marked broken queues no PDF's job until Grimoire starts again.
+- **The stored form** (docs/FORMAT.md, Template PDFs): in the folder's cache, under the key its previews already use
+  (the FNV-1a hash of the PDF's name, size and time), `<hash>.pages` holds the page count, and each page is a picture
+  of the Kindle's page size, `<hash>-p<nnnn>.png` (gray, or RGB for a page with colour, as the import keeps them),
+  with its `.key` and its preview `.pgm` beside it, written in that order (the preview says the page is made), or
+  its `.bad`. These files are written only inside Grimoire's own templates folder, into a cache folder reached with
+  no link on the way, as the previews job writes its own (`write_quiet`, `store_write_pgm`, `write_file_atomic`:
+  a temporary name, fsync, rename). No file of the user's is written, renamed or replaced, and no name is made from
+  the PDF's: the tiles' names are labels, never files. What removes entries of the cache (a PDF's own, and the sweep
+  of files that went, the previews job's too) looks for a link on the way again right before it lists the cache, so
+  a link put there since the job began is never followed by a removal: the window is that one listing.
+- **A page is a picture template.** A page's tile has its picture's path, and from there it is a template as any
+  picture is: `template_install` takes its key from its `.key` and queues its picture for the notebook's page size,
+  made by the picture worker from the page's PNG (`make_template`). Picking a page, drawing it and opening a notebook
+  on it never read the PDF again; the PDF can be gone by then. The PDF itself is never a picture: whatever the cache
+  holds under its own name it has no preview or key of its own (`preview_of`), so its tile is never ready,
+  `template_install` refuses it, and a notebook's picture job refuses a PDF, so the picture worker is never handed one.
+- **When.** The scan that looks at the folder (`template_scan`, as the Templates sheet opens) queues a job for each
+  PDF with work left (at most `TEMPLATE_PDF_QUEUE_MAX`, 8, a look): `BgKind::Template` with no notebook and the PDF's
+  path. It ranks behind imports and font checks, with Files' previews, first queued first run (bgjob.rs `rank`), and
+  runs in slices as an import does (`SLICE_PAGES` pages or `SLICE_WALL_MS` a slice, looked at before a page, never
+  between the tries of one): a slice that leaves pages ends with `CODE_MORE` (3) and is queued again behind whatever
+  ranks higher, so a picture picked meanwhile waits for one slice at most. Each slice asks the worker for the page
+  count again and goes on from the pages made. Jobs still queued when Grimoire ends are dropped, as Files' previews
+  are: the next look queues them again. A look that finds in the cache the count of a PDF no longer in the folder
+  (deleted, renamed or changed since) queues the folder's previews job, which sweeps that PDF's entries.
+- **Limits.** The templates folder's 16 MB (`TEMPLATE_MAX_BYTES`, a picture's), `TEMPLATE_PDF_MAX_PAGES` (50) pages,
+  the import's worker limits (its address space for the file, its CPU, the page watchdog, band mode under little
+  memory), and the free-space floor before every page (room for a page before its worker is asked, and for its
+  picture and preview before they are written). A PDF over the page limit is no template as a whole and is never cut
+  to its first pages: its count is in the log, and the sheet shows its one tile crossed out (The sheet, below).
+  The sheet takes at most `TEMPLATE_PDF_TILES_MAX` (200) tiles of PDF pages in all, four PDFs at the page limit (each
+  tile is looked at when the sheet reads the folder, and every 1.5 s while one waits, so many long PDFs must not slow
+  it): the PDFs are taken in the order of their names, and one that would take the sheet past the cap (its page
+  count, or one tile while its pages are not counted) is left out whole, as one tile the sheet cannot use, with no
+  job queued for it; the log says how many.
+- **What a failure costs.** A PDF that is empty, over 16 MB (marked before any worker starts), that the worker
+  refuses (no PDF Grimoire reads, a password, no page), whose worker lies, whose worker ends or stalls twice while it
+  is opened, or none of whose pages draws, is marked bad as a whole, as a picture is (`<hash>.bad`, and what was made
+  of it goes). A page the worker cannot draw is marked alone (`<hash>-p<nnnn>.bad`), and so is a page whose worker
+  ends or stalls twice on it (a fresh worker tries it once more; a stall right after the Kindle slept is tried again
+  with no strike, as in an import); `DEAD_PAGES_MAX` (2) pages marked so make the whole PDF no template. No worker, no
+  room, the writer out of memory for a page's pixels (no strike either), a write that failed: nothing is marked.
+- **A file changed while its pages are made.** The job checks before it keeps the count and before it keeps each page
+  that the open file is unchanged and still the plain file at the PDF's name (device, inode, size and time to the
+  nanosecond), and its cache entries are keyed by the file it opened. A PDF written over, or another file put at its
+  name, while its pages are made: no page of it drawn after the change is kept, what was made of it goes, nothing is
+  marked, and the next look makes the pages of the file as it is then.
+- **Never an import by itself.** The import watch reads `grimoire/import` alone, and the template job writes only its
+  cache: the template job never makes a notebook of a PDF in the templates folder, never moves it, and never puts it
+  in the import folder. The user may still import one by choice: Import as notebook on its card in Files makes a
+  notebook of it, as it does of any PDF there.
+- **The sheet.** Until its job has counted the pages a PDF is one waiting tile under its name. When the sheet sees the
+  count (when it looks for previews: as a job ends, and every 1.5 s while one runs) it reads the folder again, as
+  after a copy, and the PDF's pages take its place, a tile a page named after the file and the page ("Planner p. 3",
+  the Pages view's "p. %d"; the file's name is cut short before the page's part when both do not fit). Never under a
+  contact: a count seen while a pen or finger is down on the sheet is read after the lift. A PDF before the page in
+  view taking more places does not turn the sheet away: the tile the page was anchored on stays in view (the page
+  that holds it now). The pages' tiles fill in
+  as their pictures are made. A PDF's tile the sheet cannot use stays crossed out in its place at every opening (the
+  tile a picture found unusable while the sheet is open has): the whole PDF's when it is refused (over 50 pages, over
+  16 MB, a password, no PDF) or past the tiles PDFs may give, and a page's that is marked, so the user sees which file
+  or page is not used even while other templates are offered (no string is new). A picture it cannot use is still left
+  out when the sheet opens, as before. With no template to offer, the sheet counts them among the files it cannot use,
+  as for pictures. A template PDF's tiles are templates only: the Photos sheet lists no PDF.
+- **Colour** follows a picture template's: a page with colour is kept in colour, drawn behind the ink as such a
+  template is, and its preview is gray.
+- **Users with no PDF in the folder** see what they saw: the same tiles and jobs, and the sheet's tick asks nothing
+  of the folder for a picture.
+- **Use as template on a PDF** (`browser.rs`): Files' PDF card has it after Import as notebook, never for a PDF already
+  in the templates folder or one of Grimoire's PDF copies, and never in a picker. It is the pictures' copy job and
+  limit: a PDF over 16 MB is refused at the request with "Too big (over 16 MB).". The Templates sheet's From a file...
+  still picks pictures alone.
+- **Strings**: none new ("p. %d" and "Use as template" were there).
+- **Tests**: `test_template_pdfs.rs` (the tiles before and after the count, the stored form and its keys, a page used
+  as a notebook's template with the PDF gone and in colour, the slices through the queue, the cap at 50 and 51 pages,
+  the cap of tiles in all, 16 MB and an empty file with no worker, the worker's refusals, a page that crashes or hangs
+  its worker, two such pages, the writer out of memory, a PDF swapped or written over after its first page or right
+  after its count, a link swapped in for the cache, no room before the first page and in the middle of a slice, no
+  worker, and a sandbox step that fails in the job's own child, a PDF that is never a picture, a removed PDF's pages
+  swept, the import watch, a folder of pictures alone and a picture beside a PDF, the queue's order and the jobs
+  dropped at exit, and the sheet: its reading of the folder after a lift, a PDF's crossed-out tiles, the page in
+  view),
+  `bgwork_tplpdf.rs`'s unit tests (the count's strict reading, a long name's page part), `browser.rs`'s
+  `a_pdfs_card_in_files_offers_its_copy_into_templates`, and the scenarios `z_tpl_h_pdf_pages`, `z_tpl_i_pdf_refused`,
+  `z_tpl_j_pdf_cap` and `z_tpl_k_pdf_use_as`.
+
 ## Shared building blocks (2.1, lane L0)
 
 The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).

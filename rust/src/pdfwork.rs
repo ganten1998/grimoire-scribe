@@ -446,6 +446,93 @@ pub fn luma(r: u8, g: u8, b: u8) -> u8 {
     ((r as u32 * 77 + g as u32 * 151 + b as u32 * 28) >> 8) as u8
 }
 
+// ---- darker lines (2.2, issue #173) ----
+
+/// Darker lines: a gamma on the levels of a gray page, for faint planners on e-ink. Each level becomes
+/// 255 (level / 255)^g, rounded to the nearest whole level, so white stays white, black stays black and every gray
+/// between goes darker. Only a page stored gray is changed: a page kept in colour (one `settle_gray` refuses, a page
+/// mixed gray and colour among them) is left exactly as it is (the owner's ruling, 2026-11-17). The writer applies it
+/// to the gray page it already holds (`darken`); the worker and its protocol know nothing of it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Gamma {
+    /// the page as it is rendered (gamma 1.0)
+    #[default]
+    Off,
+    /// gamma 1.5
+    Medium,
+    /// gamma 2.0
+    Strong,
+}
+
+impl Gamma {
+    /// The values a file says a level with (settings.ini `pdf_gamma`, a notebook's source.ini `gamma=`, KOReader's
+    /// request `gamma=`, an import's mark and state), by `index`.
+    pub const NAMES: [&'static str; 3] = ["1.0", "1.5", "2.0"];
+
+    /// A value from a file, read strictly: `1.5` and `2.0` are their levels; `1.0`, and anything else (another
+    /// spelling, another number, a space), is no gamma.
+    pub fn parse(v: &[u8]) -> Gamma {
+        match v {
+            b"1.5" => Gamma::Medium,
+            b"2.0" => Gamma::Strong,
+            _ => Gamma::Off,
+        }
+    }
+
+    pub fn index(self) -> i32 {
+        self as i32
+    }
+
+    /// The level of an index (settings.ini's, `index`); any other number is no gamma.
+    pub fn from_index(i: i32) -> Gamma {
+        match i {
+            1 => Gamma::Medium,
+            2 => Gamma::Strong,
+            _ => Gamma::Off,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        Gamma::NAMES[self as usize]
+    }
+
+    /// What each level becomes, computed in whole numbers (so every build makes the same bytes): 2.0 is
+    /// round(v^2 / 255); 1.5 is round(sqrt(v^3 / 255)), the largest n with (2n - 1)^2 255 <= 4 v^3. Neither ever
+    /// falls on a half, so the rounding has no tie to break.
+    pub fn table(self) -> [u8; 256] {
+        let mut t = [0u8; 256];
+        let mut n: u64 = 0;
+        for (i, out) in t.iter_mut().enumerate() {
+            let v = i as u64;
+            *out = match self {
+                Gamma::Off => i as u8,
+                Gamma::Strong => ((2 * v * v + 255) / 510) as u8,
+                Gamma::Medium => {
+                    while n < 255 && 255 * (2 * n + 1) * (2 * n + 1) <= 4 * v * v * v {
+                        n += 1;
+                    }
+                    n as u8
+                }
+            };
+        }
+        t
+    }
+}
+
+/// Darker lines on a page the writer holds: a gray page's levels through `g`'s table, in place. A colour page
+/// (3 channels) is left exactly as it is, and so is any page at `Gamma::Off`. Returns whether the page was a gray one
+/// the gamma went over.
+pub fn darken(p: &mut PagePixels, g: Gamma) -> bool {
+    if g == Gamma::Off || p.ch != 1 {
+        return false;
+    }
+    let t = g.table();
+    for v in p.px.iter_mut() {
+        *v = t[*v as usize];
+    }
+    true
+}
+
 // ====================================================================================================
 // The worker side
 // ====================================================================================================
@@ -1884,6 +1971,79 @@ mod tests {
         assert!(settle_gray(&[255, 250, 235], GRAY_TOLERANCE).is_none());
         // a faint JPEG cast is gray
         assert!(settle_gray(&[200, 203, 201], GRAY_TOLERANCE).is_some());
+    }
+
+    // Darker lines (2.2, issue #173): each level on a gray page, against the formula computed in floating point.
+    #[test]
+    fn darker_lines_take_a_gray_page_through_its_gamma() {
+        let ramp: Vec<u8> = (0..=255u8).collect();
+        for (g, e) in [(Gamma::Medium, 1.5f64), (Gamma::Strong, 2.0)] {
+            let mut p = PagePixels { w: 16, h: 16, ch: 1, px: ramp.clone() };
+            assert!(darken(&mut p, g));
+            for (v, &out) in p.px.iter().enumerate() {
+                let want = (255.0 * (v as f64 / 255.0).powf(e)).round() as u8;
+                assert_eq!(out, want, "level {v} at gamma {e}");
+                assert!(out as usize <= v, "never lighter");
+            }
+            // white and black stay; the levels keep their order
+            assert_eq!((p.px[0], p.px[255]), (0, 255));
+            assert!(p.px.windows(2).all(|w| w[0] <= w[1]));
+        }
+        // a mid gray, a faint line and a planner's pale gray at each level
+        let at = |g: Gamma, v: u8| g.table()[v as usize];
+        assert_eq!((at(Gamma::Off, 128), at(Gamma::Medium, 128), at(Gamma::Strong, 128)), (128, 91, 64));
+        assert_eq!((at(Gamma::Medium, 200), at(Gamma::Strong, 200)), (177, 157));
+        assert_eq!((at(Gamma::Medium, 207), at(Gamma::Strong, 207)), (187, 168));
+    }
+
+    // Off is the page as it was, byte for byte; a colour page, and a page mixed gray and colour (stored in colour),
+    // are never changed.
+    #[test]
+    fn darker_lines_leave_off_and_colour_pages_as_they_are() {
+        let ramp: Vec<u8> = (0..=255u8).collect();
+        let mut p = PagePixels { w: 16, h: 16, ch: 1, px: ramp.clone() };
+        assert!(!darken(&mut p, Gamma::Off));
+        assert_eq!(p.px, ramp);
+        assert_eq!(Gamma::Off.table().to_vec(), ramp);
+        // a colour page: three channels, untouched at every level
+        let colour: Vec<u8> = (0..16 * 16).flat_map(|i| [(i % 256) as u8, 40, 200]).collect();
+        // a page gray everywhere but one red pixel: the writer keeps it in colour, and so does darken
+        let mut mixed: Vec<u8> = (0..16 * 16).flat_map(|i| {
+            let v = (i % 256) as u8;
+            [v, v, v]
+        }).collect();
+        mixed[3 * 100] = 255;
+        mixed[3 * 100 + 1] = 0;
+        mixed[3 * 100 + 2] = 0;
+        assert!(settle_gray(&mixed, GRAY_TOLERANCE).is_none(), "a page with one coloured pixel stays in colour");
+        for px in [colour, mixed] {
+            for g in [Gamma::Off, Gamma::Medium, Gamma::Strong] {
+                let mut p = PagePixels { w: 16, h: 16, ch: 3, px: px.clone() };
+                assert!(!darken(&mut p, g));
+                assert_eq!(p.px, px, "{g:?}");
+            }
+        }
+        // a blank page (all white) is white at every level
+        let mut b = blank_page(8, 8);
+        assert!(darken(&mut b, Gamma::Strong));
+        assert!(b.px.iter().all(|&v| v == 255));
+    }
+
+    // A level comes from a file (settings.ini, request.ini, source.ini, a mark, a state): only the three known values
+    // are taken, and anything else is no gamma.
+    #[test]
+    fn darker_lines_read_only_the_three_known_values() {
+        assert_eq!(Gamma::parse(b"1.5"), Gamma::Medium);
+        assert_eq!(Gamma::parse(b"2.0"), Gamma::Strong);
+        assert_eq!(Gamma::parse(b"1.0"), Gamma::Off);
+        for bad in [&b""[..], b"2", b"1", b"1.50", b"2.00", b" 1.5", b"1.5 ", b"1,5", b"+1.5", b"3.0", b"0.8", b"1.5\n", b"1.5\r", b"medium", b"Strong", b"0x2", b"\xff"] {
+            assert_eq!(Gamma::parse(bad), Gamma::Off, "{:?}", String::from_utf8_lossy(bad));
+        }
+        for g in [Gamma::Off, Gamma::Medium, Gamma::Strong] {
+            assert_eq!(Gamma::parse(g.name().as_bytes()), g);
+            assert_eq!(Gamma::from_index(g.index()), g);
+        }
+        assert_eq!((Gamma::from_index(-1), Gamma::from_index(3), Gamma::from_index(i32::MAX)), (Gamma::Off, Gamma::Off, Gamma::Off));
     }
 
     #[test]

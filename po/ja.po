@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 07:42-0600\n"
+"POT-Creation-Date: 2026-11-17 13:06-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -1417,6 +1417,8 @@ msgstr "「%s」を削除しますか?"
 #. TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
 #. file... opens): this copies it into grimoire/templates, to write on as paper (a row of
 #. about 800 px at 44 px).
+#. TRANSLATORS: (also) a PDF's card in Files: this copies the PDF into grimoire/templates, where each of
+#. its pages becomes a template, to write on as paper (a row of about 800 px at 44 px).
 #: rust/src/browser.rs
 #, fuzzy
 msgid "Use as template"
@@ -3915,6 +3917,14 @@ msgstr "言語: %s"
 msgid "Pen button: %s"
 msgstr "ボタン: %s"
 
+#. TRANSLATORS: Settings' System category row that opens the darker lines choices, with the one in
+#. use ("Darker lines in imported PDFs: Medium"): how dark the gray pages of a PDF imported from now
+#. on are drawn. A PDF already imported stays as it is.
+#: rust/src/library.rs
+#, c-format
+msgid "Darker lines in imported PDFs: %s"
+msgstr ""
+
 #: rust/src/library.rs
 #, c-format
 msgid "Mirror PDFs to %s (USB)"
@@ -4246,6 +4256,12 @@ msgstr "サイドボタン"
 #, fuzzy
 msgid "Eraser"
 msgstr "消しゴム"
+
+#. TRANSLATORS: the title of the list of how dark the gray pages of a PDF imported from now on are drawn
+#. (Settings > System): Off, Medium, Strong.
+#: rust/src/library.rs
+msgid "Darker lines in imported PDFs"
+msgstr ""
 
 #: rust/src/library.rs
 msgid "Kindle"
@@ -4581,7 +4597,9 @@ msgstr "ノートブックが使用できません"
 
 #. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
 #. annotated from KOReader): "p. 12". 355 px at 34 px.
-#: rust/src/mapview.rs rust/src/pagesview.rs
+#. TRANSLATORS: (also) after the name of a PDF in grimoire/templates, under a tile of the Templates sheet: which
+#. of the PDF's pages the tile is ("Planner p. 3"). %d is the page's number.
+#: rust/src/mapview.rs rust/src/pagesview.rs rust/src/tplsheet.rs
 #, c-format
 msgid "p. %d"
 msgstr "p. %d"
@@ -5234,6 +5252,24 @@ msgstr "ストローク全体"
 
 #: rust/src/settingsmenu.rs
 msgid "Takes away only what it touches"
+msgstr ""
+
+#. TRANSLATORS: Settings' System category, the row that opens the darker lines choices, with the one in use
+#. ("Darker lines in imported PDFs: Off"), and its list's three choices: the gray pages of a PDF imported from
+#. now on are drawn as they are, a little darker, or darker still (faint lines read better on the Kindle).
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Off"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Medium"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Strong"
 msgstr ""
 
 #: rust/src/settingsmenu.rs

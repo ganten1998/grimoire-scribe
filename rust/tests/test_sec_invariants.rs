@@ -42,6 +42,12 @@ const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
 const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
 const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
+const PDFIMPORT: File = ("rust/src/pdfimport.rs", include_str!("../src/pdfimport.rs"));
+const ANNOTATE: File = ("rust/src/annotate.rs", include_str!("../src/annotate.rs"));
+const STORE: File = ("rust/src/store.rs", include_str!("../src/store.rs"));
+const TPLPDF: File = ("rust/src/bgwork_tplpdf.rs", include_str!("../src/bgwork_tplpdf.rs"));
+const BGJOB: File = ("rust/src/bgjob.rs", include_str!("../src/bgjob.rs"));
+const TPLSHEET: File = ("rust/src/tplsheet.rs", include_str!("../src/tplsheet.rs"));
 const WEBLINKS: File = ("rust/src/weblinks.rs", include_str!("../src/weblinks.rs"));
 const DOCLINKS: File = ("rust/src/doclinks.rs", include_str!("../src/doclinks.rs"));
 const LINKCARD: File = ("rust/src/linkcard.rs", include_str!("../src/linkcard.rs"));
@@ -776,6 +782,123 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
     gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
     none_failed(&fails, "a font added from a file");
+}
+
+// Darker lines in imported PDFs (2.2, issue #173): the rules DESIGN.md and FORMAT.md give, and the code that holds
+// each. A gamma on gray pages only, applied by the writer to the page it holds; Off untouched; a fill at its
+// notebook's level; every value from a file read strictly.
+#[test]
+fn darker_lines_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    // the writer, on the gray page it holds: no new parse, no new decode, the worker as it was
+    present(&mut fails, DESIGN, "The writer applies the gamma to the gray page it already holds");
+    present(&mut fails, DESIGN, "no new parse of the PDF, no new decode, and the worker and its protocol are unchanged");
+    present(&mut fails, PDFIMPORT, "darken(&mut p, state.gamma);");
+    // gray pages only, and nothing at Off
+    present(&mut fails, DESIGN, "A page kept in colour is left exactly as it is, and a page with gray and colour on it is a colour page");
+    present(&mut fails, DESIGN, "At Off nothing is applied");
+    present(&mut fails, PDFWORK, "if g == Gamma::Off || p.ch != 1 {");
+    // a fill draws at its notebook's own level
+    present(&mut fails, DESIGN, "A fill draws the pages it adds at its notebook's own level");
+    present(&mut fails, PDFIMPORT, "st.gamma = p.gamma;");
+    present(&mut fails, PDFIMPORT, "pub fn gamma_among(kept: &[u8]) -> Gamma {");
+    // read strictly: the three values, anything else no gamma, in every file that says a level
+    present(&mut fails, FORMAT, "Each of these lines is read strictly: `1.0`, `1.5` or `2.0`, and any other value is no gamma.");
+    present(&mut fails, FORMAT, "`kind`, `time` and `gamma` comes once at most");
+    present(&mut fails, PDFWORK, "b\"1.5\" => Gamma::Medium, b\"2.0\" => Gamma::Strong, _ => Gamma::Off,");
+    present(&mut fails, STORE, "keep_named(\"pdf_gamma\", v, &crate::pdfwork::Gamma::NAMES)");
+    present(&mut fails, ANNOTATE, "r.gamma = Some(crate::pdfwork::Gamma::parse(v));");
+    present(&mut fails, ANNOTATE, "b\"kind\", b\"time\", b\"gamma\"];");
+    // (the mark's, the import state's and source.ini's readers, and a version 1 request's, which drops the line)
+    present(&mut fails, PDFIMPORT, "\"gamma\" => m.gamma = Gamma::parse(v.as_bytes()),");
+    present(&mut fails, PDFIMPORT, "\"gamma\" => s.gamma = Gamma::parse(v.as_bytes()),");
+    present(&mut fails, PDFIMPORT, ".find_map(|line| line.strip_prefix(b\"gamma=\")).map_or(Gamma::Off, Gamma::parse)");
+    present(&mut fails, ANNOTATE, "r.file.clear(); r.gamma = None;");
+    // what the change took away
+    gone(&mut fails, BACKLOG, "A `gamma=` line waits with the darker lines import option");
+    none_failed(&fails, "darker lines in imported PDFs");
+}
+
+// PDFs as templates (issue #172): the safety sentences of DESIGN.md held with the code that makes them true (only the
+// worker parses the PDF, nothing drawn or marked without one, no job queued in a broken session, the page limit whole,
+// the cache reached with no link, the floor, nothing kept of a file that changed, never an import, the job's rank,
+// nothing read again under a contact), and the page limit's figure beside its name in DESIGN.md and FORMAT.md.
+#[test]
+fn pdfs_as_templates_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    let max = grimoire::bgwork_tplpdf::TEMPLATE_PDF_MAX_PAGES.to_string();
+    beside(&mut fails, DESIGN, "`TEMPLATE_PDF_MAX_PAGES`", &max);
+    present(&mut fails, FORMAT, &format!("n from 1 to {max} in decimal"));
+    present(&mut fails, FORMAT, &format!("more than {max} pages"));
+    // only the worker parses the PDF, the file the job opened
+    told_on(&mut fails, DESIGN, "the writer and the UI never parse PDF syntax", TPLPDF, "let mut s = Session::start(self.file.as_raw_fd(), self.md.len(), &self.limits)?;");
+    told_on(&mut fails, DESIGN, "The job opens the PDF once, with no link followed", TPLPDF, "let Ok((file, md)) = open_read_nofollow(src) else {");
+    // no worker: nothing drawn, nothing marked; a broken session queues nothing
+    let waits = "nothing is drawn and nothing is marked: the PDF's tile waits, as a picture's does";
+    told_on(&mut fails, DESIGN, waits, TPLPDF, r#"Err(StartErr::Worker(why)) => return Err(Stop::Later(format!("no worker ({why})"))),"#);
+    told_on(&mut fails, DESIGN, waits, TPLPDF, "crate::sandbox::session_set_broken(); Stop::Later(");
+    told_on(&mut fails, DESIGN, "A session marked broken queues no PDF's job until Grimoire starts again", TPLPDF, "if crate::sandbox::session_broken() { return; }");
+    told_on(
+        &mut fails,
+        DESIGN,
+        "the job's child ends with status 4 (`CODE_SANDBOX`), which bgjob.rs turns into the UI's mark",
+        BGJOB,
+        "if template_pdf(&job) && code == crate::bgwork_tplpdf::CODE_SANDBOX { crate::sandbox::session_set_broken();",
+    );
+    // the page limit, whole
+    told_on(&mut fails, DESIGN, "is no template as a whole and is never cut to its first pages", TPLPDF, "if n > TEMPLATE_PDF_MAX_PAGES {");
+    told_on(&mut fails, DESIGN, "over 16 MB (marked before any worker starts)", TPLPDF, "if size > TEMPLATE_MAX_BYTES as u64 {");
+    // the tiles PDFs give in all, and a PDF past them left out whole, with no job
+    beside(&mut fails, DESIGN, "`TEMPLATE_PDF_TILES_MAX`", &grimoire::bgwork_tplpdf::TEMPLATE_PDF_TILES_MAX.to_string());
+    told_on(&mut fails, DESIGN, "is left out whole, as one tile the sheet cannot use, with no job queued for it", TPLPDF, "if tiles > *left { out.push(whole(true)); return None; }");
+    // written only in Grimoire's own folder, reached with no link; the floor before every page
+    told_on(&mut fails, DESIGN, "into a cache folder reached with no link on the way", TPLPDF, "if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {");
+    told_on(&mut fails, DESIGN, "the free-space floor before every page", TPLPDF, "Some(free) if !crate::fsview::fsview_room_for(free, need) =>");
+    // ... at each of its two places: before a page's worker is asked, and with the page's real size before it is kept
+    told_on(&mut fails, DESIGN, "room for a page before its worker is asked", TPLPDF, "self.room(PAGE_ROOM)?; match self.page(k)? {");
+    told_on(&mut fails, DESIGN, "and for its picture and preview before they are written", TPLPDF, "if let Err(e) = self.room(need) {");
+    // a file changed while its pages are made: the count is not kept either
+    told_on(
+        &mut fails,
+        DESIGN,
+        "The job checks before it keeps the count and before it keeps each page",
+        TPLPDF,
+        "if !self.same() { return Err(Stop::Changed); } if known != Some(n) {",
+    );
+    // a file changed while its pages are made: nothing of it after the change is kept
+    told_on(
+        &mut fails,
+        DESIGN,
+        "no page of it drawn after the change is kept",
+        TPLPDF,
+        "(nothing of a file that changed while its worker read it is kept) if !self.same() { return Err(Stop::Changed); } return self.store(k, p);",
+    );
+    // a page is its picture: drawing or picking it never reads the PDF
+    told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TPLPDF, r#"t.path.set(&f("png"));"#);
+    told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TEMPLATES, "if let Some(stem) = crate::bgwork_tplpdf::page_stem(path) {");
+    // the PDF itself is never a picture: no preview of its own, never installed, never a notebook's picture job
+    told_on(&mut fails, DESIGN, "The PDF itself is never a picture", TEMPLATES, "if crate::bgwork_tplpdf::is_pdf_name(&path[slash + 1..]) { return false; }");
+    told_on(&mut fails, DESIGN, "a notebook's picture job refuses a PDF, so the picture worker is never handed one", TEMPLATES, "a PDF is no picture (its pages are the templates); nothing made\", id); return -1;");
+    // never an import
+    told_on(&mut fails, DESIGN, "The import watch reads `grimoire/import` alone", PDFIMPORT, r#"let dir = root_path("import");"#);
+    // ... and the template job makes no notebook and queues no import (the user's own Import as notebook aside)
+    told_on(&mut fails, DESIGN, "the template job never makes a notebook of a PDF in the templates folder", PDFIMPORT, r#"let dir = root_path("import");"#);
+    gone(&mut fails, TPLPDF, "store_create");
+    gone(&mut fails, TPLPDF, "pdf_import_queue");
+    gone(&mut fails, TPLPDF, "import_pick_queue");
+    // removals look for a link again right before they list the cache
+    let removals = "looks for a link on the way again right before it lists the cache";
+    told_on(&mut fails, DESIGN, removals, TPLPDF, "fn remove_entries(&self) { if !no_link_below(&store_root(), &self.cache) { return; }");
+    told_on(&mut fails, DESIGN, removals, TEMPLATES, "fn sweep_cache(cache: &str, keep: &[String]) { if !no_link_below(&store_root(), cache) { return; }");
+    // the job's rank, and its slices
+    told_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "if template_pdf(j) { return 4; }");
+    stands_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "BgKind::FilePreviews => 4,");
+    told_on(&mut fails, DESIGN, "looked at before a page, never between the tries of one", TPLPDF, "if made + marked >= max || mono_ms().saturating_sub(t0) >= s1::SLICE_WALL_MS as u64 {");
+    // the sheet: a PDF's tile it cannot use stays, crossed out (a picture's is left out, as on main)
+    told_on(&mut fails, DESIGN, "A PDF's tile the sheet cannot use stays crossed out in its place at every opening", TPLSHEET, "if s.t[i].bad && !pdf_tile(&s.t[i]) { continue; }");
+    // the sheet: nothing read again under a contact
+    told_on(&mut fails, DESIGN, "Never under a contact: a count seen while a pen or finger is down on the sheet is read after the lift.", TPLSHEET, "if s.press.down { s.pdf_counted = true; }");
+    none_failed(&fails, "PDFs as templates");
 }
 
 // Web links as a QR card (2.2, issue #174). What keeps versions before 2.2 safe: the web links are in a file of their
