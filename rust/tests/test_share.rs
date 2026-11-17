@@ -414,8 +414,8 @@ fn share_app() -> App {
 }
 
 // A question that ends while it is shown, for whatever reason, is taken away first, with "Not imported.", and the
-// next is drawn only at a later tick: here one sender's PDF ends the question about another's and a third arrives in
-// the same poll with the same name and size, so the question would read the same. It is taken away all the same.
+// next is drawn only at a later tick, even one that reads the same: here a second send ends the question shown and a
+// third, with the same name and size, comes in the same poll. The question is taken away all the same.
 // (The server's quiet time after a send that was not imported, made 0 here, would refuse the third: the screen's rule
 // is held without it.)
 fn a_question_that_ends_is_taken_away_before_another_is_drawn() {

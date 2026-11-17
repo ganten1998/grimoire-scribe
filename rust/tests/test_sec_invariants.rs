@@ -45,6 +45,8 @@ const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"))
 const HTTPD: File = ("rust/src/httpd.rs", include_str!("../src/httpd.rs"));
 const UPLOAD: File = ("rust/src/upload.rs", include_str!("../src/upload.rs"));
 const SHARE: File = ("rust/src/share.rs", include_str!("../src/share.rs"));
+const PAIR: File = ("rust/src/pair.rs", include_str!("../src/pair.rs"));
+const UPLOAD_TESTS: File = ("rust/tests/test_share_upload.rs", include_str!("test_share_upload.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -779,17 +781,30 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
 
 // Send a PDF from the Share page (2.2, issue #175): the server takes a PDF from the network, as root, kept only after
 // the user's yes on the Kindle. Each sentence of DESIGN.md (and KINDLE.md) that states one of its safety rules is held
-// with the code that makes it true: Share alone, the Origin check and the token compared in constant time (whole
-// functions), a token new each time Share opens, nothing looked at past the first five bytes before the yes, the one
-// temporary file made afresh and removed whenever its Part drops (and when its connection closes), two senders keeping
-// neither, the name never a path (whole functions), never a rename over a file, the question answered only once shown,
-// the log's refusal line, and the size limit with its figure. A changed line, or a reworded sentence, fails here until
-// the two are read again together.
+// with the code that makes it true: Share alone, the Host, Origin and token checks (whole functions where they are
+// functions), each header the rules read there once, no chunked body, one length and exactly that many bytes, a token
+// new each time Share opens and gone when it closes, nothing looked at past the first five bytes before the yes, the
+// one temporary file made afresh and removed whenever its Part drops (and when its connection closes), two senders
+// keeping neither, the quiet time after a send not imported, the send's code (drawn, given in its own reply alone,
+// drawn on the Kindle, never logged: the code side and the tests that look at the log and the files), a question that
+// ends taken away first, the name never a path (whole functions), never a rename over a file, the question answered
+// only once shown and asked again after a turn, X and Esc closing Share, the network table's three rows, the log's
+// lines, and the limits with their figures. A changed line, or a reworded sentence, fails here until the two are read
+// again together.
 #[test]
 fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
     let mut fails = Vec::new();
     const SAME_TOKEN: &str = r#"pub fn same_token(given: &[u8], page: &[u8]) -> bool { if given.len() != page.len() || page.is_empty() { return false; } std::hint::black_box(given.iter().zip(page).fold(0u8, |acc, (x, y)| acc | (x ^ y))) == 0 }"#;
     const SAME_ORIGIN: &str = r#"pub fn same_origin(origin: Option<&[u8]>, host: Option<&[u8]>, site: Option<&[u8]>) -> bool { if site.is_some_and(|s| s.trim_ascii() != b"same-origin") { return false; } let Some(o) = origin.map(|o| o.trim_ascii()) else { return true }; let Some(h) = host.map(|h| h.trim_ascii()).filter(|h| !h.is_empty()) else { return false }; o.len() == 7 + h.len() && o[..7].eq_ignore_ascii_case(b"http://") && o[7..].eq_ignore_ascii_case(h) }"#;
+    const HEADER_ONE: &str = r#"fn header_one(head: &[u8], name: &str, cap: usize) -> Result<Option<Vec<u8>>, ()> { match header_all(head, name).as_slice() { [] => Ok(None), [v] if v.len() < cap => Ok(Some(v.to_vec())), _ => Err(()), } }"#;
+    const UPLOAD_DROP: &str = r#"fn upload_drop() { with(|s| { s.upload = Upload { serial: s.upload.serial, ..Upload::default() }; s.quiet_from = Some(now_ms()); }); }"#;
+    const ASK_SYNC: &str = r#"fn ask_sync(a: &mut App) { let now = httpd_upload_question(); let shown = s(a).ask.as_ref().map(|k| (k.serial, k.rect)); match (now, shown) { (now, Some((serial, old))) if now.as_ref().map(|q| q.0) != Some(serial) => { s(a).ask = None; draw(a); app_invalidate(a, old, RefreshMode::Ui); app_toast(a, tr("Not imported."), 3000); } (Some((serial, name, size, code)), None) => { s(a).ask = Some(Ask { serial, name, size, code, ..Ask::default() }); draw(a); let r = s(a).ask.as_ref().map_or(RECT_EMPTY, |k| k.rect); app_invalidate(a, r, RefreshMode::Ui); } _ => {} } }"#;
+    const SHARE_BACK: &str = r#"pub fn share_back(a: &mut App) -> bool { if a.scr != ScreenId::Share { return false; } if s(a).ask.is_some() { ask_answer(a, false); } if s(a).wifi_open { s(a).wifi_open = false; if !s(a).started { start(a); } draw(a); app_invalidate_all(a, RefreshMode::Ui); return true; } let ret = s(a).ret; app_switch( a, if ret == ScreenId::Share { ScreenId::Library } else { ret }, ); true }"#;
+    const NEW_TOKEN: &str = r#"pub fn new_token() -> Option<String> { let mut b = [0u8; 16]; crate::util::random_fill(&mut b).then(|| b.iter().map(|x| format!("{x:02x}")).collect()) }"#;
+    const NEW_CODE: &str = r#"pub fn new_code() -> Option<String> { loop { let mut b = [0u8; 2]; if !crate::util::random_fill(&mut b) { return None; } let v = u16::from_le_bytes(b); if v < 60_000 { return Some(format!("{:04}", v % 10_000)); } } }"#;
+    const BODY_LENGTH: &str = r#"pub fn body_length(v: Option<&[u8]>) -> Option<u64> { let v = v?.trim_ascii(); if v.is_empty() || v.len() > 12 || !v.iter().all(u8::is_ascii_digit) { return None; } std::str::from_utf8(v).ok()?.parse().ok() }"#;
+    const PART_CREATE: &str = r#"pub fn create() -> Result<Part, i32> { let root = root_dir()?; let dir = sub_dir(root.as_raw_fd(), ".cache", true)?; let name = part_cname(); unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) }; let fd = unsafe { libc::openat(dir.as_raw_fd(), name.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint) }; if fd < 0 { return Err(errno()); } let file = unsafe { std::fs::File::from_raw_fd(fd) }; Ok(Part { dir, file: Some(file), kept: false }) }"#;
+    const SUB_DIR: &str = r#"fn sub_dir(dirfd: i32, name: &str, make: bool) -> Result<OwnedFd, i32> { let c = CString::new(name).map_err(|_| libc::EINVAL)?; for _ in 0..2 { let fd = unsafe { libc::openat(dirfd, c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) }; if fd >= 0 { return Ok(unsafe { OwnedFd::from_raw_fd(fd) }); } let e = errno(); if e != libc::ENOENT || !make { return Err(e); } unsafe { libc::mkdirat(dirfd, c.as_ptr(), 0o755) }; } Err(libc::ENOENT) }"#;
     const UPLOAD_NAME: &str = r#"pub fn upload_name(raw: Option<&[u8]>) -> String { raw.and_then(percent_decoded).and_then(|n| cleaned(&n)).unwrap_or_else(|| UPLOAD_FALLBACK.to_string()) }"#;
     const CLEANED: &str = r#"fn cleaned(n: &str) -> Option<String> { let mapped: String = n .chars() .filter(|&c| !unseen(c)) .map(|c| match c { '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{2800}' | '\u{3000}' => ' ', '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\u{e000}'..='\u{f8ff}' | '\u{f0000}'..='\u{10ffff}' | '\u{fdd0}'..='\u{fdef}' | '\u{fffd}'..='\u{ffff}' => '_', c if c.is_control() || (c as u32 & 0xfffe) == 0xfffe => '_', c => c, }) .collect(); let name = mapped.trim_end_matches(|c| c == ' ' || c == '.'); let pdf = name.len() >= 4 && name.as_bytes()[name.len() - 4..].eq_ignore_ascii_case(b".pdf"); let (stem, ext) = if pdf { name.split_at(name.len() - 4) } else { (name, ".pdf") }; let mut stem = stem.trim_start_matches(|c| c == ' ' || c == '.').to_string(); while stem.len() + ext.len() > FS_NAME_MAX - 3 { stem.pop(); } let name = format!("{stem}{ext}"); (!stem.is_empty() && fsview_name_check(name.as_bytes(), name.as_bytes(), false).is_ok()).then_some(name) }"#;
     const UNSEEN: &str = r#"fn unseen(c: char) -> bool { matches!(c as u32, 0xad | 0x34f | 0x600..=0x605 | 0x61c | 0x6dd | 0x70f | 0x890..=0x891 | 0x8e2 | 0x115f..=0x1160 | 0x17b4..=0x17b5 | 0x180b..=0x180f | 0x200b..=0x200f | 0x202a..=0x202e | 0x2060..=0x206f | 0x3164 | 0xfe00..=0xfe0f | 0xfeff | 0xffa0 | 0xfff0..=0xfffb | 0x110bd | 0x110cd | 0x13430..=0x1343f | 0x1bca0..=0x1bca3 | 0x1d173..=0x1d17a | 0xe0000..=0xe0fff) }"#;
@@ -815,9 +830,96 @@ fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
     // the question: answered only once it has been shown
     told_on(&mut fails, DESIGN, "it answers only a tap that comes down after its frame was shown", SHARE, "k.swallow = !seen;");
     // the log: what came and how it ended, never the name or the token
-    told_on(&mut fails, DESIGN, "never the name, the token or a header", HTTPD, r#"qlog!("httpd: an upload was refused (%s)", why);"#);
-    told_on(&mut fails, KINDLE, "Never the file's name, the page's token or a header.", HTTPD, r#"qlog!("httpd: an upload was not kept (%s)", why);"#);
+    told_on(&mut fails, DESIGN, "never the name, the token, the send's code or a header", HTTPD, r#"qlog!("httpd: an upload was refused (%s)", why);"#);
+    told_on(&mut fails, KINDLE, "Never the file's name, the page's token, the send's code or a header.", HTTPD, r#"qlog!("httpd: an upload was not kept (%s)", why);"#);
     // the limit, with its figure
     beside(&mut fails, DESIGN, "`UPLOAD_MAX`", &format!("{} MB", grimoire::upload::UPLOAD_MAX >> 20));
+
+    // who may send: the Host check, each header the rules read there once and readable, no chunked body, one length
+    told_on(&mut fails, DESIGN, "the Host header names the Kindle by address (`host_ok`, 400)", HTTPD, "if !host_ok(head) {");
+    let once = "one there twice or too long is refused, never read as absent";
+    told_on_code(&mut fails, DESIGN, once, HTTPD, "fn header_one(", HEADER_ONE);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"let Ok(host) = one("Host", 128) else {"#);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"let (Ok(origin), Ok(site)) = (one("Origin", 256), one("Sec-Fetch-Site", 32)) else {"#);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"match one("X-Grimoire-Token", 64) {"#);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"let Ok(length) = one("Content-Length", 32) else {"#);
+    told_on(&mut fails, DESIGN, "or with any `Transfer-Encoding` line: no chunked body", HTTPD, r#"if !header_all(head, "Transfer-Encoding").is_empty() {"#);
+    told_on_code(&mut fails, DESIGN, "One Content-Length of digits only", UPLOAD, "pub fn body_length(", BODY_LENGTH);
+    told_on(&mut fails, DESIGN, "at least five bytes (415)", HTTPD, "if len < PDF_MAGIC.len() as u64 {");
+    let exact = "A connection sends exactly the length it said";
+    told_on(&mut fails, DESIGN, exact, HTTPD, "if (raw.len() - hl) as u64 > len {");
+    told_on(&mut fails, DESIGN, exact, HTTPD, "if r > 0 { return upload_end(UploadEnd::TooLong); }");
+    told_on(&mut fails, DESIGN, "Headers are looked for in the head alone, never in the body", HTTPD, "let head = &raw[..hl];");
+    told_on(&mut fails, DESIGN, "which the server refuses (OPTIONS answers 405)", HTTPD, r#"return respond_text(405, "GET only");"#);
+    told_on(&mut fails, DESIGN, "Room for it above the storage's floor, 100 MB left after it (`fsview_room_for`, 507)", HTTPD, "if !free_bytes().is_some_and(|free| fsview_room_for(free, len)) {");
+    // the token: 128 random bits, gone when Share closes
+    told_on_code(&mut fails, DESIGN, "The token is 128 random bits", UPLOAD, "pub fn new_token(", NEW_TOKEN);
+    told_on(&mut fails, DESIGN, "gone when it closes", HTTPD, "upload_end(UploadEnd::ShareClosed); with(|s| s.token = None);");
+    // the quiet time after a send not imported, with its figure
+    let quiet = "**After an upload ends any way but Import, no new one is taken for `UPLOAD_QUIET_MS`**";
+    told_on(&mut fails, DESIGN, quiet, HTTPD, r#"if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {"#);
+    told_on_code(&mut fails, DESIGN, quiet, HTTPD, "fn upload_drop(", UPLOAD_DROP);
+    told_on(&mut fails, DESIGN, quiet, HTTPD, "if s.upload.st != UploadState::None && s.upload.client == i { s.upload = Upload { serial: s.upload.serial, ..Upload::default() }; s.quiet_from = Some(now_ms());");
+    beside(&mut fails, DESIGN, "`UPLOAD_QUIET_MS`", &format!("{} s", grimoire::upload::UPLOAD_QUIET_MS / 1000));
+    // the other time limits, with their figures
+    beside(&mut fails, DESIGN, "`UPLOAD_STALL_MS`", &format!("{} s", grimoire::upload::UPLOAD_STALL_MS / 1000));
+    beside(&mut fails, DESIGN, "`UPLOAD_BODY_MS`", &format!("{} minutes", grimoire::upload::UPLOAD_BODY_MS / 60_000));
+    beside(&mut fails, DESIGN, "`UPLOAD_ASK_MS`", &format!("{} minutes", grimoire::upload::UPLOAD_ASK_MS / 60_000));
+    beside(&mut fails, DESIGN, "`UPLOAD_DRAIN_MS`", &format!("{} s", grimoire::upload::UPLOAD_DRAIN_MS / 1000));
+    // the send's code: drawn from the system's randomness, in its own reply alone, drawn on the Kindle, never logged
+    // (no log line in these files names it) and never written or shown elsewhere (the request test looks)
+    told_on_code(&mut fails, DESIGN, "drawn from the system's randomness (`upload::new_code`, each of the 10,000 as likely)", UPLOAD, "pub fn new_code(", NEW_CODE);
+    let alone = "It is given in that send's own reply alone, as its first line";
+    told_on(&mut fails, DESIGN, alone, HTTPD, r#"buf_printf!(&mut o, "code %s\n", code);"#);
+    told_on(&mut fails, DESIGN, alone, HTTPD, "upload_reply_open(c, &code);");
+    told_on(&mut fails, DESIGN, "the Kindle shows the same under its question, half again the title's size", SHARE, "font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.5, Rect::new(inner.x, inner.y, inner.w, ch - gap), &code, 0);");
+    let never = "**The code is never logged, never written to the storage, never in another connection's answer or in a page, and it is gone with the send.**";
+    told_on(&mut fails, DESIGN, never, UPLOAD_TESTS, r#"check!(!httpd.iter().any(|l| whole(format!(" {l} ").as_bytes(), code)));"#);
+    told_on(&mut fails, DESIGN, never, UPLOAD_TESTS, r#"check!(!files.iter().any(|b| whole(&[b" ", &b[..], b" "].concat(), code)));"#);
+    told_on(&mut fails, DESIGN, never, UPLOAD_TESTS, r#"check!(!t.contains(&format!("code {code}")) && !t.contains(&format!("Code {code}")));"#);
+    told_on_code(&mut fails, DESIGN, never, HTTPD, "fn upload_drop(", UPLOAD_DROP);
+    for f in [HTTPD, SHARE, UPLOAD] {
+        for line in f.1.lines().filter(|l| l.contains("qlog!")) {
+            if ["&code", ".code", ", code", "(code", "code_line"].iter().any(|w| line.contains(w)) {
+                fails.push(format!("{} logs the send's code: {}", f.0, line.trim()));
+            }
+        }
+    }
+    // the question: a turn asks again, a tap lifts on its row, one that ends is taken away first, X and Esc close Share
+    told_on(&mut fails, DESIGN, "a turn draws it at its new place and asks again", SHARE, "if rect != was { app_ask(a); }");
+    told_on(&mut fails, DESIGN, "and lifts on the row it came down on", SHARE, "if swallow || at.is_none() || at != down {");
+    told_on_code(&mut fails, DESIGN, "is taken away first, with the toast \"Not imported.\", and only then can another be drawn", SHARE, "fn ask_sync(", ASK_SYNC);
+    let x = "**Share's X, outside the sheet, is its Cancel and closes Share**";
+    told_on(&mut fails, DESIGN, x, SHARE, "let on_x = on_x && !rect_contains(k.rect, ev.x as i32, ev.y as i32);");
+    told_on(&mut fails, DESIGN, x, SHARE, "if on_x && down.is_none() {");
+    told_on(&mut fails, DESIGN, x, SHARE, "ask_answer(a, false); let back = back_screen(a); return app_switch(a, back);");
+    told_on_code(&mut fails, DESIGN, "and so is Esc, which closes Share as it does without a question", SHARE, "pub fn share_back(", SHARE_BACK);
+    // the temporary file: made afresh in .cache, never through a link, never under a name the scan takes; a crash's goes
+    told_on_code(&mut fails, DESIGN, "what is at its name is removed first (the entry, never what it points at)", UPLOAD, "pub fn create(", PART_CREATE);
+    told_on_code(&mut fails, DESIGN, "in a `.cache` reached from Grimoire's folder with O_NOFOLLOW", UPLOAD, "fn sub_dir(", SUB_DIR);
+    told_on(&mut fails, DESIGN, "never under a name the import's scan takes", UPLOAD, r#"pub const PART_NAME: &str = "share-upload.part";"#);
+    told_on(&mut fails, DESIGN, "one a crash left is removed at the next start (`upload_sweep`, from `share_init`)", SHARE, "if crate::upload::upload_sweep() {");
+    // the network table: each row's limits and rules
+    let pages = "Host must name the Kindle by address; 16 connections, a 4096-byte request, 30 s idle; renders forked, 2 at a time, others queued 2 minutes at most";
+    told_on(&mut fails, DESIGN, pages, HTTPD, "if !host_ok(&req) {");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "const MAX_CLIENTS: usize = 16;");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "req: [u8; 4096],");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "if ms_since(now, with(|s| s.cl[c].t0)) > 30000 { return client_close(c); // said nothing (more) for 30 s");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "const MAX_CHILDREN: usize = 2;");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "if st == ClientState::Queued && ms_since(now, t0) > 120000 {");
+    let live = "sessions in an HttpOnly SameSite=Strict cookie; the key POST is bodyless, its event in a custom header, its preflight refused";
+    told_on(&mut fails, DESIGN, live, PAIR, r#""%s=%s; HttpOnly; SameSite=Strict; Path=/""#);
+    told_on(&mut fails, DESIGN, live, HTTPD, r#"return respond_text(400, "no body allowed");"#);
+    told_on(&mut fails, DESIGN, live, HTTPD, r#"let Some(event) = header_get(req, "X-Grimoire-Key", 32) else {"#);
+    told_on(&mut fails, DESIGN, live, HTTPD, r#"return respond_text(405, "GET only");"#);
+    let send = "one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one not imported";
+    told_on(&mut fails, DESIGN, send, HTTPD, "upload_end(UploadEnd::Another);");
+    told_on(&mut fails, DESIGN, send, HTTPD, "if len > UPLOAD_MAX {");
+    told_on_code(&mut fails, DESIGN, send, HTTPD, "fn header_one(", HEADER_ONE);
+    told_on_code(&mut fails, DESIGN, send, UPLOAD, "pub fn create(", PART_CREATE);
+    told_on(&mut fails, DESIGN, send, HTTPD, "upload_reply_open(c, &code);");
+    told_on(&mut fails, DESIGN, send, HTTPD, "let r = part.map_or(Err(libc::EBADF), |p| p.commit(&name));");
+    told_on(&mut fails, DESIGN, send, HTTPD, r#"if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {"#);
+    beside(&mut fails, DESIGN, "before the next send after one not imported", &format!("{} s", grimoire::upload::UPLOAD_QUIET_MS / 1000));
     none_failed(&fails, "a PDF sent from the Share page");
 }

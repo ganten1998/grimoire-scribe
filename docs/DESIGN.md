@@ -3254,11 +3254,11 @@ again.", `no room` or 507 "Couldn't import PDF. Is the storage full?", 413 "PDF 
 "Open Share on the Kindle, then reload this page.", 503 "Wait 5 seconds, then send again.", anything else (Cancel, no
 answer, not a PDF, a connection lost) "Not imported.".
 
-**The log** says what came and how it ended, never the name, the token or a header: `httpd: an upload of N KB is
-coming in`, `... is in; the Kindle asks`, `httpd: an upload was kept: it waits in import/ for the import`, `httpd: an
-upload was refused (<why>)`, `httpd: an upload was not kept (<why>)`, `httpd: an upload was cut short; nothing kept`,
-`httpd: the browser that sent an upload left; nothing kept`, and at a start `share: a sent PDF the last run left
-unanswered was removed`.
+**The log** says what came and how it ended, never the name, the token, the send's code or a header: `httpd: an
+upload of N KB is coming in`, `... is in; the Kindle asks`, `httpd: an upload was kept: it waits in import/ for the
+import`, `httpd: an upload was refused (<why>)`, `httpd: an upload was not kept (<why>)`, `httpd: an upload was cut
+short; nothing kept`, `httpd: the browser that sent an upload left; nothing kept`, and at a start `share: a sent PDF
+the last run left unanswered was removed`.
 
 What reaches the share server from the network, and who:
 
