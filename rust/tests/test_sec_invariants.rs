@@ -805,6 +805,12 @@ fn web_links_are_told_as_they_are() {
     told_on(&mut fails, FORMAT, checked, PDFWORK, "if l.src < 1 || l.src > pages || off || !crate::weblinks::weblinks_address_ok(l.address.as_bytes()) {");
     told_on(&mut fails, FORMAT, checked, WEBLINKS, "if !nav_area_valid(area) || !weblinks_address_ok(t) {");
     told_on(&mut fails, FORMAT, "a notebook without web links has no `weblinks.ini`", WEBLINKS, "if !wl.file && n == 0 && wl.unknown.is_empty() {");
+    // (a file that does not read, or one with a line skipped, is never written: the writer refuses it)
+    let never = "A file over a cap or one that holds a NUL does not read: it shows no web links and is never written over.";
+    told_on(&mut fails, FORMAT, never, WEBLINKS, "if !wl.writable || nb.npages() < 0 || nb.npages() > STORE_MAX_PAGES as i32 {");
+    told_on(&mut fails, FORMAT, never, WEBLINKS, "WebLinks { writable: false, file: true, ..Default::default() }");
+    let skipped = "A line past those bounds (a later version's longer address, say) is skipped and counted in the log, the file's other links are shown, and the file is never written over";
+    told_on(&mut fails, FORMAT, skipped, WEBLINKS, "if !carry_line(&mut wl.unknown, line) { wl.skipped += 1; wl.writable = false; }");
     // The card opens nothing: both sentences stand on the whole of linkcard_set_web (its one row, Close, and its
     // title, address and code: a row added fails here), on what the editor does with that row (it closes the card),
     // on the card drawing the code of the stored address, and on weblinks.rs and linkcard.rs making no process and

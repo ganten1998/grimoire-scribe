@@ -79,10 +79,12 @@ fn saved_loaded_and_never_made_for_none() {
 fn a_file_that_does_not_read_is_left_alone() {
     let nb = book("Web bad", 2);
     let path = dir(&nb).join("weblinks.ini");
-    for bad in [b"web.1=1,0,0,5,5,https://a\n\0tail".to_vec(), format!("x={}\n", "y".repeat(300)).into_bytes()] {
+    // (a NUL, or a line past what this version carries: the second's link reads, and the file is kept as it is)
+    let link = format!("web.{}=1,0,0,5,5,https://a\n", nb.page_ids[0]);
+    for (bad, links) in [(b"web.1=1,0,0,5,5,https://a\n\0tail".to_vec(), 0), (format!("{link}x={}\n", "y".repeat(300)).into_bytes(), 1)] {
         std::fs::write(&path, &bad).unwrap();
         let mut wl = weblinks_load(nb.id.as_str());
-        assert!(!wl.writable && wl.links.is_empty());
+        assert!(!wl.writable && wl.links.len() == links);
         assert_eq!(weblinks_save(nb.id.as_str(), &mut wl, &nb), -1);
         assert_eq!(weblinks_copy_page(&mut wl, nb.page_ids[0], 77), -1);
         assert_eq!(std::fs::read(&path).unwrap(), bad, "never written over");

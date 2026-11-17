@@ -323,7 +323,8 @@ The smallest coherent reading was taken for each call; each can change without a
   host a phone opens. Not kept:
   `mailto:` (a phone would open it too: it could be added to the rules), `tel:`, internationalised addresses in raw
   UTF-8 (a PDF should write them as ASCII: the host in its `xn--` form, the rest percent-encoded, as kept), and
-  longer addresses (a larger code, up to version 20 and 666 bytes, would need qr.rs's QR_MAX_VERSION raised).
+  longer addresses (a larger code, up to version 20 and 666 bytes, would need qr.rs's QR_MAX_VERSION raised; a 2.2
+  reader skips such a line, shows the file's other links and never writes the file).
 - **The card**: a tap opens it (the Kindle cannot follow a web link); a hold arms Select as on a document link
   (taken). The title is the host (a long one shows its end); the address is always shown whole, in Terminess in
   every look (any 200 bytes take at most 5 lines), title and address in a face that tells `l`, `1`, `I`, `O` and

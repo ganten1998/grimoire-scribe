@@ -148,15 +148,18 @@ pub struct WebLinks {
     pub links: Vec<WebLink>,
     /// the lines this version does not read, carried
     pub unknown: Vec<u8>,
-    /// false after a file that did not read: never overwrite it
+    /// false after a file that did not read, or one with a line skipped: never overwrite it
     pub writable: bool,
+    /// lines this version neither takes nor can carry (past CARRY_LINE_MAX, or WEBLINKS_UNKNOWN_MAX together): left
+    /// out of what is read, counted, and kept in the file, which is then never written
+    pub skipped: usize,
     /// weblinks.ini is there (else it is written only once there is a link)
     pub file: bool,
 }
 
 impl Default for WebLinks {
     fn default() -> Self {
-        WebLinks { links: Vec::new(), unknown: Vec::new(), writable: true, file: false }
+        WebLinks { links: Vec::new(), unknown: Vec::new(), writable: true, skipped: 0, file: false }
     }
 }
 
@@ -184,8 +187,11 @@ pub fn weblinks_of(wl: &WebLinks, pid: u32) -> &[WebLink] {
 
 // ---- reading ----
 
+/// A carried line's bytes at most (a link's longest line is 245).
+const CARRY_LINE_MAX: usize = 255;
+
 fn carry_line(buf: &mut Vec<u8>, line: &[u8]) -> bool {
-    if line.len() > 255 || buf.len() + line.len() + 1 > WEBLINKS_UNKNOWN_MAX || buf.try_reserve(line.len() + 1).is_err() {
+    if line.len() > CARRY_LINE_MAX || buf.len() + line.len() + 1 > WEBLINKS_UNKNOWN_MAX || buf.try_reserve(line.len() + 1).is_err() {
         return false;
     }
     buf.extend_from_slice(line);
@@ -221,9 +227,11 @@ fn web_parse(line: &[u8]) -> Option<WebLink> {
 }
 
 /// A weblinks.ini's text read strictly: None when it holds more links than the cap (a page more than its 256
-/// too), a carried line past its bounds, or runs out of memory (a file that does not read is never written over).
-/// A line this version cannot read (another version's, or a `web.` line whose area or address it refuses) is
-/// carried as it is; the last line for a page id and seed wins.
+/// too), or runs out of memory (a file that does not read is never written over). A line this version cannot read
+/// (another version's, or a `web.` line whose area or address it refuses) is carried as it is, up to
+/// CARRY_LINE_MAX bytes a line and WEBLINKS_UNKNOWN_MAX together; one past those (a later version's longer
+/// address) is skipped and counted, the other links read, and the file is not writable: the line stays in it for
+/// the version that wrote it. The last line for a page id and seed wins.
 pub fn weblinks_parse(text: &[u8]) -> Option<WebLinks> {
     let mut wl = WebLinks::default();
     let mut at: std::collections::HashMap<(u32, u32), usize> = std::collections::HashMap::new();
@@ -234,7 +242,8 @@ pub fn weblinks_parse(text: &[u8]) -> Option<WebLinks> {
         }
         let Some(l) = web_parse(line) else {
             if !carry_line(&mut wl.unknown, line) {
-                return None;
+                wl.skipped += 1;
+                wl.writable = false;
             }
             continue;
         };
@@ -266,8 +275,8 @@ fn unreadable() -> WebLinks {
 }
 
 /// Notebook id's weblinks.ini. Missing is an empty writable set. One that is there and does not read (no plain
-/// file at its name, over the cap, a carried line too long, more links than the cap) reads as none and refuses
-/// writes, so it is never written over.
+/// file at its name, over the cap, more links than the cap) reads as none and refuses writes, so it is never
+/// written over; one with lines skipped reads its links and refuses writes too.
 pub fn weblinks_load(id: &str) -> WebLinks {
     let Some(path) = path_for(id, WEBLINKS_FILE) else { return unreadable() };
     match read_sidecar(&path, WEBLINKS_FILE_MAX) {
@@ -275,6 +284,9 @@ pub fn weblinks_load(id: &str) -> WebLinks {
         Ok(Some(text)) => match weblinks_parse(&text) {
             Some(mut wl) => {
                 wl.file = true;
+                if wl.skipped > 0 {
+                    qlog!("weblinks: weblinks.ini: %d line(s) past what this version carries left out; the file is left unchanged", wl.skipped as i32);
+                }
                 wl
             }
             None => {
@@ -757,10 +769,25 @@ mod tests {
             t.push_str(&format!("web.1={k:08x},0,0,10,10,https://e.org\n"));
         }
         assert!(weblinks_parse(t.as_bytes()).is_none());
-        // a carried line over 255 bytes, and carried lines over 16 KiB
-        assert!(weblinks_parse(format!("x.1={}\n", "a".repeat(260)).as_bytes()).is_none());
+    }
+
+    // A line this version does not take and cannot carry (over 255 bytes, or past 16 KiB of carried lines: a later
+    // version's longer address, say) is skipped and counted: the links read, and the file is never written, so the
+    // line stays for the version that wrote it.
+    #[test]
+    fn a_line_past_what_is_carried_is_skipped_and_the_file_kept() {
+        let long = format!("web.1=00000009,0,0,10,10,https://e.org/{}\n", "a".repeat(300));
+        let text = format!("web.1=00000001,0,0,10,10,https://e.org/one\n{long}web.2=00000002,0,0,10,10,https://e.org/two\n");
+        let wl = weblinks_parse(text.as_bytes()).unwrap();
+        assert_eq!(wl.links.iter().map(|l| l.address.as_str()).collect::<Vec<_>>(), vec!["https://e.org/one", "https://e.org/two"]);
+        assert_eq!((wl.skipped, wl.writable, wl.unknown.len()), (1, false, 0));
         let many = (0..200).map(|k| format!("future.{k}={}\n", "b".repeat(90))).collect::<String>();
-        assert!(weblinks_parse(many.as_bytes()).is_none());
+        let wl = weblinks_parse(format!("{many}web.3=00000003,0,0,10,10,https://e.org/three\n").as_bytes()).unwrap();
+        assert!(wl.skipped > 0 && !wl.writable && wl.unknown.len() <= WEBLINKS_UNKNOWN_MAX);
+        assert_eq!(wl.links.len(), 1);
+        // a file of carried lines within the bounds stays writable
+        let wl = weblinks_parse(format!("x.1={}\n", "a".repeat(200)).as_bytes()).unwrap();
+        assert!(wl.writable && wl.skipped == 0);
     }
 
     #[test]

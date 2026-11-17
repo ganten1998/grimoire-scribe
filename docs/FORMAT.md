@@ -1358,9 +1358,12 @@ a page the file's order is the document's; the last line for a page id and seed 
 | a page | 256 (the rest are left out for room, and the end says "Some links were left out.") |
 | size | 1 MiB (the most links at their longest fit, with the carried lines) |
 
-A file over a cap, a carried line past its bounds (255 bytes each, 16 KiB together) or one that holds a NUL does not
-read: it shows no web links and is never written over. A `web.` line this version cannot read (an address or an
-area it refuses: another version's) and any other line it does not know are carried. A link of a page no longer in
+A file over a cap or one that holds a NUL does not read: it shows no web links and is never written over. A `web.`
+line this version cannot read (an address or an area it refuses: another version's) and any other line it does not
+know are carried, up to 255 bytes a line and 16 KiB together. A line past those bounds (a later version's longer
+address, say) is skipped and counted in the log, the file's other links are shown, and the file is never written
+over, so the line stays for the version that wrote it: a later version may raise the address's cap and cost this
+one only those lines. A link of a page no longer in
 the notebook is not shown and goes from the file at its next write. The writers: the PDF import's last slice (a new
 notebook's, only when the PDF has a web link: a notebook without web links has no `weblinks.ini`), a fill's commit
 (the web links of the pages it adds, the notebook's own never trimmed), Copy page and Copy to notebook (a web link
