@@ -12,6 +12,7 @@ local description = {
     en = "Opens Grimoire, the handwriting notebook, from KOReader. Leaving Grimoire comes back here.",
     es = "Abre Grimoire, el cuaderno de escritura a mano, desde KOReader. Al salir de Grimoire, vuelves aquí.",
     ja = "KOReaderから手書きノートのGrimoireを開きます。Grimoireを終了すると、ここに戻ります。",
+    pl = "Otwiera Grimoire, notatnik do pisania odręcznego, z KOReadera. Po wyjściu z Grimoire wracasz tutaj.",
 }
 local lang = G_reader_settings and G_reader_settings:readSetting("language")
 return {
