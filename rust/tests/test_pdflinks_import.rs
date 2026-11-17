@@ -837,6 +837,52 @@ fn an_import_keeps_web_links_apart_and_its_other_files_as_without_them() {
     assert_eq!(finished_trimmed(&with), 0);
 }
 
+/// `n` web links of 200 bytes on a page of 420 x 595 points, a small box each, the k-th to https://example.org/<k>/...
+fn crowd(n: usize, from: usize) -> Vec<Lnk> {
+    (0..n)
+        .map(|i| {
+            let k = from + i;
+            let (x, y) = ((i % 100) as f64 * 4.0, (i / 100 % 150) as f64 * 3.5);
+            let head = format!("https://example.org/{k}/");
+            Lnk::new([x, y, x + 3.0, y + 3.0], Act::Uri(leak(format!("{head}{}", "p".repeat(200 - head.len())))))
+        })
+        .collect()
+}
+
+// Web links never take a page link's room: the walk sends every page's L and Q records first, exactly as for the PDF
+// without its web links, then at most 256 web links a page and 4,000 in all (what a notebook keeps) in the room
+// left, the rest counted (U). A first page of 15,000 web links of 200 bytes (more than the walk's 3 MiB) used to
+// push the tab of the page after it out; it is sent, and the notebook has it.
+#[test]
+fn web_links_never_take_a_page_links_room() {
+    let e = setup("web-room");
+    let tab = || vec![Lnk::new(r(0), Act::Page(3))];
+    let with = make_linked(&plain_pages(3), &[crowd(15_000, 0), tab(), Vec::new()], &Extra::default());
+    let without = make_linked(&plain_pages(3), &[Vec::new(), tab(), Vec::new()], &Extra::default());
+    let (c, c0) = (e.walk(&with), e.walk(&without));
+    assert_eq!(c.links, c0.links, "the page links are sent as without the web links");
+    assert_eq!(pairs(&c), vec![(2, 3)]);
+    assert_eq!(c.left.capped, 0);
+    assert_eq!(c.webs.len(), WEBLINKS_PER_PAGE, "a page's worth");
+    assert_eq!(c.web_left.capped as usize, 15_000 - WEBLINKS_PER_PAGE);
+    assert_eq!(c.webs.last().map(|w| w.index), Some(WEBLINKS_PER_PAGE as u32 - 1));
+    let id = e.import("Crowd.pdf", &with);
+    assert_eq!(finished_trimmed(&id), (15_000 - WEBLINKS_PER_PAGE) as u32, "the toast counts those left out");
+    let id0 = e.import("Crowd0.pdf", &without);
+    assert_eq!(info_files(&e.root, &id).get("doclinks.ini"), info_files(&e.root, &id0).get("doclinks.ini"));
+    assert_eq!(doclinks_load(&id).links.len(), 1, "the tab is kept");
+    assert_eq!(weblinks_load(&id).links.len(), WEBLINKS_PER_PAGE);
+    // a PDF's worth: 20 pages of 210 web links send 4,000, and the notebook keeps 3,600 (the water level)
+    let pages: Vec<Vec<Lnk>> = (0..20).map(|p| crowd(210, p * 210)).collect();
+    let many = make_linked(&plain_pages(20), &pages, &Extra::default());
+    let c = e.walk(&many);
+    assert_eq!(c.webs.len(), WEBLINKS_MAX);
+    assert_eq!(c.web_left.capped as usize, 20 * 210 - WEBLINKS_MAX);
+    let id = e.import("Many.pdf", &many);
+    assert_eq!(weblinks_load(&id).links.len(), WEBLINKS_MAX * 9 / 10);
+    assert_eq!(finished_trimmed(&id) as usize, 20 * 210 - WEBLINKS_MAX * 9 / 10);
+}
+
 // A page with more web links than it takes (256) keeps its first, in the document's order, and the end says some
 // links were left out (the toast counts them with the document links left out for room).
 #[test]

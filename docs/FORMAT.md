@@ -983,6 +983,8 @@ waits, and within 10 s of the end of a previous run's import):
   action, one whose destination does not resolve, an empty rectangle, a link to its own page and one that falls
   off the page are left out and counted too. Walks are capped (name trees and the outline: depth 32, 100,000
   entries and nodes, a visited set; 20,000 annotations a page; 60,000 links a PDF) and the rest is left out.
+  Web links (2.2) are walked after every page link and never take a page link's room: at most 256 a page and
+  4,000 a PDF, in what room the page links left.
   The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
   least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
   outline names pages: depth first, the first item that points at a page names it, a page's own name staying

@@ -2814,7 +2814,8 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
     if let Some(c) = &found {
         let w1 = write_file_atomic(&format!("{work}/links.part"), c.links_text().as_bytes());
         let w2 = write_file_atomic(&format!("{work}/names.part"), c.names_text().as_bytes());
-        let w3 = if c.webs.is_empty() { 0 } else { write_file_atomic(&format!("{work}/{WEBS_PART}"), c.webs_text().as_bytes()) };
+        let wt = c.webs_text();
+        let w3 = if wt.is_empty() { 0 } else { write_file_atomic(&format!("{work}/{WEBS_PART}"), wt.as_bytes()) };
         if w1 != 0 || w2 != 0 || w3 != 0 {
             qlog!("import: %s: the links and names could not be kept (%s); the notebook has none", id, &strerror(errno()));
             let _ = std::fs::remove_file(format!("{work}/links.part"));
@@ -3252,7 +3253,8 @@ fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (boo
 /// filled notebook's own): each W record mapped to its page id (`pid_of`, 0 for none) and kept when `take` says
 /// yes to that page, put through weblinks_fill (validated again, one of each, a page's 256), then the water level
 /// (a fill's: only the links it adds go). Written only when there is a link, or a file there already. Returns how
-/// many were left out for room, or all of them when the file cannot be written; logs what it did.
+/// many were left out for room (the worker's caps among them: U), or all of them when the file cannot be written;
+/// logs what it did.
 #[allow(clippy::too_many_arguments)]
 fn put_weblinks(id: &str, dir: &str, wl: &mut WebLinks, nb: &NotebookInfo, pw: i32, ph: i32, c: &Collected, pid_of: &dyn Fn(u32) -> u32, take: &dyn Fn(u32) -> bool, fill: bool) -> u32 {
     let mut recs: Vec<WebRecord> = Vec::new();
@@ -3266,12 +3268,16 @@ fn put_weblinks(id: &str, dir: &str, wl: &mut WebLinks, nb: &NotebookInfo, pw: i
         }
         recs.push(WebRecord { src: pid, rect: Rect { x: l.x, y: l.y, w: l.w, h: l.h }, index: l.index, address: l.address.clone() });
     }
+    let capped = c.web_left.capped;
     if recs.is_empty() {
-        return 0;
+        if capped > 0 {
+            qlog!("import: %s: %d web link(s) (0 added, 0 already there, 0 refused, %d left out for room)", id, wl.links.len() as i32, capped as i32);
+        }
+        return capped;
     }
     if !wl.writable {
         qlog!("import: %s: its weblinks.ini does not read; its web links are left as they are", id);
-        return recs.len() as u32;
+        return recs.len() as u32 + capped;
     }
     let before: std::collections::HashSet<(u32, u32)> = wl.links.iter().map(|l| (l.pid, l.seed)).collect();
     let have = |p: u32| nb.page_ids.contains(&p);
@@ -3279,8 +3285,9 @@ fn put_weblinks(id: &str, dir: &str, wl: &mut WebLinks, nb: &NotebookInfo, pw: i
     let water = weblinks_water(wl, &|l| fill && before.contains(&(l.pid, l.seed)));
     if weblinks_save_in(dir, wl, nb) != 0 {
         qlog!("import: %s: its web links could not be written; left out", id);
-        return recs.len() as u32;
+        return recs.len() as u32 + capped;
     }
+    let left = (st.full + water) as u32 + capped;
     qlog!(
         "import: %s: %d web link(s) (%d added, %d already there, %d refused, %d left out for room)",
         id,
@@ -3288,9 +3295,9 @@ fn put_weblinks(id: &str, dir: &str, wl: &mut WebLinks, nb: &NotebookInfo, pw: i
         st.added as i32,
         st.same as i32,
         st.invalid as i32,
-        (st.full + water) as i32
+        left as i32
     );
-    (st.full + water) as u32
+    left
 }
 
 fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, ph: i32) -> SliceEnd {
@@ -3621,7 +3628,7 @@ fn fill_links(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMa
 #[allow(clippy::too_many_arguments)]
 fn fill_weblinks(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMap, pages: u32, pw: i32, ph: i32, c: &Collected, added: &[u32]) -> u32 {
     if c.webs.is_empty() {
-        return 0;
+        return c.web_left.capped;
     }
     let mut wl = weblinks_load(nbid);
     put_weblinks(id, dir, &mut wl, nb, pw, ph, c, &|bp| annotate_map_find(m, nb, bp as i32, pages as i32), &|p| added.contains(&p), true)

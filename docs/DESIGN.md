@@ -1488,8 +1488,12 @@ code made from it, and nothing else.
   address stays a counted web link left out (`LeftOut.uri`).
 - **The worker** (`pdfwork.rs`, `Walk::target`): a URI action's string is read and, when the rules take it, each
   quad (or the Rect) of the annotation goes out as `W <src> <x> <y> <w> <h> <i> <address>`, the area as an `L`
-  record's (its box; no polygon), `i` its place among the page's web links. Web and page links share `LINKS_MAX`
-  and the walk's 3 MiB of records. The first slice keeps the `W` records in `webs.part`, a part of their own
+  record's (its box; no polygon), `i` its place among the page's web links. The page links never lose room to
+  them: the walk sends every page's `L` and `Q` records first, exactly as for the PDF without its web links, and
+  keeps the web links for a second pass after them, at most `WEBLINKS_PER_PAGE` (256) a page and `WEBLINKS_MAX`
+  (4,000) in all, what a notebook keeps, under what is left of `LINKS_MAX` and the walk's 3 MiB of records; those
+  left out are counted (`U <capped>`) and added to the end's "Some links were left out.". So `doclinks.ini` and
+  `nav.ini` are, for any PDF, what the PDF without its web links gives. The first slice keeps the `W` records in `webs.part`, a part of their own
   (`WEBS_PART`, only for a PDF with a web link), never in `links.part`, which 2.1.0 reads: an import 2.2 began and
   2.1.0 finishes keeps its tabs and names, without its web links.
 - **The writer** (`pdfimport.rs`, `put_weblinks`): the last slice of a new notebook writes `weblinks.ini` in the

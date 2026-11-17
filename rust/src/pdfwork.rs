@@ -37,9 +37,15 @@
 //!   `O <page> <hex>`                an outline title (UTF-8, hex) that names this page: at most one a page
 //!   `W <src> <x> <y> <w> <h> <i> <address>`  a web link (2.2): its page from 1, its area as an L record's, i its
 //!                                   place among the page's web links, the address as it is (weblinks_address_ok:
-//!                                   http or https, printable ASCII without a space, at most 200 bytes)
+//!                                   http or https, printable ASCII without a space, a plain host, at most 200
+//!                                   bytes). Sent after every page's L and Q records, at most WEBLINKS_PER_PAGE a
+//!                                   page and WEBLINKS_MAX in all (what a notebook keeps), so they never take a
+//!                                   page link's room
+//!   `U <capped>`                    what the walk left out of the web links (2.2): those past those caps or the
+//!                                   records' room
 //!   `F <uri> <other> <dead> <capped>`  what the walk left out: web links whose address the rules refuse, other
-//!                                   actions, links without a place to go or an area, links past the worker's cap
+//!                                   actions, links without a place to go or an area, page links past the worker's
+//!                                   cap
 
 use crate::sandbox::*;
 
@@ -123,6 +129,7 @@ pub enum Rec {
     Quad([i32; 8]),
     Name { page: u32, text: Vec<u8> },
     Web(WireWeb),
+    WebLeft(WebLeft),
     Left(LeftOut),
 }
 
@@ -151,6 +158,13 @@ pub struct WireWeb {
     pub address: String,
 }
 
+/// What the link walk left out of the web links it kept the addresses of (U record, 2.2), for the log.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WebLeft {
+    /// past WEBLINKS_PER_PAGE on their page, WEBLINKS_MAX in all, or the walk's room after the page links
+    pub capped: u32,
+}
+
 /// What the link walk left out (F record), for the log.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LeftOut {
@@ -158,6 +172,7 @@ pub struct LeftOut {
     pub uri: u32,
     pub other: u32,
     pub dead: u32,
+    /// page links past the worker's cap (web links past theirs are WebLeft's)
     pub capped: u32,
 }
 
@@ -246,6 +261,7 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
             }
             Ok(Rec::Web(WireWeb { src: num(1)?, x: sn(2)?, y: sn(3)?, w, h, index: num(6)?, address: t[7].to_string() }))
         }
+        ("U", 2) => Ok(Rec::WebLeft(WebLeft { capped: num(1)? })),
         ("F", 5) => Ok(Rec::Left(LeftOut { uri: num(1)?, other: num(2)?, dead: num(3)?, capped: num(4)? })),
         ("E", 2 | 3) => Ok(Rec::Err(match (t[1], t.get(2)) {
             ("password", None) => ErrCode::Password,
@@ -275,6 +291,8 @@ pub struct Collected {
     pub names: Vec<(u32, Vec<u8>)>,
     /// the web links (2.2), each address by weblinks_address_ok
     pub webs: Vec<WireWeb>,
+    pub web_left: WebLeft,
+    seen_web_left: bool,
     pub left: LeftOut,
     seen_left: bool,
 }
@@ -322,6 +340,11 @@ impl Collected {
                 self.webs.push(l);
                 Ok(())
             }
+            Rec::WebLeft(l) if !self.seen_web_left => {
+                self.web_left = l;
+                self.seen_web_left = true;
+                Ok(())
+            }
             Rec::Left(l) if !self.seen_left => {
                 self.left = l;
                 self.seen_left = true;
@@ -351,9 +374,15 @@ impl Collected {
         self.names.iter().map(|(p, n)| format!("O {p} {}\n", n.iter().map(|b| format!("{b:02x}")).collect::<String>())).collect()
     }
 
-    /// webs.part (2.2): the W records, a part of their own, which no version before 2.2 reads.
+    /// webs.part (2.2): the W records, then U, a part of their own, which no version before 2.2 reads. Empty for a
+    /// walk that found no web link to keep.
     pub fn webs_text(&self) -> String {
-        self.webs.iter().map(|l| format!("W {} {} {} {} {} {} {}\n", l.src, l.x, l.y, l.w, l.h, l.index, l.address)).collect()
+        if self.webs.is_empty() && self.web_left == WebLeft::default() {
+            return String::new();
+        }
+        let mut t: String = self.webs.iter().map(|l| format!("W {} {} {} {} {} {} {}\n", l.src, l.x, l.y, l.w, l.h, l.index, l.address)).collect();
+        t.push_str(&format!("U {}\n", self.web_left.capped));
+        t
     }
 
     /// Reads the two parts back, strictly: None for any line the grammar or the page count refuses.
@@ -367,16 +396,17 @@ impl Collected {
         Some(c)
     }
 
-    /// Reads webs.part back into a walk read from the other two, as strictly: W records only. On any line refused
+    /// Reads webs.part back into a walk read from the other two, as strictly: W records, then U. On any line refused
     /// the walk keeps no web link and false is returned (its links and names stay).
     pub fn take_webs(&mut self, webs: &[u8], pages: u32) -> bool {
         for line in webs.split(|&b| b == b'\n').filter(|l| !l.is_empty()) {
             let ok = match parse_record(line) {
-                Ok(r @ Rec::Web(_)) => self.take(r, pages).is_ok(),
+                Ok(r @ Rec::Web(_)) if !self.seen_web_left => self.take(r, pages).is_ok(),
+                Ok(r @ Rec::WebLeft(_)) => self.take(r, pages).is_ok(),
                 _ => false,
             };
             if !ok {
-                self.webs = Vec::new();
+                (self.webs, self.web_left) = (Vec::new(), WebLeft::default());
                 return false;
             }
         }
@@ -1104,7 +1134,10 @@ mod links {
         b.iter().map(|x| format!("{x:02x}")).collect()
     }
 
-    /// Answers the LINKS command: L (and Q) records page by page, O records, then F.
+    /// Answers the LINKS command: L (and Q) records page by page, then the W records and U, O records, then F. The
+    /// page links are sent exactly as if the PDF had no web link: the web links wait for a second pass after them
+    /// (at most WEBLINKS_PER_PAGE a page and WEBLINKS_MAX in all, what a notebook keeps), under what is left of
+    /// LINKS_MAX and the 3 MiB, so a web link never takes a page link's room.
     pub(super) fn walk(pdf: &Pdf, pages: &[Page<'_>], w: i32, h: i32) {
         let mut page_of = HashMap::new();
         for (i, p) in pages.iter().enumerate() {
@@ -1115,6 +1148,8 @@ mod links {
         let mut wk = Walk { pdf, pages, page_of, tree: None, dests: None, left: LeftOut::default() };
         let mut out = Out { buf: String::new(), bytes: 0 };
         let mut sent = 0usize;
+        // (the W records kept for the second pass, and those left out)
+        let (mut webs, mut web_left): (Vec<String>, WebLeft) = (Vec::new(), WebLeft::default());
         for (i, page) in pages.iter().enumerate() {
             let src = i as u32 + 1;
             let Some(annots) = page.raw().get::<Array<'_>>("Annots") else { continue };
@@ -1199,30 +1234,47 @@ mod links {
                     continue;
                 }
                 for (corners, polygon) in shapes {
-                    if sent >= LINKS_MAX || out.bytes > 3 << 20 {
-                        wk.left.capped += 1;
-                        continue;
-                    }
                     let (x, y, bw, bh) = box_of(&corners);
                     match &goes {
                         Goes::Page(dst) => {
+                            if sent >= LINKS_MAX || out.bytes > 3 << 20 {
+                                wk.left.capped += 1;
+                                continue;
+                            }
                             out.put(&format!("L {src} {dst} {x} {y} {bw} {bh} {index}\n"));
                             if polygon {
                                 let q: Vec<String> = corners.iter().flat_map(|c| [clamp_px(c.0 * 16.0).to_string(), clamp_px(c.1 * 16.0).to_string()]).collect();
                                 out.put(&format!("Q {}\n", q.join(" ")));
                             }
                             index += 1;
+                            sent += 1;
                         }
-                        // (a web link's area is its quad's box: no polygon)
+                        // (a web link's area is its quad's box: no polygon; kept for after the page links)
                         Goes::Web(address) => {
-                            out.put(&format!("W {src} {x} {y} {bw} {bh} {web_index} {address}\n"));
+                            if web_index as usize >= crate::weblinks::WEBLINKS_PER_PAGE || webs.len() >= crate::weblinks::WEBLINKS_MAX || webs.try_reserve(1).is_err() {
+                                web_left.capped += 1;
+                                continue;
+                            }
+                            webs.push(format!("W {src} {x} {y} {bw} {bh} {web_index} {address}\n"));
                             web_index += 1;
                         }
                     }
-                    sent += 1;
                 }
             }
         }
+        // the web links, after every page link, in what room the page links left
+        for line in &webs {
+            if sent >= LINKS_MAX || out.bytes > 3 << 20 {
+                web_left.capped += 1;
+                continue;
+            }
+            out.put(line);
+            sent += 1;
+        }
+        if !webs.is_empty() || web_left != WebLeft::default() {
+            out.put(&format!("U {}\n", web_left.capped));
+        }
+        drop(webs);
         // the outline names pages that have no name: depth first, the first item pointing at a page
         let mut named = vec![false; pages.len() + 1];
         let first = wk.catalog().and_then(|c| c.get::<Dict<'_>>("Outlines")).and_then(|o| o.get::<Dict<'_>>("First"));
@@ -1461,7 +1513,7 @@ impl Session {
             }
             match parse_record(&line) {
                 Ok(Rec::ProbeDone) => return Ok(got),
-                Ok(r @ (Rec::Link(_) | Rec::Quad(_) | Rec::Name { .. } | Rec::Web(_) | Rec::Left(_))) => {
+                Ok(r @ (Rec::Link(_) | Rec::Quad(_) | Rec::Name { .. } | Rec::Web(_) | Rec::WebLeft(_) | Rec::Left(_))) => {
                     if let Err(v) = got.take(r, self.pages) {
                         self.w.kill_and_reap();
                         return Err(v.0);
