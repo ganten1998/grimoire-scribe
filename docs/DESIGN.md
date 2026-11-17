@@ -3144,6 +3144,73 @@ Files (`browser.rs`) has the rows that set it and the home folder as the top.
   KOReader start, the Files card hidden, What's new, the Exit question through a turn and a sleep, and a start in
   Covers). docs/TESTING.md has the Scribe's checks.
 
+## Darker lines in imported PDFs (2.2, issue #173)
+
+Faint planners read poorly on e-ink. An option darkens the lines of a PDF as it is imported: a gamma on the gray
+pages, as KOReader's contrast darkens a page it draws. `pdfwork.rs` has the levels and the arithmetic; `pdfimport.rs`
+carries the level from the UI to the notebook; `library.rs` and `settingsmenu.rs` have the row; `annotate.rs` and the
+KOReader plugin carry the reader's contrast.
+
+- **The levels**, `pdfwork::Gamma`: Off, Medium (1.5) and Strong (2.0). Each level of a gray page becomes 255
+  (level / 255)^gamma, rounded to the nearest whole level, from a table computed in whole numbers (2.0 is
+  round(v^2 / 255), 1.5 is round(sqrt(v^3 / 255))), so every build makes the same bytes and neither ever falls on a
+  half. White stays white and black stays black.
+- **Gray pages only** (the owner's ruling of 2026-11-17). The writer applies the gamma to the gray page it already
+  holds (`darken`, after `Session::render` has settled the page gray or colour): no new parse of the PDF, no new
+  decode, and the worker and its protocol are unchanged. A page kept in colour is left exactly as it is, and a page
+  with gray and colour on it is a colour page. At Off nothing is applied: the pages, the card's thumbnail, the
+  notebook's files and the import's screens and refreshes are those of an import before 2.2, byte for byte
+  (Settings > System has one row more). Blank pages (a page whose worker died twice) are white at every level.
+- **Where it lives**: one setting, settings.ini `pdf_gamma`, the last row of Settings > System, "Darker lines in
+  imported PDFs: %s", which opens a list of the three levels as the eraser's row does, in one column so that they read
+  in their order, Off, Medium, Strong (`draw_pick_cards`). It is the smallest place every way in can follow: the
+  import folder's scan (which asks nothing), Files' Import and New notebook's From a file..., and KOReader's
+  hand-over. The app gives it to `pdfimport` at the start and when it is picked (`set_darker`).
+- **The level travels with the file.** The UI decides it as it queues a file and writes it into the file's mark
+  (`gamma=`): the setting, or a level of the caller's own through `pdf_import_queue_at` (KOReader's request). A pick
+  that waits for the lock keeps its level until a later scan queues it, and a file whose mark is lost is drawn at the
+  setting. The first slice keeps the level in the import's state, so every slice, a resume included, draws at it.
+- **Kept with the notebook**: one `gamma=` line in its `source.ini`, after the file record, a line only away from Off.
+  annotate.rs and every version since 1.1 write the lines of `source.ini` they do not know back as they were, so the
+  line stays through KOReader's version 1 pages, an older version's saves and a raw zip. A fill draws the pages it
+  adds at its notebook's own level (`gamma_among`, read when the fill is decided), whatever the setting or the
+  request says: a notebook made before 2.2 or at Off has no line and is filled at Off, as its import drew it. A
+  notebook KOReader made (version 1) has no line either and is filled at Off, though KOReader drew its pages at the
+  reader's contrast: where that was darker, the pages a fill adds are lighter than KOReader's. The same PDF again
+  with every page is "PDF already imported." at any level: a PDF already imported is not drawn again by a change of
+  the setting.
+- **Read strictly**: settings.ini, a mark, an import's state, a notebook's `source.ini` and KOReader's request each
+  say a level as `1.0`, `1.5` or `2.0` (`Gamma::parse`), and any other value is no gamma. settings.ini writes an
+  unknown value back as it was, as it does `files_sort`'s.
+- **KOReader**: the version 2 request (`file=`, the PDF by its path) gains `gamma=`, the reader's contrast as darker
+  lines. KOReader's contrast is a gamma on the page, the one version 1 drew KOReader's pictures at; the plugin sends
+  `1.5` for a contrast from 1.25 and `2.0` for one from 1.75, and no line for any other (KOReader's own 1, a lighter
+  page, which Grimoire does not draw), so Grimoire's setting decides then, as it does for an older plugin. A request's
+  line wins over the setting, and a fill still draws at the notebook's own level. Version 1 is unchanged. From the
+  file browser (Open with) the plugin reads the contrast the reader would open the book with: the book's own, else
+  the default set for books, else KOReader's. A KOReader before 2023.10 kept a book's contrast as its `gamma`
+  setting (its `kopt_contrast` then held 1/contrast) and the default as 1/contrast, until it moves them itself (a
+  book's `gamma` when the book is next opened, the default by its one-time move of 20230901,
+  `last_migration_date`); the plugin reads them as KOReader does until then, a book's `gamma` first and a default
+  not yet moved turned back, so Open with draws (version 1) and asks (version 2) at the reader's contrast there too.
+- **Not darkened**: Files' previews of a PDF (they show the file), and the pages KOReader draws (Annotate this page,
+  Open this book by version 1), which come at KOReader's own contrast. Template pages made from a PDF (issue #172)
+  do not take the level either: the setting is the import's, and a template is paper under the ink.
+- **Logs**: `import: <id>: darker lines: its gray pages are drawn at gamma 1.5 (the import's)` (or `its notebook's`
+  for a fill), and `book: the request asks for darker lines at gamma 2.0`; the plugin's crash.log line ends `with
+  gamma=2.0`. Never a name.
+- **Strings**: Darker lines in imported PDFs: %s, Darker lines in imported PDFs, and Off, Medium and Strong in the
+  context "darker lines".
+- **Tests**: `pdfwork.rs`'s unit tests (each level against the formula, Off byte for byte, a colour page and a mixed
+  page untouched, only the three values read); `pdfimport.rs`'s (the state's and the mark's line);
+  `test_pdf_darker.rs` (each level's pages are the pages at Off through its table, a colour page's picture the same
+  file at every level, the level a pick, a pick of a level of its own, a pick waiting for the lock and one waiting
+  for a copy of its PDF were queued at, a fill at its notebook's level both ways, the same PDF again, the
+  notebook's line read strictly); `test_store.rs`
+  `pdf_gamma_key`; `library.rs`'s row test; `test_annotate.rs` and `test_koreader_pdf.rs` (the request's line);
+  the plugin's stub test; the scenarios `z_pdf_darker_*` and `y_koreader_pdf_darker_*`. docs/TESTING.md has the
+  Scribe's checks.
+
 ## PDFs as templates (2.2, issue #172)
 
 A PDF in `grimoire/templates` (copied in over USB, or by Use as template on a PDF's card in Files) gives one template
@@ -3222,8 +3289,7 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   out when the sheet opens, as before. With no template to offer, the sheet counts them among the files it cannot use,
   as for pictures. A template PDF's tiles are templates only: the Photos sheet lists no PDF.
 - **Colour** follows a picture template's: a page with colour is kept in colour, drawn behind the ink as such a
-  template is, and its preview is gray. Darker lines (issue #173, "Darker lines in imported PDFs") are not applied to
-  template pages: a page is stored as the worker draws it, whatever that setting says.
+  template is, and its preview is gray.
 - **Users with no PDF in the folder** see what they saw: the same tiles and jobs, and the sheet's tick asks nothing
   of the folder for a picture.
 - **Use as template on a PDF** (`browser.rs`): Files' PDF card has it after Import as notebook, never for a PDF already

@@ -60,7 +60,9 @@ draws its pages (in colour) and finds its links, then opens the page the reader 
 needs a password, one at a path Grimoire does not take (outside the Kindle's storage, in a hidden,
 .sdr or system folder, through a link), one changed since KOReader first opened it, every other
 format, and any PDF to an older launcher go as above (version 1), so a book that opened before
-still opens. Annotate this page stays as it is for every format.
+still opens. Annotate this page stays as it is for every format. A reader that draws the PDF darker
+(KOReader's contrast at 1.25 or more) asks Grimoire's import for its darker lines (gamma=1.5, or
+gamma=2.0 from a contrast of 1.75); any other contrast sends none, and Grimoire's own setting decides.
 
 A planner's tabs and any other internal links of the PDF go along (the launcher's "links" capability): the
 links of the pages it draws in this run, and, once per book (while the notebook's source.ini lacks
@@ -754,6 +756,18 @@ local function whole_page_transform(doc, w, h, page)
     return zoom, math.floor((w - dim.w) / 2), math.floor((h - dim.h) / 2), dim
 end
 
+-- The darker lines a reader's contrast asks Grimoire's PDF import for: a version 2 request's gamma= line
+-- (docs/FORMAT.md, Whole books), or nil for none. KOReader's contrast is a gamma on the page (1 draws it as
+-- it is, more draws it darker), and Grimoire draws a PDF's gray pages at 1.0, 1.5 or 2.0 alone: a contrast
+-- from 1.25 asks for 1.5, one from 1.75 for 2.0. A contrast under 1.25 (KOReader's own 1, or a lighter
+-- page, which Grimoire does not draw), or no number, asks for nothing, and Grimoire's setting decides.
+local function gamma_line(gamma)
+    if type(gamma) ~= "number" or gamma ~= gamma then return nil end
+    if gamma >= 1.75 then return "gamma=2.0" end
+    if gamma >= 1.25 then return "gamma=1.5" end
+    return nil
+end
+
 local function draw_whole_page(doc, bb, w, h, page, gamma, last)
     local Geom = require("ui/geometry")
     local zoom, ox, oy, dim = whole_page_transform(doc, w, h, page)
@@ -1169,17 +1183,31 @@ function Grimoire:openFile(file)
     -- The contrast and saturation the reader would draw its pages at, as KOReader loads them for a
     -- book (the book's own, else the default set for books, else KOReader's); a KOReader before
     -- 2024 takes its render mode where the saturation is now. (drawPage needs both: KOReader 2024
-    -- on fails on a page drawn without its saturation.)
+    -- on fails on a page drawn without its saturation.) A KOReader before 2023.10 kept the contrast
+    -- another way: a book's own as its "gamma" setting (its kopt_contrast then held 1/contrast), and
+    -- the default set for books as 1/contrast. KOReader moves them itself (a book's "gamma" when the
+    -- book is next opened, the default by its one-time move of 20230901, last_migration_date); until
+    -- then they are read here as it reads them: a book's "gamma" first, and a default not yet moved
+    -- turned back.
     local function kopt(name, default_key)
         local v = setting("kopt_" .. name)
-        if type(v) ~= "number" then v = G_reader_settings:readSetting("kopt_" .. name) end
+        if type(v) ~= "number" then
+            v = G_reader_settings:readSetting("kopt_" .. name)
+            if name == "contrast" and type(v) == "number" and v > 0
+                and (tonumber(G_reader_settings:readSetting("last_migration_date")) or 0) < 20230901 then
+                v = 1 / v
+            end
+        end
         if type(v) ~= "number" and type(G_defaults) == "table" then
             local read, d = pcall(G_defaults.readSetting, G_defaults, default_key)
             if read then v = d end
         end
         return type(v) == "number" and v or 1
     end
-    local gamma, last = kopt("contrast", "DKOPTREADER_CONFIG_CONTRAST"), kopt("saturation", "DKOPTREADER_CONFIG_SATURATION")
+    local old_gamma = setting("gamma")
+    local gamma = type(old_gamma) == "number" and old_gamma > 0 and old_gamma
+        or kopt("contrast", "DKOPTREADER_CONFIG_CONTRAST")
+    local last = kopt("saturation", "DKOPTREADER_CONFIG_SATURATION")
     local has_view, ReaderView = pcall(require, "apps/reader/modules/readerview")
     if has_view and type(ReaderView) == "table" and ReaderView.onSaturationUpdate == nil then
         last = tonumber(setting("render_mode")) or 0
@@ -1222,7 +1250,7 @@ function Grimoire:sendBook(b)
     if path then
         done()
         local at = math.max(1, math.min(b.page or 1, pages))
-        local request = table.concat({
+        local lines = {
             "# Grimoire: a whole book to open, from KOReader's Grimoire plugin (docs/FORMAT.md)",
             "version=2",
             "book=" .. b.key,
@@ -1232,14 +1260,22 @@ function Grimoire:sendBook(b)
             string.format("page=%d", at),
             "kind=paged",
             string.format("time=%d", os.time()),
-        }, "\n") .. "\n"
+        }
+        -- (the reader's contrast, as darker lines: where version 1 drew the pages at it)
+        local darker = gamma_line(b.gamma)
+        if darker then table.insert(lines, darker) end
+        local request = table.concat(lines, "\n") .. "\n"
         if not write_whole(dir .. "/request.ini", request) then
             empty_dir(dir)
             logger.warn("Grimoire: could not save the book's request")
             self:tell("book_failed")
             return
         end
-        logger.info("Grimoire: a PDF of", pages, "pages sent by its path, to open at page", at)
+        if darker then
+            logger.info("Grimoire: a PDF of", pages, "pages sent by its path, to open at page", at, "with", darker)
+        else
+            logger.info("Grimoire: a PDF of", pages, "pages sent by its path, to open at page", at)
+        end
         busy = InfoMessage:new{ text = T("preparing") }
         UIManager:show(busy)
         UIManager:forceRePaint()

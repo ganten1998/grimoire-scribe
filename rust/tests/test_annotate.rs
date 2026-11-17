@@ -8,6 +8,7 @@
 mod testlib;
 
 use grimoire::ffi_stb;
+use grimoire::pdfwork::Gamma;
 use grimoire::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::os::unix::fs::PermissionsExt;
@@ -947,6 +948,15 @@ fn book_request_parsing() {
     check!(book_parse(v2.as_bytes(), &mut r, &mut why) == 0 && why.is_empty());
     check!(r.version == 2 && r.file == long && r.book == BOOK && r.title == "Hanon" && r.page == 13 && r.pages == 96);
     check!(r.kind == "paged" && r.time == 1792500000 && r.sent.is_empty());
+    check!(r.gamma.is_none()); // (no gamma= line: the darker lines setting decides)
+    book_request_free(&mut r);
+    // Its darker lines (2.2, issue #173): gamma= is one of the three known values, and anything else is no gamma
+    for (v, want) in [("1.5", Gamma::Medium), ("2.0", Gamma::Strong), ("1.0", Gamma::Off), ("2", Gamma::Off), ("4.0", Gamma::Off), ("", Gamma::Off), ("1.5 ", Gamma::Off), ("strong", Gamma::Off)] {
+        let req = format!("version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\ngamma={v}\n");
+        check!(book_parse(req.as_bytes(), &mut r, &mut why) == 0 && r.gamma == Some(want));
+        book_request_free(&mut r);
+    }
+    check!(book_parse(b"version=2\r\nbook=ab12\r\nfile=/mnt/us/a.pdf\r\npages=3\r\npage=1\r\ngamma=2.0\r\n", &mut r, &mut why) == 0 && r.gamma == Some(Gamma::Strong));
     book_request_free(&mut r);
     let odd = "/mnt/us/documents/Étude 10:30 (copy) #2.pdf";
     check!(book_parse(format!("file={odd}\nversion=2\nbook=ab12\npages=3\npage=1\n").as_bytes(), &mut r, &mut why) == 0 && r.file == odd);
@@ -959,6 +969,9 @@ fn book_request_parsing() {
         check!(rc == 0 && r.version == 1 && r.file.is_empty() && r.sent.len() == 1 && r.sent[0] == 2);
         book_request_free(&mut r);
     }
+    // (and a gamma= line, which version 1 leaves to a newer plugin)
+    check!(book_parse(b"version=1\nbook=ab12\npages=3\npage=1\ngamma=2.0\ngamma=1.5\npicture.2=page-2.png\n", &mut r, &mut why) == 0 && r.gamma.is_none());
+    book_request_free(&mut r);
     let mut bad2: Vec<Vec<u8>> = [
         "version=2\nbook=ab12\npages=3\npage=1\n",                                         // no file
         "version=2\nbook=ab12\nfile=\npages=3\npage=1\n",                                  // an empty one
@@ -979,6 +992,7 @@ fn book_request_parsing() {
         "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\npage=2\n",
         "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\nkind=paged\nkind=paged\n",
         "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\ntime=5\ntime=6\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\ngamma=1.5\ngamma=1.5\n",
         // the version is said by "2" alone
         "version=02\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
         "version=2 \nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",

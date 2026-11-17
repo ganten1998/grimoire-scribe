@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 07:54-0600\n"
+"POT-Creation-Date: 2026-11-17 11:10-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -3899,6 +3899,14 @@ msgstr "Idioma: %s"
 msgid "Pen button: %s"
 msgstr "Botón del lápiz: %s"
 
+#. TRANSLATORS: Settings' System category row that opens the darker lines choices, with the one in
+#. use ("Darker lines in imported PDFs: Medium"): how dark the gray pages of a PDF imported from now
+#. on are drawn. A PDF already imported stays as it is.
+#: rust/src/library.rs
+#, c-format
+msgid "Darker lines in imported PDFs: %s"
+msgstr "Líneas más oscuras en los PDF importados: %s"
+
 #: rust/src/library.rs
 #, c-format
 msgid "Mirror PDFs to %s (USB)"
@@ -4229,6 +4237,12 @@ msgstr "Botón del lápiz"
 #: rust/src/library.rs
 msgid "Eraser"
 msgstr "Borrador"
+
+#. TRANSLATORS: the title of the list of how dark the gray pages of a PDF imported from now on are drawn
+#. (Settings > System): Off, Medium, Strong.
+#: rust/src/library.rs
+msgid "Darker lines in imported PDFs"
+msgstr "Líneas más oscuras en los PDF importados"
 
 #: rust/src/library.rs
 msgid "Kindle"
@@ -5213,6 +5227,24 @@ msgstr "Quita trazos enteros"
 #: rust/src/settingsmenu.rs
 msgid "Takes away only what it touches"
 msgstr "Quita solo lo que toca"
+
+#. TRANSLATORS: Settings' System category, the row that opens the darker lines choices, with the one in use
+#. ("Darker lines in imported PDFs: Off"), and its list's three choices: the gray pages of a PDF imported from
+#. now on are drawn as they are, a little darker, or darker still (faint lines read better on the Kindle).
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Off"
+msgstr "No"
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Medium"
+msgstr "Medio"
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Strong"
+msgstr "Fuerte"
 
 #: rust/src/settingsmenu.rs
 msgid "Style (Gothic)"

@@ -2163,8 +2163,16 @@ do -- Open with draws the pages as the reader would: the book's own contrast and
     check(s .. ": the book's own", open_with("book-open-with-own", { kopt_contrast = 1.4, kopt_saturation = 0.6 })
         == "drawPage 0 36 1860x2407 1 3.0392 0 1.4 0.6" and wrapped())
     check(s .. ": the defaults set for books", open_with("book-open-with-defaults", nil, function()
-        W.settings.kopt_contrast, W.settings.kopt_saturation = 2, 0.5
+        W.settings.kopt_contrast, W.settings.kopt_saturation, W.settings.last_migration_date = 2, 0.5, 20230901
     end) == "drawPage 0 36 1860x2407 1 3.0392 0 2 0.5")
+    -- A KOReader before 2023.10 kept a book's contrast as its "gamma" (kopt_contrast held 1/contrast), and the
+    -- default set for books as 1/contrast until its one-time move of 20230901.
+    check(s .. ": an older KOReader's book, its contrast kept as gamma", open_with("book-open-with-old-gamma",
+        { gamma = 2, kopt_contrast = 0.5, kopt_saturation = 0.6 }) == "drawPage 0 36 1860x2407 1 3.0392 0 2 0.6")
+    check(s .. ": an older KOReader's defaults for books, the contrast kept as 1/contrast",
+        open_with("book-open-with-old-defaults", nil, function()
+            W.settings.kopt_contrast, W.settings.kopt_saturation, W.settings.last_migration_date = 0.5, 0.5, 20230802
+        end) == "drawPage 0 36 1860x2407 1 3.0392 0 2 0.5")
     check(s .. ": KOReader's defaults.lua", open_with("book-open-with-defaults-lua", nil, function()
         W.defaults = { DKOPTREADER_CONFIG_CONTRAST = 1.2, DKOPTREADER_CONFIG_SATURATION = 0.8 }
     end) == "drawPage 0 36 1860x2407 1 3.0392 0 1.2 0.8")
@@ -2223,6 +2231,7 @@ do -- From the reader, in a 3-page PDF on page 2 whose notebook holds page 2, to
         and r.file == W.book.file and r.book == W.book.md5 and r.pages == "3" and r.page == "2" and r.kind == "paged"
         and r.title == "Le Petit Prince" and #r.pictures == 0)
     check(s .. ": when it was written", tonumber(r.time) and math.abs(tonumber(r.time) - os.time()) <= 5)
+    check(s .. ": the reader's contrast (1.5) as darker lines", r.gamma == "1.5")
     check(s .. ": a document of its own asked about a password, and closed", at("mupdf open") and at("mupdf close"))
     check(s .. ": the book's own settings untouched", g.ui.document.configurable.text_wrap == 1
         and g.ui.document.configurable.white_threshold == 200)
@@ -2245,6 +2254,8 @@ do -- The same PDF to a launcher of 2.1 (no "pdf" in its Capabilities line): ver
     local r = book_request() or {}
     check("a PDF, an older launcher: version 1, its pages drawn", r.version == "1" and r.file == nil
         and table.concat(r.pictures, " ") == "1=page-1.png 2=page-2.png" and drew("drawPage 0 36 1860x2407 2 "))
+    check("a PDF, an older launcher: no gamma line (version 1 draws at the reader's contrast)", r.gamma == nil
+        and drew("drawPage 0 36 1860x2407 2 "):find(" 1.5 ", 1, true) ~= nil)
     check("a PDF, an older launcher: no password asked", not at("mupdf open"))
 end
 
@@ -2407,6 +2418,69 @@ do -- A PDF reached through a linked folder, or one that is a link itself, is no
     version, asked, log, r = sent("the file itself", "%s/real/Book.pdf", tree)
     check("the same PDF by its own path: version 2", version == "2" and asked and r.file == W.book.file
         and not log:find("not sent by its path", 1, true))
+end
+
+do -- The reader's contrast as darker lines (2.2, issue #173): version 2's gamma= asks Grimoire's PDF import for 1.5 from
+    -- a contrast of 1.25 and for 2.0 from 1.75; a contrast under 1.25 (KOReader's own 1, a lighter page) or no number
+    -- sends no line, and Grimoire's own setting decides. The log says the line, never the book.
+    for _, c in ipairs({
+        { "1", 1, nil }, { "0.8", 0.8, nil }, { "1.24", 1.24, nil }, { "1.25", 1.25, "1.5" }, { "1.5", 1.5, "1.5" },
+        { "1.74", 1.74, "1.5" }, { "1.75", 1.75, "2.0" }, { "2", 2, "2.0" }, { "4", 4, "2.0" }, { "50", 50, "2.0" },
+        { "no number", nil, nil }, { "a string", "2", nil }, { "NaN", 0 / 0, nil },
+    }) do
+        local version, _, log, r = sent("contrast " .. c[1], "%s/documents/Book.pdf", function() W.book.gamma = c[2] end)
+        local s = "a PDF by its path, the reader's contrast " .. c[1]
+        check(s .. ": version 2, " .. (c[3] and ("gamma=" .. c[3]) or "no gamma line"), version == "2" and r.gamma == c[3])
+        check(s .. ": the log says so", (log:find("with gamma=", 1, true) ~= nil) == (c[3] ~= nil))
+    end
+    -- From the file browser, the contrast the reader would open the book with: the book's own
+    world("book-pdf-open-with-contrast")
+    W.unpack_writes = PDF_CAPS
+    local file = W.us .. "/documents/Czerny Op 299.pdf"
+    W.files = { [file] = { file = file, pages = 2, md5 = "0123456789abcdef0123456789abcdef", native = { w = 612, h = 792 },
+        settings = { kopt_contrast = 2 } } }
+    koreader(false):openFile(file)
+    local r = book_request() or {}
+    check("open with, a PDF by its path: the book's contrast (2) as darker lines", r.version == "2" and r.gamma == "2.0")
+    world("book-pdf-open-with-no-contrast")
+    W.unpack_writes = PDF_CAPS
+    file = W.us .. "/documents/Czerny Op 299.pdf"
+    W.files = { [file] = { file = file, pages = 2, md5 = "0123456789abcdef0123456789abcdef", native = { w = 612, h = 792 } } }
+    koreader(false):openFile(file)
+    r = book_request() or {}
+    check("open with, a PDF by its path, a book never set: no gamma line", r.version == "2" and r.gamma == nil)
+    -- A KOReader before 2023.10 kept a book's contrast as its "gamma" (its kopt_contrast then held 1/contrast) and
+    -- the default set for books as 1/contrast, until its one-time move of 20230901: read as KOReader reads them.
+    local function open_with_contrast(name, settings, set_up)
+        world(name)
+        W.unpack_writes = PDF_CAPS
+        local f = W.us .. "/documents/Czerny Op 299.pdf"
+        W.files = { [f] = { file = f, pages = 2, md5 = "0123456789abcdef0123456789abcdef", native = { w = 612, h = 792 },
+            settings = settings } }
+        if set_up then set_up() end
+        koreader(false):openFile(f)
+        local req = book_request() or {}
+        return req.version, req.gamma
+    end
+    local version, gamma = open_with_contrast("book-pdf-open-with-old-book", { gamma = 2, kopt_contrast = 0.5 })
+    check("open with, an older KOReader's book at contrast 2 (kopt_contrast 0.5): gamma=2.0", version == "2"
+        and gamma == "2.0")
+    version, gamma = open_with_contrast("book-pdf-open-with-old-light", { gamma = 0.8, kopt_contrast = 1.25 })
+    check("open with, an older KOReader's book at contrast 0.8 (kopt_contrast 1.25): no gamma line", version == "2"
+        and gamma == nil)
+    version, gamma = open_with_contrast("book-pdf-open-with-old-default", nil, function()
+        W.settings.kopt_contrast, W.settings.last_migration_date = 1 / 1.5, 20230802
+    end)
+    check("open with, an older KOReader's default for books (1/1.5, before its move): gamma=1.5", version == "2"
+        and gamma == "1.5")
+    version, gamma = open_with_contrast("book-pdf-open-with-moved-default", nil, function()
+        W.settings.kopt_contrast, W.settings.last_migration_date = 2, 20230901
+    end)
+    check("open with, the default for books after KOReader's move (2): gamma=2.0", version == "2" and gamma == "2.0")
+    version, gamma = open_with_contrast("book-pdf-open-with-moved-light", nil, function()
+        W.settings.kopt_contrast, W.settings.last_migration_date = 0.5, 20260804
+    end)
+    check("open with, the default for books after KOReader's move (0.5): no gamma line", version == "2" and gamma == nil)
 end
 
 do -- A PDF over the size Grimoire's import reads (512 MiB: "PDF too big") goes by version 1, as before 2.2; one of

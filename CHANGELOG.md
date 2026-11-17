@@ -104,6 +104,12 @@
   drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
   once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
   Deleting `grimoire/fonts/.cache` still has every font checked again.
+- **Darker lines in imported PDFs** (#173). Settings > System > Darker lines in imported PDFs (Off, Medium, Strong)
+  draws the gray pages of a PDF imported from then on darker, for faint planners; pages in colour stay as they are, and
+  missing pages added to a notebook later are drawn at the level it was imported at (Off for a notebook made before 2.2
+  or by KOReader). KOReader's Open this book passes the reader's contrast the same way when the reader draws the PDF
+  darker. On a KOReader before 2023.10, Open with from the file browser now takes a book's contrast as that KOReader
+  keeps it (it read the inverse before).
 - **PDFs as templates** (#172). A PDF in `grimoire/templates` gives a template for each of its pages: More layouts...
   shows a tile a page ("Planner p. 3"), drawn once in the background by the same separate, sandboxed reader as a PDF
   import, after any import. A page works as a picture template does, in colour where the PDF has colour. In Files, a
