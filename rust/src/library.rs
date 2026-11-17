@@ -7997,7 +7997,8 @@ fn files_event(a: &mut App, ev: &InEvent) {
 
 /// Esc: the card closes, else up one level, and at the root the picker cancels. At the folder that is home (2.2,
 /// issue #160), with nothing over its rows, nothing is further up: it asks "Exit Grimoire?", as at the Library's
-/// top. Always taken.
+/// top; a home folder that no longer opens (gone over USB while it was shown) is left upward as any folder that is
+/// gone (`Browser::at_home_root`). Always taken.
 fn files_back(a: &mut App) -> bool {
     if lib(a).files.at_home_root() {
         lib(a).exit_no = false;

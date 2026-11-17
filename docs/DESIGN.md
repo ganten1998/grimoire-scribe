@@ -2989,9 +2989,13 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   once. The value is not kept, unlike `files_sort`'s (which a later version may have written): kept, it would be
   tried and said at every start, and for a Library folder that is gone the one Reset row in reach would be Files'
   Go to sheet, behind a card that is hidden by default. A home that goes away while Grimoire runs (over USB, a
-  Delete in Files, a Library folder removed) stays set: a screen that shows it is as Files leaves any folder that
-  is gone (the next act reads it again and goes to the nearest folder above that opens), and the next start or
-  `home` action finds it gone, as above.
+  Delete in Files, a Library folder removed) stays set until Grimoire next goes there. A Files screen that shows
+  it gives way as it is next used: a tap on a folder in it (its row, its card's Open, a part of the path bar) says
+  "Couldn't open folder." and a card's act "File changed. Try again.", and either reads the folder shown again,
+  which, gone, gives way to the nearest folder above that opens (`folder_failed`, `changed_since`, `reread`); Esc
+  there goes up the same way, without asking "Exit Grimoire?", once the home folder no longer opens as a home (it
+  is walked again on the key: a folder gone, or a link in its place; `Browser::at_home_root`). Until then its rows
+  are as they were listed. The next start, the `home` action or the Go to sheet's Home row finds it gone, as above.
 - **Set and reset.** Files' Go to sheet has a first row, "Home: %s" (Notebooks; a Library folder by its own name; a
   place of Files' root by the place's name, any other folder by its own), that goes there. After its folders comes
   Set as home, for the folder shown, unless it is home already or can never be (the storage's root, the trash, a
@@ -3006,7 +3010,8 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   out: the Go to sheet's row does the same for the folder shown, with one string fewer.
 - **The home folder as the top.** In Files at the folder that is home the header has no Back button (the title
   stands at the margin, as the Library's does), and Esc, or a Back key, asks "Exit Grimoire?" over Files as at the
-  Library's top (`files_back`; while the question is up its answers and its keys are its own, `files_in_front`, and
+  Library's top while the folder still opens as a home (`files_back`; while the question is up its answers and its
+  keys are its own, `files_in_front`, and
   Files neither draws nor ticks under it). The path bar still leads up, and a folder inside home has Back, which
   leads to it. At a Library folder that is home Esc asks "Exit Grimoire?" too, and its Back button stays: with no
   path bar in the Library it is the one way up. From a home inside Files the path bar's Files and the root's Back
@@ -3029,10 +3034,10 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   rename and a delete in Files); `library.rs`'s (opening at home in each kind of place, gone or refused with one
   toast and the line gone, home until the main menu is used, the action and Esc at home, a Library folder's menu,
   Files' rows through the Library, What's new and KOReader's hand-over, a rename, a move and a merge); and the
-  scenarios `files_19_home_set` to `files_31_home_es_fit_classic` (set, a restart, reset, gone, a link, a `..`, a
-  Library folder, its rename and the start there, a folder's card in Files, its rename, the start there and its
-  delete, a notebook closed, and Spanish in Gothic and Classic with every text checked for fit). docs/TESTING.md has
-  the Scribe's checks.
+  scenarios `files_*_home_*` from `files_19_home_set` (set, a restart, reset, gone, a link, a `..`, a Library
+  folder, its rename and the start there, a folder's card in Files, its rename, the start there and its delete, a
+  notebook closed, Spanish in Gothic and Classic with every text checked for fit, and the home folder gone or swapped
+  for a link while it is shown). docs/TESTING.md has the Scribe's checks.
 
 ## Shared building blocks (2.1, lane L0)
 

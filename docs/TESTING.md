@@ -3213,7 +3213,7 @@ sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.
 ## 2.2, Home (issue #160): device checks
 
 Not run on a Scribe yet. Automated: `home.rs`'s, `browser.rs`'s and `library.rs`'s unit tests, `test_store.rs`
-`home_key`, and the scenarios `files_19_home_set` to `files_31_home_es_fit_classic` (docs/DESIGN.md, Files: home).
+`home_key`, and the scenarios `files_*_home_*` from `files_19_home_set` (docs/DESIGN.md, Files: home).
 What only the Scribe can tell: the walk to a home on its storage (vfat under the FUSE proxy), a start at home after a
 reboot and after KOReader's hand-over, and what a USB connection does to a home inside Files. With Grimoire open and
 Files' card shown (New > From a file... > Show Files in Library), on a folder made over USB first
@@ -3247,8 +3247,12 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
 8. **A Library folder**: a folder's menu in the Library > Set as home; restart: the Library opens in it, with its
    Back button; Esc asks "Exit Grimoire?". Rename it from its menu: the next start opens in it under its new name.
    Its menu > Reset home to Notebooks: the next start opens at the top.
-9. **USB while running**: with home inside Files and Files open at it, connect USB and, from the computer, rename the
-   folder; disconnect. Tap a row: Files reads the folder again and goes to the nearest folder above that opens, with
-   no crash and no stuck screen; H (the `home` action) shows the Library's top with the toast.
+9. **USB while running** (Esc and H on a paired keyboard, with Settings > Shortcuts > Enable shortcuts on and
+   `key.h=home` in shortcuts.ini): set `Home probe 2` as home again and have Files open at it; connect USB and, from
+   the computer, rename it to `Home probe 5`; disconnect. Press Esc: no "Exit Grimoire?"; Files goes to the nearest
+   folder above that opens (Documents, with its Back button), with no crash and no stuck screen. H (the `home`
+   action) shows the Library's top with "Home folder not found.". Set `Home probe 5` as home, open it, rename it over
+   USB to `Home probe 6`, then tap its PDF > Import as notebook: "File changed. Try again.", and Files goes up to
+   Documents the same way.
 10. **Spanish**: Settings > Language > Español: the Go to sheet's "Inicio: ...", "Usar como inicio" and "Restablecer
     el inicio a Cuadernos", the folder's card and the Library folder's menu read whole, upright and sideways.

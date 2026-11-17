@@ -771,10 +771,11 @@ impl Browser {
         self.at.is_some() && self.at.as_ref() == self.home_path()
     }
 
-    /// At the home folder with nothing over its rows (no card, no keyboard): Back and Esc have nothing to close and
-    /// nowhere to go up to.
+    /// At the home folder with nothing over its rows (no card, no keyboard), and the folder still opens as a home
+    /// (`home_folder_ok`, walked again now): Back and Esc have nothing to close and nowhere to go up to. A home folder
+    /// gone or swapped while it was shown (over USB) is not: Esc goes up from it as from any folder that is gone.
     pub fn at_home_root(&self) -> bool {
-        self.at_home() && self.card.is_none() && !self.kb.open
+        self.at_home() && self.card.is_none() && !self.kb.open && self.storage.as_ref().zip(self.at.as_ref()).is_some_and(|(st, p)| home_folder_ok(st, p))
     }
 
     /// Enters the folder `p` that is home (the host's: as Grimoire starts, the `home` action, the Go to sheet's Home
@@ -2984,7 +2985,7 @@ impl Browser {
                         if self.enter(p, i == 1, now) {
                             self.redraw_full(a);
                         } else {
-                            self.flush_toast(a);
+                            self.folder_failed(a);
                         }
                     }
                 }
@@ -3027,7 +3028,7 @@ impl Browser {
                         if self.enter(row.path.clone(), false, now) {
                             self.redraw_full(a);
                         } else {
-                            self.flush_toast(a);
+                            self.folder_failed(a);
                         }
                     }
                     // a PDF's tap, and any `...`: the card (the exception to "a tap acts": two taps to import)
@@ -3143,7 +3144,7 @@ impl Browser {
                 if self.enter(path, false, now_ms()) {
                     self.redraw_full(a);
                 } else {
-                    self.flush_toast(a);
+                    self.folder_failed(a);
                 }
                 BrowserResult::None
             }
@@ -3292,15 +3293,13 @@ impl Browser {
         self.redraw(a, RefreshMode::Ui);
     }
 
-    /// The file a card acts on changed since its folder was listed: said, and the folder read again.
+    /// The file a card acts on changed since its folder was listed: said, and the folder read again (`reread`: a
+    /// folder that is itself gone gives way to the nearest one above that opens).
     fn changed_since(&mut self, a: &mut App) -> BrowserResult {
         // TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
         // folder was listed; the folder is read again. One line of about 1000 px at 44 px.
         self.toast = Some(tr("File changed. Try again."));
-        let at = self.at.clone();
-        if let Some(p) = at {
-            self.enter(p, false, now_ms());
-        }
+        self.reread();
         self.redraw_full(a);
         self.flush_toast(a);
         BrowserResult::None
@@ -3343,6 +3342,16 @@ impl Browser {
                 BrowserResult::None
             }
         }
+    }
+
+    /// A folder tapped in the folder shown (its row, its card's Open, a part of the path bar) that did not open: said
+    /// ("Couldn't open folder."), and the folder shown read again (`reread`), so the rows are the storage's as it is
+    /// now, and a folder shown that is itself gone (renamed, deleted or swapped over USB, the home folder too) gives
+    /// way to the nearest one above that opens.
+    fn folder_failed(&mut self, a: &mut App) {
+        self.reread();
+        self.redraw_full(a);
+        self.flush_toast(a);
     }
 
     fn close_card(&mut self, a: &mut App) -> BrowserResult {
