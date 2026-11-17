@@ -121,6 +121,15 @@
   PDF's card offers Use as template. A PDF of more than 50 pages, over 16 MB, with a password, or that cannot be read
   is not used, and shows its tile crossed out (so does a page that cannot be drawn); the sheet takes 200 PDF pages in
   all.
+- **Send a PDF from the Share page** (#175). While Share is open, its page in a phone's or a computer's browser has
+  a Send a PDF to the Kindle button. Once the PDF has arrived, the Kindle asks "Import "2027 Planner.pdf" (12.3 MB)?"
+  with a code of four digits under it, which the page that sent it shows too, and keeps it only if you tap Import:
+  it goes into `grimoire/import` and becomes a notebook as a PDF copied there does. Cancel, Share's X, no answer for
+  two minutes, closing Share, sleep, or two PDFs sent at once keep nothing, and after each PDF, imported or not, the
+  next is taken 5 seconds later. PDFs up to 64 MB. The page says when a PDF is too big, when another is being sent,
+  when to wait, when the storage is full, or when the page must be reloaded; otherwise "Not imported.". Share still
+  has no password: anyone on your Wi-Fi can open its page while it is open, so only send, and only tap Import, when
+  you expect it and the two codes are the same.
 
 ## 2.1.0 (2026-11-13)
 

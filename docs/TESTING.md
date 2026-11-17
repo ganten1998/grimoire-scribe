@@ -3460,3 +3460,65 @@ on page 2, one on page 3; a `javascript:` and a `mailto:` link, which are refuse
    the tab to page 3 works, a tap on a web link does nothing, and nothing is said. Copy page 1 there, then close it.
    `cat weblinks.ini` shows the four lines unchanged (the copy has none). Install 2.2 again: the web links work, the
    copy made in 2.1.0 has the tab and no web link.
+
+## 2.2, Send a PDF from the Share page (issue #175): device checks
+
+Not run on a Scribe yet. Automated: upload.rs's unit tests, `test_share_upload.rs`, `test_share.rs`'s question,
+tests/upload_ui_check.js and the scenarios `share_upload_*` (docs/DESIGN.md, Send a PDF from the Share page). What only
+the Scribe and real browsers can tell: a phone's and a computer's browser sending over the Kindle's Wi-Fi, the code on
+both screens, the question's taps on the panel, the rename into `grimoire/import` on its storage, and that the log
+names nothing. You need the Kindle Scribe, a phone and a computer on the same Wi-Fi, and two PDFs on the phone: a small
+one (a few MB, `2027 Planner.pdf` say) and one over 64 MB. Every step is checked on the Kindle and in the browser; the
+lines marked "Over SSH, optional" look at the files themselves and can be left out.
+
+1. **Sent and imported**: on the Kindle, Library > Share. On the phone, open the address it shows (or scan its code):
+   the page has a Send a PDF to the Kindle button under Download everything (zip). Tap it, pick the small PDF: the
+   page counts "Sending PDF: N%", then says "Confirm on the Kindle." with "Code NNNN" in big type under it, the two
+   together (a page that stays at "Sending PDF: 100%" while the Kindle asks was not given its code: note the browser
+   and the network, and tap Cancel). The Kindle shows `Import "2027 Planner.pdf" (N MB)?` over the Share screen, the
+   same "Code NNNN" in big type under it, then Import and Cancel; the size is the file's. Both codes read easily at
+   arm's length, and they are the same. Tap Import: the toast "Copied to grimoire/import.", the page says the same
+   and its code goes. Tap X: back in the Library the import's notice counts its pages, and the notebook "2027
+   Planner" is a card. Over SSH, optional: before Import `ls -a /mnt/us/grimoire/.cache` shows `share-upload.part`
+   and `grimoire/import` has nothing new; after it the part is gone.
+2. **Cancelled**: send the small PDF again; on the Kindle tap Cancel: no toast, the page says "Not imported." and its
+   code goes, and back in the Library no new notebook appears (Files > All storage > grimoire > import shows nothing
+   new).
+3. **A few seconds after**: right after that Cancel, send again at once: the page says "Wait 5 seconds, then send
+   again." and the Kindle asks nothing. Wait 5 seconds and send: the Kindle asks, with a new code, the one the page
+   now shows. Tap Import, and send again at once: the same "Wait 5 seconds, then send again.", and no question over
+   the toast "Copied to grimoire/import.".
+4. **A quick double tap**: send, and tap twice quickly where Import will be as the question appears (the first tap
+   before it is drawn): the question stays until a tap after it is shown. Then Cancel.
+5. **X during a question**: send, and while the Kindle asks tap Share's X: the question goes, Share closes at once,
+   and the page says "Not imported.". With a keyboard paired, open Share, reload the page, send, and press Esc while
+   it asks: the same.
+6. **No answer**: send, and leave the question for two minutes: it goes with the toast "Not imported.", and the page
+   says "Not imported.".
+7. **A phone that locks while the Kindle asks**: send from the phone and, as soon as the Kindle asks, lock the phone.
+   After 30 seconds unlock it and look at the page and at the Kindle; if the question is still up, tap Import. Note
+   what each says (a browser that drops its connection ends the send: the question goes with "Not imported."). Do it
+   again switching the phone to another app instead of locking it. This tells the owner how phones keep a send.
+8. **Too big**: pick the PDF over 64 MB: the page says "PDF too big: over 64 MB." at once, and the Kindle asks
+   nothing.
+9. **Share closed**: with the page still open on the phone, tap X on the Kindle's Share screen, then send from the
+   page: the page says "Not imported." (the server is not running), and the Kindle shows nothing. Open Share again
+   and send from the old page without reloading it: "Open Share on the Kindle, then reload this page.". Reload: the
+   send is asked about again (Cancel it).
+10. **Two at once**: open the page on the phone and on the computer; send from one, and while the Kindle asks, send
+    from the other: both pages say "Another PDF is being sent. Try again.", the question goes with "Not imported.",
+    and nothing is kept. Send again at once from either: "Wait 5 seconds, then send again.".
+11. **The code is the send's own**: with the page open on both, send from the phone: only the phone's page shows a
+    code, and it is the Kindle's; the computer's page shows none. Cancel.
+12. **Sleep and a turn**: send, and turn the Kindle while it asks: the question and its code are drawn at the new
+    place, and a tap counts there. Send again and press the power button: the sleep screen comes, and after the wake
+    Share shows no question; the page says "Not imported.".
+13. **Over a stalling Wi-Fi**: send the small PDF and walk the phone out of the Wi-Fi's reach halfway: within a minute
+    the page fails and the Kindle asks nothing. Over SSH, optional: no `share-upload.part` is left.
+14. **A big send**: send a PDF of close to 64 MB and time it from the pick to the question (it tells the owner whether
+    the size limit fits).
+15. **Spanish**: Settings > Language > Español: the page's button reads "Enviar un PDF al Kindle", the question
+    "¿Importar «2027 Planner.pdf» (N MB)?" with "Código NNNN" under it and Importar and Cancelar, whole upright and
+    sideways; the page shows the same "Código NNNN", and "Espera 5 segundos y vuelve a enviarlo." for step 3.
+16. **The log**: over USB (or SSH), search `grimoire/grimoire.log` for `upload`: lines `httpd: an upload ...` for each
+    step, and no file name, no 32-hex token and no send's code anywhere in it.

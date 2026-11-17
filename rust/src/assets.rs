@@ -62,6 +62,8 @@ pub static WEB_STUDIO_CSS: &[u8] = include_bytes!("../../web/studio.css");
 pub static WEB_DOWNLOAD_JS: &[u8] = include_bytes!("../../web/download.js");
 pub static WEB_LIVE_JS: &[u8] = include_bytes!("../../web/live.js");
 pub static WEB_LIVE_CSS: &[u8] = include_bytes!("../../web/live.css");
+/// The Share page's Send a PDF box (issue #175; Rust only, so not in ../Makefile's WEB).
+pub static WEB_UPLOAD_JS: &[u8] = include_bytes!("../../web/upload.js");
 
 // The catalogs of po/*.mo (build.rs writes the table).
 include!(concat!(env!("OUT_DIR"), "/l10n.rs"));

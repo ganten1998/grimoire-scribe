@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 13:06-0600\n"
+"POT-Creation-Date: 2026-11-17 14:38-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -798,20 +798,20 @@ msgid "PDF too long: notebooks hold %d pages."
 msgstr "PDF demasiado largo: en un cuaderno caben %d páginas."
 
 #. TRANSLATORS: a toast: the PDF's file is bigger than Grimoire reads; %d is the size in MB (512).
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/httpd.rs
 #, c-format
 msgid "PDF too big: over %d MB."
 msgstr "PDF demasiado grande: más de %d MB."
 
 #. TRANSLATORS: a toast: the PDF could not be imported because the Kindle's storage is full.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/httpd.rs rust/src/share.rs
 msgid "Couldn't import PDF. Is the storage full?"
 msgstr "No se pudo importar el PDF. ¿Está lleno el almacenamiento?"
 
 #. TRANSLATORS: a toast: the PDF could not become a notebook; %s is the log file that says why.
 #. The PDF stays where it was.
 #. TRANSLATORS: a row of the Import place: this PDF could not become a notebook; %s is the log that says why.
-#: rust/src/app.rs rust/src/browser.rs rust/src/library.rs
+#: rust/src/app.rs rust/src/browser.rs rust/src/library.rs rust/src/share.rs
 #, c-format
 msgid "Couldn't import PDF (see %s)."
 msgstr "No se pudo importar el PDF (detalles en %s)."
@@ -850,7 +850,7 @@ msgstr "Fuentes"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders,
 #. or a font file into its fonts; %s is that folder's name as Files shows it (Templates, Photos, Fonts).
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/httpd.rs rust/src/share.rs
 #, c-format
 msgid "Copied to %s."
 msgstr "Se copió a %s."
@@ -1300,7 +1300,7 @@ msgstr "No se pudo abrir la carpeta."
 
 #. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
 #. dropped in it become notebooks. Also the first word of its path line (a row of 150 px at 44 px).
-#: rust/src/browser.rs
+#: rust/src/browser.rs rust/src/share.rs
 msgid "Import"
 msgstr "Importar"
 
@@ -1377,7 +1377,7 @@ msgstr "Inicio: %s"
 #. the main one), or at 34 px, or two lines of that.
 #: rust/src/browser.rs rust/src/calibrate.rs rust/src/editor.rs
 #: rust/src/keyboard.rs rust/src/library.rs rust/src/linkbar.rs
-#: rust/src/musicbuild.rs rust/src/pagesview.rs
+#: rust/src/musicbuild.rs rust/src/pagesview.rs rust/src/share.rs
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -2560,6 +2560,7 @@ msgstr "Preparando PDF..."
 msgid "Preparing PDF: {done} / {total} pages"
 msgstr "Preparando PDF: {done} / {total} páginas"
 
+#. TRANSLATORS: the share index, under its Send a PDF button: how much of the PDF has gone ({percent}: "42%").
 #: rust/src/httpd.rs
 msgid "Sending PDF: {percent}"
 msgstr "Enviando PDF: {percent}"
@@ -2587,6 +2588,50 @@ msgstr "Cerrar"
 #: rust/src/httpd.rs
 msgid "Waiting for an export slot..."
 msgstr "Esperando a que termine otra exportación..."
+
+#. TRANSLATORS: the share index's button (a phone's or a computer's browser) that picks a PDF to send to the
+#. Kindle, which asks before it keeps it.
+#: rust/src/httpd.rs
+msgid "Send a PDF to the Kindle"
+msgstr "Enviar un PDF al Kindle"
+
+#. TRANSLATORS: the share index, once the PDF has gone: the Kindle now asks whether to import it.
+#: rust/src/httpd.rs
+msgid "Confirm on the Kindle."
+msgstr "Confirma en el Kindle."
+
+#. TRANSLATORS: the share index, big under Confirm on the Kindle.: the send's code (%s: four digits, "4821"),
+#. which the Kindle shows under its question, so the user can see the question is about this PDF.
+#. TRANSLATORS: the Kindle's question for a PDF sent from the Share page, big under its title: the send's code
+#. (%s: four digits, "4821"), which the page that sent it shows too, so the user can see it is that PDF.
+#: rust/src/httpd.rs rust/src/share.rs
+#, c-format
+msgid "Code %s"
+msgstr "Código %s"
+
+#. TRANSLATORS: the share index, after Cancel on the Kindle, no answer there for two minutes, or a PDF the Kindle
+#. did not take; also a toast on the Kindle when its question went without an answer.
+#: rust/src/httpd.rs rust/src/share.rs
+msgid "Not imported."
+msgstr "No se importó."
+
+#. TRANSLATORS: the share index, when two PDFs were sent at once (neither is kept).
+#: rust/src/httpd.rs
+msgid "Another PDF is being sent. Try again."
+msgstr "Se está enviando otro PDF. Inténtalo de nuevo."
+
+#. TRANSLATORS: the share index, when the page is older than the Share screen now open on the Kindle (or Share
+#. was closed): it must be loaded again before it can send.
+#: rust/src/httpd.rs
+msgid "Open Share on the Kindle, then reload this page."
+msgstr "Abre Compartir en el Kindle y vuelve a cargar esta página."
+
+#. TRANSLATORS: the share index, when a PDF is sent within a few seconds of the end of the one before (imported,
+#. or Cancel on the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
+#: rust/src/httpd.rs
+#, c-format
+msgid "Wait %d seconds, then send again."
+msgstr "Espera %d segundos y vuelve a enviarlo."
 
 #. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
 #: rust/src/httpd.rs rust/src/i18n.rs
@@ -5397,6 +5442,13 @@ msgstr "¿Otra app usa el puerto? Inténtalo de nuevo."
 #: rust/src/share.rs
 msgid "Stop"
 msgstr "Detener"
+
+#. TRANSLATORS: the question on the Kindle's Share screen when a PDF was sent from its page in a browser: its
+#. file's name (shortened with "..." when long) and its size ("12.3 MB"); Import keeps it, Cancel does not.
+#: rust/src/share.rs
+#, c-format
+msgid "Import \"%s\" (%s)?"
+msgstr "¿Importar «%s» (%s)?"
 
 #: rust/src/share.rs
 msgid "Asleep"
