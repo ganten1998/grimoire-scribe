@@ -1,0 +1,3 @@
+Grimoire is free software under the GPL-3.0-or-later. Not affiliated with or endorsed by Amazon.
+
+[English](Home.md) | [日本語](../japanese/Home-ja.md)

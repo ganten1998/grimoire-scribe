@@ -1,0 +1,15 @@
+### 日本語
+
+- [ホーム](Home-ja)
+- [インストール](Install-ja)
+- [Grimoire の使い方](Using-Grimoire-ja)
+- [フォントと言語](Fonts-and-Language-ja)
+- [取り込み](Importing-ja)
+- [Kindle からページを取り出す](Exporting-ja)
+- [KOReader](KOReader-ja)
+- [ショートカット](Shortcuts-ja)
+- [困ったときは](Troubleshooting-ja)
+- [プライバシー](Privacy-ja)
+- [コントリビュート](Contributing-ja)
+- [ソースからビルド](Building-from-Source-ja)
+- [翻訳](Translating-ja)
