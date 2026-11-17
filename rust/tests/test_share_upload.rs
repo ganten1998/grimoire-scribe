@@ -288,7 +288,9 @@ fn every_refusal_keeps_nothing() {
     let tok = page_token();
     let body = pdf(2000);
     let n = body.len();
-    let wrong = format!("{}0", &tok[..31]);
+    // (another last digit than the page's own: a token that ends in 0 must not be "wrong" with a 0)
+    let wrong = format!("{}{}", &tok[..31], if tok.ends_with('0') { '1' } else { '0' });
+    check!(wrong.len() == 32 && wrong != tok);
     let refused = |h: String, b: &[u8], status: &str, text: &str| {
         let r = refused_reply(upload(&h, b));
         let ok = r.status() == status && r.text() == text;
