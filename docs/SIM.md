@@ -55,7 +55,9 @@ timed a press or a finger shape by the real time between their lines failed ther
 while passing here. `make scenarios-late` runs those again with every wait 400 ms late (make check
 runs it after the scenarios). A script that times a contact keeps passing however late the machine
 is when it times it by the script's own clock: `touch` lines are stamped by their waits (below), and
-`finger`/`frame` lines by their frame offsets with no `wait` between the frames.
+`finger`/`frame` lines by their frame offsets with no `wait` between the frames (the frame after a `wait`
+is stamped when the wait really ended: tests/scenarios/z_pages_drag_hold.qs times its flick by `frame 300`,
+issue #184).
 
 `GRIMOIRE_SIM_CLOCK=script` holds app timers still while a script line is processed or a background
 job runs. Each `wait MS` advances those timers by exactly MS; host work and `GRIMOIRE_SIM_LATE_MS`

@@ -11,7 +11,10 @@
 # (z_pages_drag holds through the card and drags from it). A ticked tile carries the ticked pages and a pen
 # drags as a finger does, on the shorter hold too.
 # (the short holds are `finger` and `frame` lines, timed by the frame clock, the down and the first move in one
-# batch: a machine whose timers wake late cannot let the card's 600 ms tick in between them, docs/SIM.md)
+# batch: a machine whose timers wake late cannot let the card's 600 ms tick in between them, docs/SIM.md; and so
+# are the flick's 413 ms and the slow contact's 1.2 s, by `frame` offsets and not by a `wait` inside the contact:
+# the frame after a wait is stamped when the wait really ended, so the flick's `wait 300` that ended 400 ms late,
+# and some more on a runner whose timers wake late, lifted it past the 800 ms a flick has, issue #184)
 # (the clock corner held still: its minute's refresh would land among the counted ones; and the launch repaints
 # the whole screen 1.2 s and 3.5 s after it starts: past both before counting)
 wait 3600
@@ -70,13 +73,12 @@ expect editor.pages.context is 0
 fpath 400 1300 1200 1280 200
 wait 200
 expect editor.pages.screen is 1
-# Moved past the slop at 100 ms, then on past 300 ms and lifted quickly: still a flick (the next screen), never a drag
+# Moved past the slop at 100 ms, then on at 400 ms and lifted 13 ms later: still a flick (the next screen), never a drag
 finger 1 down 930 551
 frame 100
 finger 1 move 1000 551
-frame
+frame 300
 expect editor.pages.drag is
-wait 300
 finger 1 move 400 560
 frame
 expect editor.pages.drag is
@@ -90,13 +92,14 @@ expect editor.page_ids is 1,2,3,4,5,6,7,8,9,10,11,12
 fpath 400 1300 1200 1280 200
 wait 200
 expect editor.pages.screen is 1
-# The same slowly (lifted past 1 s, on page 6's tile): nothing at all, no drag, no card, no tick
+# The same slowly (lifted after 1.2 s, on page 6's tile, after a real wait past the card's 600 ms while it is down):
+# nothing at all, no drag, no card, no tick
 finger 1 down 930 551
 frame 100
 finger 1 move 1000 551
 frame 400
 finger 1 move 1300 900
-frame
+frame 700
 expect editor.pages.drag is
 wait 700
 expect editor.pages.context is 0
