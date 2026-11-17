@@ -3344,8 +3344,9 @@ sideways), `y_koreader_pdf_darker_1_gamma.qs` (a request with `gamma=2.0`, the s
 coloured page among gray ones; KOReader with the Grimoire plugin):
 
 1. **The row.** Settings > System: the last row reads "Darker lines in imported PDFs: Off". Tap it: a list of Off,
-   Medium and Strong, Off marked. Back: nothing changes. Tap the row, then Medium: the list closes and the row reads
-   "...: Medium"; `grep pdf_gamma /mnt/us/grimoire/settings.ini` shows `pdf_gamma=1.5` at once.
+   Medium and Strong, one under the other in that order, Off marked. Back: nothing changes. Tap the row, then
+   Medium: the list closes and the row reads "...: Medium"; `grep pdf_gamma /mnt/us/grimoire/settings.ini` shows
+   `pdf_gamma=1.5` at once.
 2. **An import at each level.** Copy the faint planner over USB into `grimoire/import/` three times under three names
    changed by a byte each (append one byte with `printf ' ' >> "Planner B.pdf"` over SSH, so each is another file),
    one at a time: first with the row at Off, then at Medium, then at Strong, each after the last import ended. Open

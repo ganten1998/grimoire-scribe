@@ -6146,7 +6146,9 @@ fn draw_modal(a: &mut App) {
                 .collect();
             // TRANSLATORS: the title of the list of how dark the gray pages of a PDF imported from now on are drawn
             // (Settings > System): Off, Medium, Strong.
-            draw_pick_sheet(a, tr("Darker lines in imported PDFs"), &rows, H_DARKER_PICK, H_DARKER_BACK);
+            let title = tr("Darker lines in imported PDFs");
+            // (one column, so the levels read in their order)
+            draw_pick_cards(a, title, &rows, H_DARKER_PICK, H_DARKER_BACK, 1);
         }
         Modal::DeviceInfo => draw_device(a),
         Modal::LinkQr => draw_link(a),
@@ -6411,6 +6413,12 @@ fn draw_link(a: &mut App) {
 /// A Settings submenu of choices, as Language's: the page's chrome, the choices as cards in two
 /// columns (the chosen one filled), and a tap picking one. `rows` is (label, arg, chosen).
 fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick: i32, back: i32) {
+    draw_pick_cards(a, title, rows, pick, back, 2);
+}
+
+/// `draw_pick_sheet` with the cards in `cols` columns (1 or 2), each filled top to bottom before the next: one
+/// column for choices that read as a scale (Darker lines' Off, Medium, Strong, issue #173).
+fn draw_pick_cards(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick: i32, back: i32, cols: i32) {
     let (aw, ah) = (a.w, a.h);
     let App { screen: c, lib, .. } = a;
     let s = lib.as_deref_mut().unwrap();
@@ -6420,8 +6428,9 @@ fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick:
     let in_ = page.content;
     let gap = ui_px(16.0);
     let n = rows.len() as i32;
-    let per = (n + 1) / 2;
-    let cw = (in_.w - gap) / 2;
+    let cols = cols.clamp(1, 2);
+    let per = (n + cols - 1) / cols;
+    let cw = (in_.w - (cols - 1) * gap) / cols;
     let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(90.0), ui_px(130.0));
     for (k, (label, arg, selected)) in rows.iter().enumerate() {
         let col = k as i32 / per;
@@ -11701,6 +11710,11 @@ mod tests {
         for level in 0..3 {
             assert!(a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_DARKER_PICK && h.arg == level), "choice {level}");
         }
+        // the levels read in their order: one column, Off at the top, Medium under it, Strong last
+        let card = |a: &App, level: i32| a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_DARKER_PICK && h.arg == level).unwrap().r;
+        let (off, medium, strong) = (card(&a, 0), card(&a, 1), card(&a, 2));
+        assert!(off.x == medium.x && medium.x == strong.x, "one column: {off:?} {medium:?} {strong:?}");
+        assert!(off.y < medium.y && medium.y < strong.y, "Off, Medium, Strong: {off:?} {medium:?} {strong:?}");
         act(&mut a, &Hit { r: RECT_EMPTY, id: H_DARKER_PICK, arg: 2 });
         assert_eq!(a.settings.pdf_gamma, 2);
         assert_eq!(crate::pdfimport::darker(), crate::pdfwork::Gamma::Strong);

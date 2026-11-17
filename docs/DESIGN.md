@@ -3163,8 +3163,8 @@ KOReader plugin carry the reader's contrast.
   > System has one row more). Blank pages (a page whose worker
   died twice) are white at every level.
 - **Where it lives**: one setting, settings.ini `pdf_gamma`, the last row of Settings > System, "Darker lines in
-  imported PDFs: %s", which opens a list of the three levels as the eraser's row does. It is the smallest place every
-  way in can follow: the import folder's scan (which asks nothing), Files' Import and New notebook's From a file...,
+  imported PDFs: %s", which opens a list of the three levels as the eraser's row does, in one column so that they
+  read in their order, Off, Medium, Strong (`draw_pick_cards`). It is the smallest place every way in can follow: the import folder's scan (which asks nothing), Files' Import and New notebook's From a file...,
   and KOReader's hand-over. The app gives it to `pdfimport` at the start and when it is picked (`set_darker`).
 - **The level travels with the file.** The UI decides it as it queues a file and writes it into the file's mark
   (`gamma=`): the setting, or a level of the caller's own through `pdf_import_queue_at` (KOReader's request). A pick
