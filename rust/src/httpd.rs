@@ -1274,8 +1274,8 @@ fn upload_box(b: &mut Buf) {
     // TRANSLATORS: the share index, when the page is older than the Share screen now open on the Kindle (or Share
     // was closed): it must be loaded again before it can send.
     live_word(b, &mut n, "reload", tr("Open Share on the Kindle, then reload this page."));
-    // TRANSLATORS: the share index, when a PDF is sent within a few seconds of one that was not imported (Cancel on
-    // the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
+    // TRANSLATORS: the share index, when a PDF is sent within a few seconds of the end of the one before (imported,
+    // or Cancel on the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
     live_word(b, &mut n, "wait", &cformat!(tr("Wait %d seconds, then send again."), quiet_s));
     live_word(b, &mut n, "big", &big);
     live_word(b, &mut n, "full", tr("Couldn't import PDF. Is the storage full?"));

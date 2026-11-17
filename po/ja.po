@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 14:32-0600\n"
+"POT-Creation-Date: 2026-11-17 14:38-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -2641,8 +2641,8 @@ msgstr ""
 msgid "Open Share on the Kindle, then reload this page."
 msgstr ""
 
-#. TRANSLATORS: the share index, when a PDF is sent within a few seconds of one that was not imported (Cancel on
-#. the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
+#. TRANSLATORS: the share index, when a PDF is sent within a few seconds of the end of the one before (imported,
+#. or Cancel on the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
 #: rust/src/httpd.rs
 #, c-format
 msgid "Wait %d seconds, then send again."
