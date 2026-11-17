@@ -816,6 +816,8 @@ enum TileState {
     Preview(Canvas),
     /// its mark, or nothing to be had this visit: its kind's icon
     Icon,
+    /// nothing in the cache, and no job asked for while the previews are held (`CoverTiles::hold`): the hourglass
+    Held,
 }
 
 struct Tile {
@@ -836,6 +838,9 @@ pub struct CoverTiles {
     shown: Vec<(StoragePath, TileShow)>,
     /// the files looked at this visit (the runner's files.asked): one whose queued job was taken back is taken out
     asked: Vec<(StoragePath, FsStat)>,
+    /// no job is asked for while this is set (`hold`): a start's first screen at a home in Covers, until the user
+    /// first reaches the screen (2.2, issue #160)
+    held: bool,
     /// the files whose job ended this visit with no preview and no mark (no worker, no memory, a first try that
     /// failed): not asked for again this visit
     nothing: Vec<(StoragePath, FsStat)>,
@@ -881,6 +886,20 @@ impl CoverTiles {
         }
     }
 
+    /// While `on`, the cache is still read but no job is asked for: a file the cache has nothing for shows the hourglass
+    /// and waits (Grimoire started at a home inside Files in Covers, and nobody has reached the screen yet). Let go,
+    /// those files are looked up again, and asked for.
+    pub fn hold(&mut self, on: bool) {
+        self.held = on;
+        if !on {
+            for t in &mut self.on {
+                if matches!(t.state, TileState::Held) {
+                    t.state = TileState::Look;
+                }
+            }
+        }
+    }
+
     /// One slice of the screen's lookups, at most `budget_ms` (one file at least): a file to be looked up, or whose
     /// job ended, is read from the cache: its preview is decoded, a mark is taken as it is, and with nothing there a
     /// job is queued, once a visit (a file whose job ended with nothing keeps its icon for the visit). A cache folder
@@ -909,9 +928,10 @@ impl CoverTiles {
                     }
                     TileState::Icon
                 }
+                Cached::Nothing if self.held => TileState::Held,
                 Cached::Nothing => preview_request(&p, &s).map_or(TileState::Icon, TileState::Job),
             };
-            if !here(&self.asked) && self.asked.try_reserve(1).is_ok() {
+            if !matches!(state, TileState::Held) && !here(&self.asked) && self.asked.try_reserve(1).is_ok() {
                 self.asked.push((p, s));
             }
             self.on[i].state = state;

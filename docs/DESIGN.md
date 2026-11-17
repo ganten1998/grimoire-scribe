@@ -2983,7 +2983,10 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   KOReader hands over (`app_handed_over`): that notebook opens over the Library's cards as before, which the PDF
   hand-over's own opening needs, and home opens when the main menu next comes in front. A hand-over that opens no
   notebook (a page that did not open, a book that failed at once) does not hold it: home opens as the start ends
-  (`library_handover_tried`). With no home set the start
+  (`library_handover_tried`). A start's first screen at a home inside Files in the Covers view asks for no preview
+  until the user first reaches the main menu (a contact, a gesture or a key's action): the cache is read, and a file
+  it has nothing for shows the hourglass (`CoverTiles::hold`, `Browser::hold_previews`); then the previews are asked
+  for as when the folder is opened by hand. With no home set the start
   is the plain reload it was, with the same screens and refreshes.
 - **Gone or refused.** A line that names no home (`Settings.home_refused`, as settings.ini is read), a Library folder
   not in the list, or a folder the walk does not reach as one that can be home: the Library's top shows, with one

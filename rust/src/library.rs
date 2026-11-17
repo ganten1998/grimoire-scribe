@@ -8045,6 +8045,7 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
         return false;
     }
     lib(a).home_pending = false; // (a key's or a button's action on the main menu: it is in use)
+    lib(a).files.hold_previews(false);
     if action == SHORTCUT_SAVE {
         library_save(a);
         return true;
@@ -8234,6 +8235,9 @@ fn home_files(a: &mut App, p: &StoragePath) -> bool {
     if !with_files(a, |b, _| b.enter_home(p)) {
         return false;
     }
+    // (a start's first screen there, in Covers: no preview is asked for until the user first reaches the main menu)
+    let start = lib(a).home_pending;
+    lib(a).files.hold_previews(start);
     lib(a).pressed = None;
     a.toast_floor = 0;
     true
@@ -8609,6 +8613,7 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
     // not at home)
     if a.scr == ScreenId::Library && (app_pointer_phase(ev) == 0 || ev.type_ == InType::Gesture) {
         lib(a).home_pending = false;
+        lib(a).files.hold_previews(false);
     }
     library_event_in(a, ev);
     // (a keyboard opened or closed; the editor pushes its own as it enters)

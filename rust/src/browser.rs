@@ -757,6 +757,12 @@ impl Browser {
         self.home = home;
     }
 
+    /// Covers' previews held (the cache read, no job asked for) or let go: the host's, for a start's first screen at a
+    /// home inside Files, until the user first reaches the main menu (2.2, issue #160). A new visit lets go by itself.
+    pub fn hold_previews(&mut self, on: bool) {
+        self.covers.hold(on);
+    }
+
     /// The folder that is home, while home is inside Files and this is Files (a picker has no home).
     fn home_path(&self) -> Option<&StoragePath> {
         match &self.home {
