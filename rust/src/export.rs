@@ -1153,8 +1153,8 @@ fn add_raw_files(nb: &NotebookInfo, z: &mut ZipWriter, dirprefix: &str) -> i32 {
     let mut path = String::new();
     let mut name = String::new();
     // Notebook metadata, the book-page map and named sections: a notebook put back from the zip
-    // keeps its navigation as well as its ink and pictures.
-    const K_INFO: [&str; 5] = ["notebook.ini", "source.ini", "nav.ini", "links.ini", "doclinks.ini"];
+    // keeps its navigation as well as its ink and pictures (and, from 2.2, its web links).
+    const K_INFO: [&str; 6] = ["notebook.ini", "source.ini", "nav.ini", "links.ini", "doclinks.ini", WEBLINKS_FILE];
     for k in K_INFO {
         csnprintf!(&mut path, 900, "%s/%s", &dir, k);
         let Some(d) = read_file(&path) else { continue };

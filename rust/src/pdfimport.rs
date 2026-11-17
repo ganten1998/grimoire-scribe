@@ -80,6 +80,12 @@ pub const LINKS_PART_MAX: usize = RECORDS_MAX_BYTES + 10;
 /// pages (the parts are kept only after that refusal), each "O", a page of at most 9 digits, a name of at most 95
 /// bytes as 190 hex digits, two spaces and a newline: 203 bytes, 406,000 in all.
 pub const NAMES_PART_MAX: usize = PDF_MAX_PAGES as usize * 203;
+/// The work folder's part of a PDF's web links (2.2, Collected::webs_text): the first worker's W records, line for
+/// line, of which it sends at most RECORDS_MAX_BYTES. Written only for a PDF with a web link, and never into
+/// links.part, which 2.1.0 reads: an import 2.2 began and 2.1.0 finishes keeps its links and names (without its web
+/// links: 2.1.0 never reads this part).
+pub const WEBS_PART: &str = "webs.part";
+pub const WEBS_PART_MAX: usize = RECORDS_MAX_BYTES;
 /// An import that stopped this many times without finishing, keeping its work folder (a writer cut off, the job
 /// over its CPU budget), fails whole at its next slice.
 pub const STOPS_MAX: u32 = 3;
@@ -2868,10 +2874,13 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
     if let Some(c) = &found {
         let w1 = write_file_atomic(&format!("{work}/links.part"), c.links_text().as_bytes());
         let w2 = write_file_atomic(&format!("{work}/names.part"), c.names_text().as_bytes());
-        if w1 != 0 || w2 != 0 {
+        let wt = c.webs_text();
+        let w3 = if wt.is_empty() { 0 } else { write_file_atomic(&format!("{work}/{WEBS_PART}"), wt.as_bytes()) };
+        if w1 != 0 || w2 != 0 || w3 != 0 {
             qlog!("import: %s: the links and names could not be kept (%s); the notebook has none", id, &strerror(errno()));
             let _ = std::fs::remove_file(format!("{work}/links.part"));
             let _ = std::fs::remove_file(format!("{work}/names.part"));
+            let _ = std::fs::remove_file(format!("{work}/{WEBS_PART}"));
         }
     }
     st.pages = pages;
@@ -3231,20 +3240,22 @@ fn write_progress_mark(src: &str, prior: Option<&Mark>, state: &State, id: &str,
 
 /// Folds the first slice's links and names (the work folder's links.part and names.part) into the notebook being
 /// made: doclinks.ini (every record validated and put through pdflinks.rs, the water level trimming the densest
-/// pages first) and nav.ini (the outline's names, for the pages that have none: all of them, here). Both are
-/// optional: a part that is missing or does not read, or a file that cannot be written, leaves the notebook
-/// without them and says so in the log. Returns whether doclinks.ini was written, and how many links were left out
-/// for room (the toast says so).
+/// pages first), weblinks.ini (2.2: the web links, through weblinks.rs the same way; written only when there is
+/// one) and nav.ini (the outline's names, for the pages that have none: all of them, here). All are optional: a
+/// part that is missing or does not read, or a file that cannot be written, leaves the notebook without them and
+/// says so in the log. Returns whether doclinks.ini was written, and how many links were left out for room (the
+/// toast says so).
 fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (bool, u32) {
     // (a plain file at the name, of at most what the first slice can write: a link there is not followed, a FIFO
     // never waited on, and a longer file is not read)
     let read = |n: &str, max: usize| read_file_max(&format!("{work}/{n}"), max);
     let (Some(lt), Some(nt)) = (read("links.part", LINKS_PART_MAX), read("names.part", NAMES_PART_MAX)) else { return (false, 0) };
     let pages = nb.npages().max(0) as u32;
-    let Some(c) = Collected::from_parts(&lt, &nt, pages) else {
+    let Some(mut c) = Collected::from_parts(&lt, &nt, pages) else {
         qlog!("import: %s: its links and names do not read; the notebook has none", id);
         return (false, 0);
     };
+    read_webs(id, work, &mut c, pages);
     // the names
     let mut nav = Nav::default();
     nav_init(&mut nav);
@@ -3267,6 +3278,9 @@ fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (boo
         qlog!("import: %s: its page names could not be written; left out", id);
         named = 0;
     }
+    // the web links (2.2): a file of their own, which a version before 2.2 never reads
+    let mut wl = WebLinks::default();
+    let web_left = put_weblinks(id, work, &mut wl, nb, pw, ph, &c, &|bp| (bp as usize).checked_sub(1).and_then(|i| nb.page_ids.get(i)).copied().unwrap_or(0), &|_| true, false);
     // the links
     let recs: Vec<DocRecord> = c
         .links
@@ -3289,7 +3303,7 @@ fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (boo
     let kept = dl.links.len();
     if doclinks_save_in(work, &mut dl, nb) != 0 {
         qlog!("import: %s: its document links could not be written; left out", id);
-        return (false, 0);
+        return (false, web_left);
     }
     qlog!(
         "import: %s: %d document link(s) and %d page name(s); left out: %d web, %d other action(s), %d without a place to go, %d refused, %d for room",
@@ -3302,7 +3316,67 @@ fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (boo
         st.invalid as i32,
         (water + st.full + c.left.capped as usize) as i32
     );
-    (true, (water + st.full + c.left.capped as usize) as u32)
+    (true, (water + st.full + c.left.capped as usize) as u32 + web_left)
+}
+
+/// The web links of a walk (2.2) into wl and weblinks.ini in the folder `dir` (a new notebook's work folder, or a
+/// filled notebook's own): each W record mapped to its page id (`pid_of`, 0 for none) and kept when `take` says
+/// yes to that page, put through weblinks_fill (validated again, one of each, a page's 256), then the water level
+/// (a fill's: only the links it adds go). Written only when there is a link, or a file there already. Returns how
+/// many were left out for room (the worker's caps among them: U), or all of them when the file cannot be written;
+/// logs what it did.
+#[allow(clippy::too_many_arguments)]
+fn put_weblinks(id: &str, dir: &str, wl: &mut WebLinks, nb: &NotebookInfo, pw: i32, ph: i32, c: &Collected, pid_of: &dyn Fn(u32) -> u32, take: &dyn Fn(u32) -> bool, fill: bool) -> u32 {
+    let mut recs: Vec<WebRecord> = Vec::new();
+    for l in &c.webs {
+        let pid = pid_of(l.src);
+        if pid == 0 || !take(pid) {
+            continue;
+        }
+        if recs.try_reserve(1).is_err() {
+            return c.webs.len() as u32;
+        }
+        recs.push(WebRecord { src: pid, rect: Rect { x: l.x, y: l.y, w: l.w, h: l.h }, index: l.index, address: l.address.clone() });
+    }
+    let (capped, off, long) = (c.web_left.capped, c.web_left.off as i32, c.web_left.long as i32);
+    if recs.is_empty() {
+        if c.web_left != WebLeft::default() {
+            qlog!(
+                "import: %s: %d web link(s) (0 added, 0 already there, 0 refused, %d left out for room); left out: %d off the page, %d over 200 bytes",
+                id,
+                wl.links.len() as i32,
+                capped as i32,
+                off,
+                long
+            );
+        }
+        return capped;
+    }
+    if !wl.writable {
+        qlog!("import: %s: its weblinks.ini does not read; its web links are left as they are", id);
+        return recs.len() as u32 + capped;
+    }
+    let before: std::collections::HashSet<(u32, u32)> = wl.links.iter().map(|l| (l.pid, l.seed)).collect();
+    let have = |p: u32| nb.page_ids.contains(&p);
+    let st = weblinks_fill(wl, &recs, pw, ph, &have);
+    let water = weblinks_water(wl, &|l| fill && before.contains(&(l.pid, l.seed)));
+    if weblinks_save_in(dir, wl, nb) != 0 {
+        qlog!("import: %s: its web links could not be written; left out", id);
+        return recs.len() as u32 + capped;
+    }
+    let left = (st.full + water) as u32 + capped;
+    qlog!(
+        "import: %s: %d web link(s) (%d added, %d already there, %d refused, %d left out for room); left out: %d off the page, %d over 200 bytes",
+        id,
+        wl.links.len() as i32,
+        st.added as i32,
+        st.same as i32,
+        st.invalid as i32,
+        left as i32,
+        off,
+        long
+    );
+    left
 }
 
 fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, ph: i32) -> SliceEnd {
@@ -3422,6 +3496,7 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
             let _ = std::fs::remove_file(state_path(id)); // (a finished notebook carries no import state)
             let _ = std::fs::remove_file(format!("{work}/links.part"));
             let _ = std::fs::remove_file(format!("{work}/names.part"));
+            let _ = std::fs::remove_file(format!("{work}/{WEBS_PART}"));
             store_write_info_in(&work, &nb) == 0 // notebook.ini last: a folder holding it is whole
         };
     if !wrote {
@@ -3542,11 +3617,26 @@ fn cut_after(step: u32) -> bool {
 fn read_parts(id: &str, work: &str, pages: u32) -> Option<Collected> {
     let read = |n: &str| read_file_max(&format!("{work}/{n}"), 2 * RECORDS_MAX_BYTES);
     let (lt, nt) = (read("links.part")?, read("names.part")?);
-    let c = Collected::from_parts(&lt, &nt, pages);
-    if c.is_none() {
-        qlog!("import: %s: its links and names do not read; none are added", id);
+    let mut c = Collected::from_parts(&lt, &nt, pages);
+    match c.as_mut() {
+        Some(c) => read_webs(id, work, c, pages),
+        None => qlog!("import: %s: its links and names do not read; none are added", id),
     }
     c
+}
+
+/// The work folder's webs.part (2.2) read into c: nothing when there is none (a PDF without web links); one that
+/// does not read leaves c without web links, its links and names kept, and the log says so.
+fn read_webs(id: &str, work: &str, c: &mut Collected, pages: u32) {
+    let path = format!("{work}/{WEBS_PART}");
+    let ok = match read_file_max(&path, WEBS_PART_MAX) {
+        Some(t) => c.take_webs(&t, pages),
+        None => std::fs::symlink_metadata(&path).is_err(),
+    };
+    if !ok {
+        c.webs = Vec::new();
+        qlog!("import: %s: its web links do not read; none are kept", id);
+    }
 }
 
 /// A fill's links: the PDF's links that start or end on a page this fill added (`added`), mapped through the notebook
@@ -3611,6 +3701,19 @@ fn fill_links(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMa
         left as i32
     );
     left as u32
+}
+
+/// A fill's web links (2.2): the PDF's web links on a page this fill added (`added`), mapped through the notebook as
+/// it is now, put into the notebook's weblinks.ini as an import's are, the links it had never trimmed. Idempotent
+/// (the same address with its area within 2 px is the link the page has). Returns how many were left out (for room,
+/// or all of them when weblinks.ini does not read or cannot be written).
+#[allow(clippy::too_many_arguments)]
+fn fill_weblinks(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMap, pages: u32, pw: i32, ph: i32, c: &Collected, added: &[u32]) -> u32 {
+    if c.webs.is_empty() {
+        return c.web_left.capped;
+    }
+    let mut wl = weblinks_load(nbid);
+    put_weblinks(id, dir, &mut wl, nb, pw, ph, c, &|bp| annotate_map_find(m, nb, bp as i32, pages as i32), &|p| added.contains(&p), true)
 }
 
 /// A fill's names: the outline's, for the pages this fill added (`added`; a page the notebook had keeps its name, or
@@ -4049,6 +4152,7 @@ fn commit_finish(c: &mut Commit, dpi: f32) -> Finished {
     let mut trimmed = 0;
     if let Some(col) = read_parts(&id, &work, c.st.pages) {
         trimmed = fill_links(&id, &nbid, &c.dir, &nb, &m, c.st.pages, c.st.page_w, c.st.page_h, &col, &added);
+        trimmed += fill_weblinks(&id, &nbid, &c.dir, &nb, &m, c.st.pages, c.st.page_w, c.st.page_h, &col, &added);
         if cut_after(6) {
             return stop(&mut m);
         }

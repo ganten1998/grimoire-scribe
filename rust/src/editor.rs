@@ -604,6 +604,9 @@ pub struct EditorState {
     /// the links the document brought (doclinks.ini, 2.1): read at open, written only by Copy page and Copy to
     /// notebook; never part of `nav` (links.ini's caps, the lasso and Clear page never see them)
     dl: DocLinks,
+    /// the web links the document brought (weblinks.ini, 2.2): read at open, written only by Copy page and Copy to
+    /// notebook; a tap on one shows its card with the address and its QR code
+    wl: WebLinks,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
     // to... picks where it goes. A finger's tap on a link follows it; one held on it (HOLD_MS) shows
@@ -1560,6 +1563,8 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     // The picture pick over the page (#146): files.* as the Library's; the sheet's From a file... tile and Back
     if let Some(n)=name.strip_prefix("files.") {return s.files.open.then(||s.files.point(n)).flatten();}
     if let Some(n)=name.strip_prefix("templates.") {return (s.ts.open && !s.files.open).then(||tplsheet_point(&s.ts,n)).flatten();}
+    // the long-press card's rows, and a web link's card's Done: card.rename ... card.close (while it is drawn)
+    if let Some(n)=name.strip_prefix("card.") {return card_shows(s).then(||linkcard_point(&s.card,n)).flatten();}
     if name=="map.current" {return mapview_node_point(&s.map,&s.open_pid().to_string());}
     if let Some(n)=name.strip_prefix("map."){return mapview_control_point(&s.map,n);}
     if name.starts_with("music."){return musicbuild_control_point(&s.mb,name);}
@@ -2309,8 +2314,13 @@ fn boxes_get(a: &mut App) {
     s.boxes.stale = false;
     s.boxes.n = 0;
     let pid = s.open_pid();
+    // (the document's links: its tabs and, from 2.2, its web links)
     s.boxes.doc = match s.open_page() {
-        Some(page) if pid != 0 => doclinks_boxes(&s.dl, page, pid),
+        Some(page) if pid != 0 => {
+            let mut v = doclinks_boxes(&s.dl, page, pid);
+            v.extend(weblinks_boxes(&s.wl, page, pid));
+            v
+        }
         _ => Vec::new(),
     };
     let mut links = [NavLink::default(); LB_MAX];
@@ -2373,7 +2383,7 @@ fn draw_areas(a: &mut App, r: Rect) {
         let mut links=[NavLink::default();LB_MAX];let mut areas=[RECT_EMPTY;LB_MAX];
         let page=s.hist.iter().find(|h|h.page_id==pk.pid).and_then(|h|h.page.as_deref()).or(s.ccache[pk.slot].page.as_deref());
         let n=page.map_or(0,|p|nav_link_areas(&s.nav,p,pk.pid,NAV_LINK_MIN_MM*a.dpi/25.4,&mut links,&mut areas)as usize);
-        let docs=page.map_or_else(Vec::new,|p|doclinks_boxes(&s.dl,p,pk.pid));
+        let docs=page.map_or_else(Vec::new,|p|{let mut v=doclinks_boxes(&s.dl,p,pk.pid);v.extend(weblinks_boxes(&s.wl,p,pk.pid));v});
         let top=status_reserved(a);let (zoom,ox,oy)=peek_view(a.w,a.h-top,s.pgw,s.pgh,a.settings.landscape_fit||top>0);
         (links,areas,n,zoom,ox,oy-top as f32/zoom,docs)
     } else {
@@ -3567,6 +3577,7 @@ fn close_notebook(a: &mut App) {
     nav_free(&mut s.nav);
     nav_init(&mut s.nav);
     s.dl = DocLinks::default();
+    s.wl = WebLinks::default();
     s.links_dirty = false; // (what a failed flush kept is left for this notebook's next open)
     s.migrate_done = Vec::new();
     s.open = false;
@@ -3623,6 +3634,8 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     nav_load(s.nb.id.as_str(), &mut s.nav);
     s.dl = doclinks_load(s.nb.id.as_str());
     doclinks_prune(&mut s.dl, &s.nb); // (a tab to a page deleted since the last write is not a tab)
+    s.wl = weblinks_load(s.nb.id.as_str());
+    weblinks_prune(&mut s.wl, &s.nb);
     // The page it opens at was read before its links were: its beta.5 links migrate now, before the
     // first tap.
     s.links_dirty = false;
@@ -4817,6 +4830,9 @@ fn pages_delete(a: &mut App) {
     if doclinks_prune(&mut s.dl, &s.nb) > 0 {
         s.boxes.stale = true;
     }
+    if weblinks_prune(&mut s.wl, &s.nb) > 0 {
+        s.boxes.stale = true;
+    }
     // (the pages' files went to grimoire/trash; the view shows them gone)
     compose_all(a, RefreshMode::Full);
 }
@@ -4898,6 +4914,17 @@ fn pages_copy(a: &mut App, index: i32) {
             links_failed = true;
         } else {
             s.dl = dl;
+            s.boxes.stale = true;
+        }
+    }
+    // and its web links (weblinks.ini, 2.2), the same way
+    if !weblinks_of(&ed_ref(a).wl, src).is_empty() {
+        let s = ed(a);
+        let mut wl = s.wl.clone();
+        if weblinks_copy_page(&mut wl, src, copy) < 0 || weblinks_save(s.nb.id.as_str(), &mut wl, &s.nb) != 0 {
+            links_failed = true;
+        } else {
+            s.wl = wl;
             s.boxes.stale = true;
         }
     }
@@ -5608,6 +5635,8 @@ fn pages_copy_to(a: &mut App, id: &str, at: i32, pids: &[u32]) {
     // The document links of the pages whose targets were copied too (a page out of a planner loses the tabs to
     // pages left behind); a notebook whose doclinks.ini does not write gets the pages without them.
     let docs_ok = doclinks_copy_across(&s.dl, &out, &dst, dw as f32 / sw.max(1) as f32, dh as f32 / sh.max(1) as f32) >= 0;
+    // (and their web links, which go wherever their page goes: the same toast when they cannot)
+    let docs_ok = weblinks_copy_across(&s.wl, &out, &dst, dw as f32 / sw.max(1) as f32, dh as f32 / sh.max(1) as f32) >= 0 && docs_ok;
     for c in out.iter().filter(|c| c.erased) {
         if compact_note_page(id, c.to) != 0 {
             qlog!("compact: %s: p%u.qpg (a copy) could not be listed", id, c.to);
@@ -6906,13 +6935,29 @@ fn doc_link_under(a: &App, x: f32, y: f32) -> Option<DocLink> {
     doclinks_at(&s.dl, page, s.nb.page_ids[s.index as usize], px, py, NAV_LINK_MIN_MM * a.dpi / 25.4)
 }
 
-// A finger's tap at (x, y): a link there goes to its page, or opens the Index. The user's links first, then a
-// document link (a planner's tab).
+// The web link under (x, y) on screen, on the open page (2.2), as doc_link_under finds a document link, and whether
+// its exact area holds the point.
+fn web_link_under(a: &App, x: f32, y: f32) -> Option<(WebLink, bool)> {
+    let s = ed_ref(a);
+    let page = s.open_page()?;
+    if s.wl.links.is_empty() || s.page_ix().is_none() {
+        return None;
+    }
+    let (mut px, mut py) = (0.0, 0.0);
+    to_page(s, x, y, &mut px, &mut py);
+    weblinks_at(&s.wl, page, s.nb.page_ids[s.index as usize], px, py, NAV_LINK_MIN_MM * a.dpi / 25.4)
+}
+
+// A finger's tap at (x, y): a link there goes to its page, or opens the Index. The user's links first (their
+// growth to a finger's 7 mm too), then a document link (a planner's tab, its growth too), then a web link (2.2: its
+// card): Grimoire's own links to pages win over a web link's area wherever they reach.
 fn link_follow(a: &mut App, x: f32, y: f32) {
     let mut l = NavLink::default();
     if !link_under(a, x, y, &mut l) {
         if let Some(d) = doc_link_under(a, x, y) {
             follow_target(a, &format!("p{}", d.target));
+        } else if let Some((w, _)) = web_link_under(a, x, y) {
+            card_show_web(a, &w);
         }
         return;
     }
@@ -7057,6 +7102,29 @@ fn card_set_doc(a: &mut App, i: i32) -> bool {
     true
 }
 
+/// The card of web link l on the open page (2.2), shown at a finger's tap on it: its border around the link's exact
+/// box by DU strips, then the card beside it by GL16 (as a held link's), with the address, its QR code and Done.
+fn card_show_web(a: &mut App, l: &WebLink) {
+    link_off(a);
+    let pid = ed_ref(a).open_pid();
+    let Some(page) = ed_ref(a).open_page() else { return };
+    let boxes: Vec<Rect> = weblinks_box(l, page).into_iter().collect();
+    with_card(a, |c, _a, _nb, _nav| linkcard_set_web(c, pid, l.seed, &l.address));
+    let s = ed(a);
+    s.card.boxes = boxes;
+    s.card.border = true;
+    let band = card_band(a);
+    ed(a).card.band = band;
+    card_border_fast(a);
+    let s = ed_ref(a);
+    let (w, h) = linkcard_size(&s.card);
+    let screen = Rect { x: 0, y: top_of_page(a), w: a.w, h: a.h - top_of_page(a) };
+    let rect = popout_place(w, h, s.card.band, screen, &[s.panel, status_zone(a)]);
+    ed(a).card.rect = rect;
+    compose(a, rect);
+    app_invalidate(a, rect, RefreshMode::Ui);
+}
+
 /// A press held on chip `chip` of the Links bar (entry i, 8.10, D1): the long-press card for all the entry's
 /// links on the page, above the bar in the chip's column, the bar staying under it. While the bar looks at
 /// another page it looks at its own again first (the links are there), and the borders come with the page area's
@@ -7183,6 +7251,7 @@ fn card_result(a: &mut App, r: LcResult, d: Rect) {
         LcResult::Row(CardRow::Retarget) => card_retarget(a),
         LcResult::Row(CardRow::Redraw) => card_redraw(a),
         LcResult::Row(CardRow::Delete) => card_delete(a),
+        LcResult::Row(CardRow::Close) => card_close(a),
         _ => {}
     }
 }
@@ -9872,9 +9941,10 @@ fn phase2_surface_at(s: &EditorState, x: i32, y: i32) -> bool {
 /// Whether the editor has a control at (x, y) for a finger on the page: the panel, or a link there. (A sheet, a
 /// menu or the Pages view that is up takes every tap: the clock and battery is not shown then, and asks no
 /// more.) The clock and battery corner leaves a tap on a control to it, but for the user's own link in its
-/// corner, which is not a control there: the corner's tap is the clock's, over such a link too. A document
-/// link (a planner's tab: D7a, taps follow document links) is the other way round: a tab under the corner
-/// takes the tap, and the corner's toggle works where none lies (the shortcut and Settings toggle it too).
+/// corner, which is not a control there: the corner's tap is the clock's, over such a link too, and over a web
+/// link (2.2: a whole-page one would otherwise take the corner). A document link (a planner's tab: D7a, taps
+/// follow document links) is the other way round: a tab under the corner takes the tap, and the corner's toggle
+/// works where none lies (the shortcut and Settings toggle it too).
 pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
     if crate::library::library_settings_active(a) {return true;}
     let s = ed_ref(a);
@@ -9888,7 +9958,7 @@ pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
         return doc_link_under(a, x, y).is_some();
     }
     let mut l = NavLink::default();
-    link_under(a, x, y, &mut l) || doc_link_under(a, x, y).is_some()
+    link_under(a, x, y, &mut l) || doc_link_under(a, x, y).is_some() || web_link_under(a, x, y).is_some()
 }
 
 /// Whether the finger lift being handled was a tap in the corner, which the clock took (status.rs
@@ -11921,6 +11991,11 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "link_card" {
         // The long-press card: 0, or 1 while it is up.
         csnprintf!(out, cap, "%d", if s.open && s.card.open { 1 } else { 0 });
+    } else if key == "link_card.qr" {
+        // A web link's card: 1 when the code on the screen is, module for module, the code qr.rs makes of the
+        // address the card shows (Invert drawn as its negative), 0 when it is not or no code is drawn.
+        let ok = s.open && s.card.open && !s.card.web.is_empty() && ui_qr_matches(&a.screen, s.card.qr, &s.card.web, a.settings.invert);
+        csnprintf!(out, cap, "%d", ok as i32);
     } else if let Some(k) = key.strip_prefix("link_card.") {
         if !linkcard_probe(&s.card, k, out, cap) {
             return -1;
@@ -12038,6 +12113,19 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         let i = atoi(n) - 1;
         match (i >= 0 && i < n_links).then(|| s.nav.links[(first + i) as usize]).filter(|l| l.has_area) {
             Some(l) => csnprintf!(out, cap, "%d %d %d %d", l.area.x, l.area.y, l.area.w, l.area.h),
+            None => csnprintf!(out, cap, "%s", ""),
+        };
+    } else if key == "weblinks" {
+        // The open page's web links, and all of the notebook's: `page notebook`.
+        let pid = if has_page { s.nb.page_ids[s.index as usize] } else { 0 };
+        csnprintf!(out, cap, "%d %d", if has_page { weblinks_of(&s.wl, pid).len() as i32 } else { 0 }, s.wl.links.len() as i32);
+    } else if let Some(n) = key.strip_prefix("weblink.") {
+        // The open page's web link N (from 1, the document's order): its area and its address, `x y w h address`;
+        // empty past the last.
+        let pid = if has_page { s.nb.page_ids[s.index as usize] } else { 0 };
+        let i = atoi(n) - 1;
+        match (i >= 0).then(|| weblinks_of(&s.wl, pid).get(i as usize)).flatten() {
+            Some(l) => csnprintf!(out, cap, "%d %d %d %d %s", l.area.x, l.area.y, l.area.w, l.area.h, l.address.as_str()),
             None => csnprintf!(out, cap, "%s", ""),
         };
     } else if key == "doclinks" {

@@ -1,0 +1,75 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 3 /Kids [4 0 R 6 0 R 8 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 465 620] /Annots [10 0 R 11 0 R] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 101 >>
+stream
+0 G 2 w 20 20 425 580 re S
+BT /F1 18 Tf 40 580 Td (Overlap 1) Tj ET
+0.5 0.5 0.5 rg 20 400 10 10 re f
+
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 465 620] /Annots [12 0 R] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 101 >>
+stream
+0 G 2 w 20 20 425 580 re S
+BT /F1 18 Tf 40 580 Td (Overlap 2) Tj ET
+0.5 0.5 0.5 rg 20 400 10 10 re f
+
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 465 620] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 68 >>
+stream
+0 G 2 w 20 20 425 580 re S
+BT /F1 18 Tf 40 580 Td (Overlap 3) Tj ET
+
+endstream
+endobj
+10 0 obj
+<< /Type /Annot /Subtype /Link /Rect [20 400 30 410] /Border [0 0 0] /Dest [8 0 R /XYZ 10 10 0] >>
+endobj
+11 0 obj
+<< /Type /Annot /Subtype /Link /Rect [0 0 465 620] /Border [0 0 0] /A << /S /URI /URI (https://whole.example/) >> >>
+endobj
+12 0 obj
+<< /Type /Annot /Subtype /Link /Rect [20 400 30 410] /Border [0 0 0] /Dest [8 0 R /XYZ 10 10 0] >>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000133 00000 n 
+0000000203 00000 n 
+0000000353 00000 n 
+0000000505 00000 n 
+0000000648 00000 n 
+0000000800 00000 n 
+0000000926 00000 n 
+0000001044 00000 n 
+0000001159 00000 n 
+0000001292 00000 n 
+trailer
+<< /Size 13 /Root 1 0 R >>
+startxref
+1407
+%%EOF

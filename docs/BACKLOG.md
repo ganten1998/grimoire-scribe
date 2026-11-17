@@ -267,7 +267,7 @@ call the copy since issue #146 (each its own section, above).
   (at most every 10 s, Library in front) until the sandbox works again; a folder picked in place is not retried.
   Only if the sandbox ever fails on a device: a quiet "no worker" ending the UI does not toast would stop it.
 - **Links and the outline (lane L6)**: DONE in 2.1.0-beta.2 (FORMAT.md, "Imports: PDFs"). Left for later: web links
-  are counted and left out (the optional QR card, 8.I of the plan, is the way to keep them); the outline names
+  were counted and left out (kept as a QR card from 2.2: #174, below); the outline names
   a new notebook's pages, and a fill only the pages it adds (#123, below);
   a worker caps at 60,000 links a PDF (after the water level a notebook keeps 14,400 at most, but a PDF past the
   cap loses its later pages' links before the densest-first trim sees them); `/Next` action chains, JavaScript
@@ -329,6 +329,42 @@ call the copy since issue #146 (each its own section, above).
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
+
+## Web links as a QR card (2.2, #174): what waits, and what is for the owner
+
+The smallest coherent reading was taken for each call; each can change without a change of format, but the first.
+
+- **Where they live**: a file of their own, `weblinks.ini` (taken), not a new target kind in `doclinks.ini`, which
+  2.1.0 would carry only up to 16 KiB of lines and past that refuse whole (no tabs at all there). What 2.1.0 and
+  before do is in FORMAT.md, "Web links": the notebook opens as before, without the web links, and the file is never
+  written there. A later version may still move them into `doclinks.ini` once no version before 2.2 matters.
+- **Which addresses**: http and https only, printable ASCII without a space or `\`, a plain host, at most 200 bytes
+  (taken). A plain host has no `user@` part, no `%`, no brackets, and is a number only as four plain numbers: each
+  refused form is one whose host a browser reads otherwise than its text says, so the card's title is always the
+  host a phone opens. Not kept:
+  `mailto:` (a phone would open it too: it could be added to the rules), `tel:`, internationalised addresses in raw
+  UTF-8 (a PDF should write them as ASCII: the host in its `xn--` form, the rest percent-encoded, as kept), and
+  longer addresses (a larger code, up to version 20 and 666 bytes, would need qr.rs's QR_MAX_VERSION raised; a 2.2
+  reader skips such a line, shows the file's other links and never writes the file).
+- **The card**: a tap opens it (the Kindle cannot follow a web link); a hold arms Select as on a document link
+  (taken). The title is the host (a long one shows its end); the address is always shown whole, in Terminess in
+  every look (any 200 bytes take at most 5 lines), title and address in a face that tells `l`, `1`, `I`, `O` and
+  `0` apart. No new string: Done and "Scan with a phone's camera" are the catalog's.
+- **Where links meet** (taken): the user's own links, then the document's page links (each with its finger's
+  grown touch area), then a web link; a web link never takes the clock's corner. A whole-page web link (a
+  `/Rect` over the page is all it takes) never hides a tab or a link of the user's.
+- **Limits**: 4,000 a notebook (3,600 kept by an import's water level), 256 a page, as the document links' rule
+  (taken). Refused addresses are counted in the import's log line, with those over 200 bytes and those off the
+  page apart (a long one is silent to the user: the printed link does nothing, as all did before 2.2); web links
+  left out for room count in "Some links were left out.".
+- **The notebook PDF**: web links are not written into it (taken: the smallest). Writing them as URI link
+  annotations would make an exported notebook's web links work in a PDF reader and give them back on import; it
+  is a few lines in export.rs, if the owner wants it.
+- **The Links bar, the Index, the Graph**: web links appear in none of them (taken). The Links bar could fold them
+  into a row of their own ("Web links (3)"), as the document links' "From the PDF" row; the Graph has nothing to
+  draw (a web link points at no page).
+- **Device checks** (TESTING.md, "2.2, Web links as a QR card"): scanning the code with a phone at arm's length on
+  the Scribe, and a notebook with web links opened in 2.1.0. Not yet run.
 
 ## The sandbox's steps for a platform kept in another crate (`linux-kernel`, #148): what waits
 

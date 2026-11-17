@@ -48,6 +48,10 @@ const STORE: File = ("rust/src/store.rs", include_str!("../src/store.rs"));
 const TPLPDF: File = ("rust/src/bgwork_tplpdf.rs", include_str!("../src/bgwork_tplpdf.rs"));
 const BGJOB: File = ("rust/src/bgjob.rs", include_str!("../src/bgjob.rs"));
 const TPLSHEET: File = ("rust/src/tplsheet.rs", include_str!("../src/tplsheet.rs"));
+const WEBLINKS: File = ("rust/src/weblinks.rs", include_str!("../src/weblinks.rs"));
+const DOCLINKS: File = ("rust/src/doclinks.rs", include_str!("../src/doclinks.rs"));
+const LINKCARD: File = ("rust/src/linkcard.rs", include_str!("../src/linkcard.rs"));
+const EDITOR: File = ("rust/src/editor.rs", include_str!("../src/editor.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -895,4 +899,66 @@ fn pdfs_as_templates_are_told_as_they_are() {
     // the sheet: nothing read again under a contact
     told_on(&mut fails, DESIGN, "Never under a contact: a count seen while a pen or finger is down on the sheet is read after the lift.", TPLSHEET, "if s.press.down { s.pdf_counted = true; }");
     none_failed(&fails, "PDFs as templates");
+}
+
+// Web links as a QR card (2.2, issue #174). What keeps versions before 2.2 safe: the web links are in a file of their
+// own, which no version before 2.2 opens, and doclinks.ini (which 2.1.0 reads and carries only 16 KiB of lines it does
+// not know in) never holds one: its writer writes page targets alone. What an address may be: the rules, held against
+// the whole function, checked by the worker, the writer and the reader; a notebook without web links has no file.
+// The card draws the stored text and its code and opens nothing. The old words that said web links are left out are
+// gone.
+#[test]
+fn web_links_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    told_on(&mut fails, FORMAT, "2.1.0 and every version before it never read or write `weblinks.ini`", WEBLINKS, r#"pub const WEBLINKS_FILE: &str = "weblinks.ini";"#);
+    told_on(&mut fails, FORMAT, "`doclinks.ini` holds no web link and carries no line for one", DOCLINKS, r#"text.push_str(&format!("link.{}={:08x},p{}\n", l.pid, l.seed, l.target));"#);
+    told_on(&mut fails, DESIGN, "In a file of their own the web links are simply absent in 2.1.0 and before, which never open it and never write over it", WEBLINKS, r#"pub const WEBLINKS_FILE: &str = "weblinks.ini";"#);
+    const ADDRESS_OK: &str = r#"pub fn weblinks_address_ok(b: &[u8]) -> bool { if b.len() > WEBLINK_ADDRESS_MAX || !b.iter().all(|&c| (0x21..=0x7e).contains(&c) && c != b'\\') { return false; } let rest = if b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://") { &b[7..] } else if b.len() >= 8 && b[..8].eq_ignore_ascii_case(b"https://") { &b[8..] } else { return false; }; let end = rest.iter().position(|c| matches!(c, b'/' | b'?' | b'#')).unwrap_or(rest.len()); weblinks_authority(&rest[..end]).is_some() }"#;
+    const AUTHORITY: &str = r#"fn weblinks_authority(a: &[u8]) -> Option<(&[u8], Option<u32>)> { let (host, port) = match a.iter().position(|&c| c == b':') { Some(i) => (&a[..i], Some(&a[i + 1..])), None => (a, None), }; if host.is_empty() || !host.iter().all(|&c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.')) { return None; } let num = |p: &[u8], max: u32| -> Option<u32> { if p.is_empty() || p.len() > 5 || !p.iter().all(u8::is_ascii_digit) || (p.len() > 1 && p[0] == b'0') { return None; } let v = p.iter().fold(0u32, |v, &c| v * 10 + (c - b'0') as u32); (v <= max).then_some(v) }; let port = match port { None => None, Some(p) => Some(num(p, 65535).filter(|&v| v > 0)?), }; let last = host.strip_suffix(b".").unwrap_or(host).rsplit(|&c| c == b'.').next().unwrap_or(b""); let hex = last.len() >= 2 && last[0] == b'0' && (last[1] | 0x20) == b'x' && last[2..].iter().all(u8::is_ascii_hexdigit); if hex || (!last.is_empty() && last.iter().all(u8::is_ascii_digit)) { let parts: Vec<&[u8]> = host.split(|&c| c == b'.').collect(); if parts.len() != 4 || !parts.iter().all(|p| p.len() <= 3 && num(p, 255).is_some()) { return None; } } Some((host, port)) }"#;
+    let rules = "An address is kept only when it starts with `http://` or `https://` (the scheme in either case), holds only printable ASCII other than a space and `\\` (bytes 0x21 to 0x7E: no control byte, no space, nothing outside ASCII), is at most 200 bytes long (under the 213 that the largest QR code Grimoire draws, version 10 at level M, holds) and names a plain host: up to the first `/`, `?` or `#` it is `<host>` or `<host>:<port>`, with no `user@` part, the host of letters, digits, `-`, `_` and `.` only (no `%`, no `[`), a host whose last label is a number only as four numbers from 0 to 255 without leading zeros, and a port from 1 to 65535 without a leading zero.";
+    told_on_code(&mut fails, FORMAT, rules, WEBLINKS, "pub fn weblinks_address_ok(", ADDRESS_OK);
+    told_on_code(&mut fails, FORMAT, rules, WEBLINKS, "fn weblinks_authority(", AUTHORITY);
+    // (the title: the host as a browser writes it, held against the function that makes it)
+    const HOST: &str = r#"pub fn weblinks_host(a: &str) -> String { let b = a.as_bytes(); let (rest, own) = if b.len() >= 8 && b[..8].eq_ignore_ascii_case(b"https://") { (&b[8..], 443) } else if b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://") { (&b[7..], 80) } else { return a.to_string(); }; let end = rest.iter().position(|c| matches!(c, b'/' | b'?' | b'#')).unwrap_or(rest.len()); match weblinks_authority(&rest[..end]) { Some((host, port)) if weblinks_address_ok(b) => { let mut s = String::from_utf8_lossy(host).to_ascii_lowercase(); if let Some(p) = port.filter(|&p| p != own) { s.push_str(&format!(":{p}")); } s } _ => a.to_string(), } }"#;
+    let title = "the card's title shows that host as a browser writes it: in lower case, with its port unless it is the scheme's own (80 for http, 443 for https)";
+    told_on_code(&mut fails, FORMAT, title, WEBLINKS, "pub fn weblinks_host(", HOST);
+    beside(&mut fails, DESIGN, "WEBLINK_ADDRESS_MAX", &grimoire::weblinks::WEBLINK_ADDRESS_MAX.to_string());
+    let checked = "The worker checks the address, the writer checks it again before it is stored, and the reader checks it again.";
+    told_on(&mut fails, FORMAT, checked, PDFWORK, "if w < 1 || h < 1 || !crate::weblinks::weblinks_address_ok(t[7].as_bytes()) {");
+    told_on(&mut fails, FORMAT, checked, PDFWORK, "if l.src < 1 || l.src > pages || off || !crate::weblinks::weblinks_address_ok(l.address.as_bytes()) {");
+    told_on(&mut fails, FORMAT, checked, WEBLINKS, "if !nav_area_valid(area) || !weblinks_address_ok(t) {");
+    told_on(&mut fails, FORMAT, "a notebook without web links has no `weblinks.ini`", WEBLINKS, "if !wl.file && n == 0 && wl.unknown.is_empty() {");
+    // (a file that does not read, or one with a line skipped, is never written: the writer refuses it)
+    let never = "A file over a cap or one that holds a NUL does not read: it shows no web links and is never written over.";
+    told_on(&mut fails, FORMAT, never, WEBLINKS, "if !wl.writable || nb.npages() < 0 || nb.npages() > STORE_MAX_PAGES as i32 {");
+    told_on(&mut fails, FORMAT, never, WEBLINKS, "WebLinks { writable: false, file: true, ..Default::default() }");
+    let skipped = "A line past those bounds (a later version's longer address, say) is skipped and counted in the log, the file's other links are shown, and the file is never written over";
+    told_on(&mut fails, FORMAT, skipped, WEBLINKS, "if !carry_line(&mut wl.unknown, line) { wl.skipped += 1; wl.writable = false; }");
+    // The card opens nothing: both sentences stand on the whole of linkcard_set_web (its one row, Close, and its
+    // title, address and code: a row added fails here), on what the editor does with that row (it closes the card),
+    // on the card drawing the code of the stored address, and on weblinks.rs and linkcard.rs making no process and
+    // no network call (a call added to either fails here).
+    const SET_WEB: &str = r#"pub fn linkcard_set_web(c: &mut LinkCard, pid: u32, seed: u32, address: &str) { let kb = std::mem::take(&mut c.kb); let boxes = std::mem::take(&mut c.boxes); *c = LinkCard { open: true, pid, page: -1, kb, boxes, ..Default::default() }; c.boxes.clear(); c.seeds.push(seed); c.web = address.to_string(); c.title = weblinks_host(address); c.rows[0] = CardRow::Close; c.enabled[0] = true; c.labels[0] = tr("Done").to_string(); c.nrows = 1; }"#;
+    for (f, opens_nothing) in [
+        (DESIGN, "The Kindle never opens, fetches or runs an address: the card draws the stored text and a code made from it, and nothing else."),
+        (FORMAT, "Nothing on the Kindle opens, fetches or runs an address: the card shows the stored text and a code made from it."),
+    ] {
+        told_on_code(&mut fails, f, opens_nothing, LINKCARD, "pub fn linkcard_set_web(", SET_WEB);
+        told_on(&mut fails, f, opens_nothing, EDITOR, "LcResult::Row(CardRow::Close) => card_close(a),");
+        told_on(&mut fails, f, opens_nothing, LINKCARD, "c.qr = ui_qr(s, qbox, &web, negative);");
+    }
+    for f in [WEBLINKS, LINKCARD] {
+        for call in ["std::process", "Command::new", "std::net", "TcpStream", "TcpListener", "UdpSocket", "libc::exec", "libc::fork", "posix_spawn", "libc::socket", "libc::connect"] {
+            gone(&mut fails, f, call);
+        }
+    }
+    // A template PDF's web links are never read: LINKS is the one command answered with W records, and the template
+    // job never sends it (a call added there fails here).
+    let templates = "the template job asks the worker for the page count and the pages only (`PROBE`, `R`), never `LINKS`, the one command whose answer holds `W` records, so a template PDF's web links are never read";
+    told_on(&mut fails, DESIGN, templates, PDFWORK, r#"["LINKS", w, h] => {"#);
+    gone(&mut fails, TPLPDF, ".links(");
+    gone(&mut fails, TPLPDF, "LINKS");
+    gone(&mut fails, FORMAT, "Web links (URI) are left out and counted in the log");
+    gone(&mut fails, BACKLOG, "web links are counted and left out");
+    none_failed(&fails, "web links in the documents");
 }

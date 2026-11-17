@@ -70,7 +70,7 @@ root/.cache/files/                      Files' previews of the files its Covers 
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
 `folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
 `bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
-`import/.attempts`, an import's work files `links.part` and `names.part`, `clipboard.qpg`, the shortcut files
+`import/.attempts`, an import's work files `links.part`, `names.part` and (2.2) `webs.part`, `clipboard.qpg`, the shortcut files
 (`shortcuts.ini`, `controller.ini`, `shortcuts/`, `gestures.ini`, `live-keys.ini`) and the PDF cache's
 records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
 is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
@@ -81,8 +81,8 @@ the check's verdicts, marks and previews (Your own fonts).
 The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
 `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
 4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, an import's `links.part` up to 4,194,314
-bytes and its `names.part` up to 406,000 (the most one worker's walk can have the first slice write: "Imports:
-PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
+bytes, its `names.part` up to 406,000 and its `webs.part` (2.2) up to 4,194,304 (the most one worker's walk can
+have the first slice write: "Imports: PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
 8000 x 8000, and a header). Page files and pictures have no limit of this kind. A `folders.ini` over its limit
 reads as an empty list; what the other readers do with a file that is not read is in their sections.
 
@@ -940,7 +940,8 @@ waits, and within 10 s of the end of a previous run's import):
   lists the pages it had and shows nothing new. After it come the links (`doclinks.ini`): only the PDF's links
   that start or end on a page the fill added, through `pdflinks_fill` with the notebook's document links in it
   and its own links' seeds never taken, the water level trimming only links the fill adds; a link between two
-  pages the notebook had is never added, and `source.ini`'s `links=` stays as it was. Then the names (`nav.ini`):
+  pages the notebook had is never added, and `source.ini`'s `links=` stays as it was. Then the web links of the
+  pages the fill added (`weblinks.ini`, below), the notebook's own never trimmed. Then the names (`nav.ini`):
   the outline's, for the pages the fill added only. Deleting the pages a fill added takes every page, link and
   name it wrote. Each of these files is read and written whole in one tick, so nothing written between two ticks
   is undone. Then `stage=3`, and one more background slice moves the PDF to `import/done/` (while its name still
@@ -1001,12 +1002,16 @@ waits, and within 10 s of the end of a previous run's import):
   `import/done/` like a drop, and the scan leaves it to its pick while the pick's job is queued or running.
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
-  the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
+  the work folder as `links.part` (the `L` and `Q` records, then `F`), `names.part` (the `O` records) and, from
+  2.2 and only for a PDF with a web link, `webs.part` (the `W` records of its web links: never in `links.part`,
+  which 2.1.0 reads), in the
   worker's own record grammar, read back strictly by the last slice, each only as a plain file of at most its
   size: `links.part` 4,194,314 bytes (a worker's 4 MiB of records, line for line, and the `F` line the slice
   writes itself when the walk sent none), `names.part` 406,000 (an `O` line of at most 203 bytes for each of
-  at most 2000 pages); a part that does not read leaves the notebook without links and names. The commit
-  writes `doclinks.ini` (below) and `nav.ini` from them, before `notebook.ini`, and removes the two parts. A
+  at most 2000 pages), `webs.part` 4,194,304; a part that does not read leaves the notebook without links and
+  names (`webs.part`: without web links, its links and names kept). The commit
+  writes `doclinks.ini` (below), `weblinks.ini` (2.2, below: only when the PDF has a web link) and `nav.ini` from
+  them, before `notebook.ini`, and removes the parts. A
   worker that dies, stalls or lies in the walk costs the notebook its links and names only (logged); the
   pages do not depend on it. What is read:
   an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
@@ -1015,17 +1020,22 @@ waits, and within 10 s of the end of a previous run's import):
   `LastPage`, resolved to the concrete page), else its `/Dest`; an explicit destination naming its page by
   number instead of a reference counts as a 0-based index in range; `/QuadPoints` (up to 8 quads, a link each,
   its box as the area, a quad that is not an axis-aligned rectangle also as a closed `outline.` polygon),
-  else `/Rect`. Web links (URI) are left out and counted in the log; GoToR, Launch, JavaScript, a link with no
+  else `/Rect`. Web links (a URI action) are kept from 2.2 when their address passes the rules of `weblinks.ini`
+  (below), each quad (or the rectangle) a web link whose area is its box, and are otherwise left out and counted in
+  the log (the web links' line counts apart those whose area is off the page and the addresses over 200 bytes);
+  GoToR, Launch, JavaScript, a link with no
   action, one whose destination does not resolve, an empty rectangle, a link to its own page and one that falls
   off the page are left out and counted too. Walks are capped (name trees and the outline: depth 32, 100,000
   entries and nodes, a visited set; 20,000 annotations a page; 60,000 links a PDF) and the rest is left out.
+  Web links (2.2) are walked after every page link and never take a page link's room: at most 256 a page and
+  4,000 a PDF, in what room the page links left.
   The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
   least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
   outline names pages: depth first, the first item that points at a page names it, a page's own name staying
   (an import makes a new notebook, so none has one; a fill names only the pages it adds); titles are decoded from PDF text strings (UTF-16BE or LE
   with a BOM, UTF-8 with a BOM, else PDFDocEncoding), controls become spaces, trimmed, cut at 95 bytes between
-  characters. The water level trims the densest pages first; when it (or a page's 1,024, or the worker's cap)
-  left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
+  characters. The water level trims the densest pages first; when it (or a page's 1,024, a page's 256 web links,
+  or the worker's cap) left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
   ending wins when both apply).
 - **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
   held while any is queued or running, through one close-on-exec handle; an import's background child (and the
@@ -1357,6 +1367,66 @@ exact area) and raw zips (`raw/doclinks.ini`). Who never does: the Links bar's L
 cache, the library index and the Graph, the lasso and Select, the clipboard, and the 64-a-page and
 4,000-a-notebook checks, which count the user's links only. Moving pages inside a notebook (Move to...) changes
 only the page list: links go by page id.
+
+## Web links: `weblinks.ini` (2.2)
+
+`notebooks/<id>/weblinks.ini` holds the web links a document brought: a PDF link annotation whose action is a URI
+(ISO 32000-1, 12.6.4.7) with an address the rules below take. A finger's tap on one shows a card with the address
+and its QR code, for a phone to open. Nothing on the Kindle opens, fetches or runs an address: the card shows the
+stored text and a code made from it.
+
+```
+# comment lines and blank lines are skipped
+web.<page id>=<seed>,<x>,<y>,<w>,<h>,<address>
+```
+
+The page id and the seed are as in a `link.` line of `links.ini` (the seed names the link inside this file only: ink
+and the other link files never meet it), the area as an `area.` line's (1 to 4 decimal digits each, 1 <= w,
+1 <= h, x + w and y + h at most 6000, page pixels at the notebook's page size), and the address is the rest of the
+line, exactly as stored and as shown (it may hold commas). An address is kept only when it starts with `http://` or
+`https://` (the scheme in either case), holds only printable ASCII other than a space and `\` (bytes 0x21 to 0x7E:
+no control byte, no space, nothing outside ASCII), is at most 200 bytes long (under the 213 that the largest QR code
+Grimoire draws, version 10 at level M, holds) and names a plain host: up to the first `/`, `?` or `#` it is `<host>`
+or `<host>:<port>`, with no `user@` part, the host of letters, digits, `-`, `_` and `.` only (no `%`, no `[`), a host
+whose last label is a number only as four numbers from 0 to 255 without leading zeros, and a port from 1 to 65535
+without a leading zero. These are the addresses whose host, as a browser reads them, is the host their text names
+(a browser reads `\` as `/`, the text before an `@` as a user, `%2E` as a dot and `0x7f.1` as `127.0.0.1`); the
+card's title shows that host as a browser writes it: in lower case, with its port unless it is the scheme's own
+(80 for http, 443 for https). The import trims spaces,
+tabs, line breaks and NULs from the ends of the PDF's string first; a `javascript:`, `file:`, `mailto:` or relative
+address, or any other the rules refuse, is left out and counted in the log, as every web link was before 2.2. The
+worker checks the address, the writer checks it again before it is stored, and the reader checks it again. Within
+a page the file's order is the document's; the last line for a page id and seed wins.
+
+| | `weblinks.ini` |
+|---|---|
+| links | 4,000 (an import or a fill keeps at most 3,600, by `doclinks.ini`'s water level: the densest pages first) |
+| a page | 256 (the rest are left out for room, and the end says "Some links were left out.") |
+| size | 1 MiB (the most links at their longest fit, with the carried lines) |
+
+A file over a cap or one that holds a NUL does not read: it shows no web links and is never written over. A `web.`
+line this version cannot read (an address or an area it refuses: another version's) and any other line it does not
+know are carried, up to 255 bytes a line and 16 KiB together. A line past those bounds (a later version's longer
+address, say) is skipped and counted in the log, the file's other links are shown, and the file is never written
+over, so the line stays for the version that wrote it: a later version may raise the address's cap and cost this
+one only those lines. A link of a page no longer in
+the notebook is not shown and goes from the file at its next write. The writers: the PDF import's last slice (a new
+notebook's, only when the PDF has a web link: a notebook without web links has no `weblinks.ini`), a fill's commit
+(the web links of the pages it adds, the notebook's own never trimmed), Copy page and Copy to notebook (a web link
+goes wherever its page goes; when it cannot, the toasts of document links say so). Never a page turn, Clear page, a
+lasso or Select.
+
+Who reads it: the editor (a tap, the eye's boxes, the card), Copy page and Copy to notebook, and raw zips
+(`raw/weblinks.ini`). Who never does: the Links bar, the backlinks cache, the library index and the Graph, the Index
+and Find, the notebook's PDF (it has no web links), the lasso and Select, the clipboard, and the caps of
+`links.ini` and `doclinks.ini`.
+
+The web links are a file of their own so that versions before 2.2 open the notebook as before. 2.1.0 and every
+version before it never read or write `weblinks.ini`: the notebook opens there with all its pages, ink, names, its
+own links and its document links (`doclinks.ini` holds no web link and carries no line for one, so it reads there
+whole), the web links simply absent. Their saves never touch the file, so the web links are there again when 2.2
+opens the notebook; a page they delete takes its web links at 2.2's next write of the file (page ids are never
+given again: `next_page_id`). What they copy (Copy page, Copy to notebook, raw zips) goes without the web links.
 
 ## Named sections: `nav.ini` (1.2.0 on)
 
@@ -2069,6 +2139,14 @@ What 2.1.0 and the versions before it do with what a fill (2.2) writes:
 | a filled notebook | an ordinary notebook: it opens with every page of its list, the pages a fill added as document pages on their pictures (2.1.0 also with their tabs and names; 2.0 without the tabs, as for any `doclinks.ini`). Its files are the ones they write themselves: page files, `bg/` pictures, `bg/index.ini`, `bg/pages.ini`, `source.ini` page lines, `doclinks.ini`, `nav.ini`, `notebook.ini`. A notebook without a record still has none |
 | a fill's work folder (`notebooks/.import-<id>/` with `pdf-fill.ini`) | no `pdf-import.ini` and no `notebook.ini` in it: removed at their next start as any cut-off import's ("removed what a cut-off import left"); the notebook stays as it was, and the PDF, still in `import/`, is "PDF already imported." there (2.1.0) or never imported (before it) |
 | a fill's commit cut off half way (`stage=2`), then a start of one of them before 2.2 goes on with it | they remove the work folder, so the commit never goes on: the notebook lists the pages it had (cut before `notebook.ini` was written), or all of them without the links and names the fill had yet to add (cut after). Page files a cut left unlisted, and their lines in `bg/pages.ini` and `source.ini`, are never shown; `source.ini`'s go at its next write |
+
+What 2.1.0 and the versions before it do with the web links of 2.2 (Web links; read in 2.1.0's code at the tag):
+
+| new data (web links, 2.2) | 2.1.0 and before |
+|---|---|
+| `weblinks.ini` | never read or written: the notebook opens with its pages, ink, names, links and document links, without the web links (a tap there does nothing); its raw zips leave the file out; the file stays in the notebook's folder, as it was, for 2.2 |
+| `doclinks.ini` of a PDF with web links | the same bytes as for the PDF without them: read whole, nothing carried |
+| an unfinished import's `webs.part` (2.2 began the import, 2.1.0 finishes it) | never read: `links.part` and `names.part` hold only records 2.1.0 knows, so the notebook is made with its pages, its document links and its names, without its web links; `webs.part` stays in the notebook's folder, unread |
 
 What 2.1.0 does with what a version that numbers its font verdicts 2 writes (read in its code at the tag):
 

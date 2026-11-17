@@ -581,7 +581,7 @@ exit. `store_add_page` never writes over an existing `p<id>.qpg`: it takes the n
 Reads of the data folder take plain files only. What is read there through `util::read_file`,
 `util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and import
 scans, the marks, the share zip's raw copies, the clipboard, the compaction lists, the shortcut files, the PDF
-cache's records, an import's `links.part` and `names.part`, a notebook's `nav.ini`, `links.ini` and
+cache's records, an import's `links.part`, `names.part` and `webs.part`, a notebook's `nav.ini`, `links.ini` and
 `doclinks.ini`) is read only when the entry at the name itself is a plain file (a link, a folder or anything
 else there reads as a file that is not there, or, for the shortcut files and a notebook's `nav.ini`,
 `links.ini` and `doclinks.ini`, as one that is there and does not read: nothing of it is used, and an edit
@@ -589,8 +589,8 @@ that would write a sidecar that does not read (a page's name, a link) is refused
 over), and the open never waits. Folders on the way to a file may be links (the data root, `notebooks/`, a
 platform's folders, a test's folder): only the last name is held to this. The small text files are read up to
 a limit (`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB;
-an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes and names.part
-406,000, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
+an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes, names.part
+406,000 and webs.part 4,194,304, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
 picture and a header; and, by the same bound in its own reader, a compaction list 64 KiB, which a read that
 fails midway leaves unread rather than cut short); page files and pictures have none of `read_file`'s own. A
 settings.ini that is there but was not read is moved to `settings.ini.unread` before the next save.
@@ -1460,6 +1460,83 @@ Select (D7b a): the hold asks `link_under`, which never sees them. Nothing that 
 index reads the file; Clear page, the lasso, the clipboard and the 64/4,000 checks read `nav.links` alone, so they
 never see them by construction. Copy page and Copy to notebook carry them (the latter only to targets that were
 copied too); the notebook PDF and raw zips carry them.
+
+## Web links as a QR card (2.2, issue #174)
+
+A PDF's web links (link annotations whose action is a URI) were counted and left out. From 2.2 an address that
+passes the rules is kept, and a finger's tap on its area shows a card with the address and its QR code, for a phone
+at arm's length to open. The Kindle never opens, fetches or runs an address: the card draws the stored text and a
+code made from it, and nothing else.
+
+- **Where they live: `notebooks/<id>/weblinks.ini`** (`weblinks.rs`, FORMAT.md "Web links"), a file of its own,
+  one `web.<page id>=<seed>,<x>,<y>,<w>,<h>,<address>` line a link. Not a new target kind in `doclinks.ini`: 2.1.0
+  reads `doclinks.ini` and carries the lines it does not know only up to 16 KiB together, past which it refuses the
+  whole file (no tabs at all there). A planner or a book with a few hundred web links would have cost a 2.1.0 user
+  every tab. In a file of their own the web links are simply absent in 2.1.0 and before, which never open it and
+  never write over it; `doclinks.ini` is the same bytes as for the PDF without its web links.
+- **The rules** (`weblinks_address_ok`, `weblinks_authority`): `http://` or `https://` (the scheme in either
+  case), printable ASCII other than a space and `\` (0x21 to 0x7E), at most `WEBLINK_ADDRESS_MAX` (200) bytes, under
+  the 213 bytes a version 10 code holds at level M, the largest `qr.rs` draws, so every address kept has its code,
+  and a plain host: `<host>` or `<host>:<port>`, no `user@` part, a host of letters, digits, `-`, `_` and `.`, a
+  numeric one only as four plain numbers, a port without a leading zero. What is refused is each form whose host a
+  browser reads otherwise than its text says (`\` as `/`, the text before an `@` as a user, `%2E` as a dot,
+  `0x7f.1` as `127.0.0.1`), so the card's title (`weblinks_host`) is always the host a phone opens, as the URL
+  standard writes it (`URL.host`: lower case, the port unless it is the scheme's own); a unit test holds the title
+  against a browser parser's answers. The worker
+  trims the PDF string's ends (spaces, line breaks, NULs: `weblinks_address_from`) and checks; the writer checks the
+  `W` record again (`parse_record`, `Collected::take`), and the reader checks the file's line again. A refused
+  address stays a counted web link left out (`LeftOut.uri`).
+- **The worker** (`pdfwork.rs`, `Walk::target`): a URI action's string is read and, when the rules take it, each
+  quad (or the Rect) of the annotation goes out as `W <src> <x> <y> <w> <h> <i> <address>`, the area as an `L`
+  record's (its box; no polygon), `i` its place among the page's web links. The page links never lose room to
+  them: the walk sends every page's `L` and `Q` records first, exactly as for the PDF without its web links, and
+  keeps the web links for a second pass after them, at most `WEBLINKS_PER_PAGE` (256) a page and `WEBLINKS_MAX`
+  (4,000) in all, what a notebook keeps, under what is left of `LINKS_MAX` and the walk's 3 MiB of records; those
+  left out are counted (`U <capped> <off> <long>`) and added to the end's "Some links were left out.". A web link
+  with nothing of it on the page is left out by the walk (it would take a page's room there) and counted as off the
+  page; an http or https address over 200 bytes is a refused one (`LeftOut.uri`) counted apart too, and the import's
+  log line of web links says both. So `doclinks.ini` and
+  `nav.ini` are, for any PDF, what the PDF without its web links gives. The first slice keeps the `W` records in `webs.part`, a part of their own
+  (`WEBS_PART`, only for a PDF with a web link), never in `links.part`, which 2.1.0 reads: an import 2.2 began and
+  2.1.0 finishes keeps its tabs and names, without its web links.
+- **The writer** (`pdfimport.rs`, `put_weblinks`): the last slice of a new notebook writes `weblinks.ini` in the
+  work folder when there is a web link (`weblinks_fill`: validated, one of each, the same address with its area
+  within 2 px; 256 a page; then `weblinks_water`, 90% of `WEBLINKS_MAX`, 4,000, the densest pages first); a fill's
+  commit (`fill_weblinks`) adds the web links of the pages it adds only, the notebook's own never trimmed. Those left
+  for room count in the end's "Some links were left out.".
+- **The editor**: `EditorState.wl`, read at open and pruned as `dl` is. What a finger's tap opens where links
+  meet (`link_follow`): the user's own links first, their touch area grown to a finger's 7 mm too; then the
+  document's page links (a planner's tabs), a small tab's grown finger margin too; then a web link (`weblinks_at`:
+  exact area first, then the 7 mm growth). Grimoire's own links to pages win over a web link's area wherever they
+  reach, so a whole-page web link never hides a tab. The clock's corner is the clock's over a web link, as over a
+  user's link (`editor_control_at`; a tab under the corner still takes the tap). The tap
+  opens the long-press card in a form of its own (`linkcard_set_web`, `LinkCard.web`): the heavy border around the
+  link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`, in Terminess
+  bold; a host too long for the card shows "..." and its end, where its own name is), the address as stored and
+  always whole (in Terminess, the face of every look, broken between its characters: any 200 printable bytes take at
+  most 5 lines; in a look's own face 200 wide letters took up to 9), "Scan with a phone's camera",
+  the code in a 600 px box (a symbol of 37 to 65 modules: 9 to 16 px, 0.8 to 1.4 mm a module on the Scribe; its
+  negative under Invert, as the Share screen's) and Done; a tap outside closes it too. A finger held on a web link
+  arms Select, as on a document link. The eye draws their boxes with the document links' (`LinkBoxes.doc`). Copy
+  page and Copy to notebook carry them (to any notebook: a web link goes nowhere inside it); when they cannot, the
+  document links' toasts say so. Raw zips carry `raw/weblinks.ini`.
+- **Where they never appear**: the Links bar, the backlinks cache, the library index and the Graph (a web link
+  points at no page), the Index and Find (they list pages and names), the notebook's PDF (a choice for the owner:
+  BACKLOG.md), the lasso, Select, Clear page and the clipboard. Nor in a PDF used as a template (PDFs as
+  templates): the template job asks the worker for the page count and the pages only (`PROBE`, `R`), never `LINKS`,
+  the one command whose answer holds `W` records, so a template PDF's web links are never read; a template is drawn
+  under a page as a picture template is, with no link of either kind.
+- **Tests**: `weblinks.rs`'s unit tests and `tests/test_weblinks.rs` (the file, the caps, carried lines, what
+  2.1.0's readers see and write, Copy page and Copy to notebook, raw zips); `test_pdflinks_import.rs` (the rules
+  through a real worker, the `W` record, an import's other files byte for byte those of the PDF without web links,
+  a page past 256); `test_pdf_fill.rs` (a fill, a fill into a notebook with no `weblinks.ini`, and a fill past the
+  water level, which trims only the web links it adds); `test_qr.rs`
+  (`ui_qr_matches`, every address's code); `test_linkcard.rs` (the whole address and the host's end in every look
+  the l10n check runs); scenarios `z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill`,
+  `z_weblinks_4_wide` (the longest address of wide letters in Literata), `z_weblinks_5_overlap` (what wins where a
+  web link meets a tab, a link of the user's and the clock's corner) and `z_weblinks_6_hold` (the card under
+  Invert, a hold arming Select, a deleted page's web links dropped at the next open), whose
+  `editor.link_card.qr` checks the code on the screen module for module against the address's.
 
 ## The notebook PDF, incremental and streamed (2.1.0-beta.2, lane L9)
 

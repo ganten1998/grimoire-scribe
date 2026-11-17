@@ -3426,3 +3426,37 @@ PDF), here `Planner.pdf`, and start Grimoire:
 10. **Full storage** (optional, only with a storage to spare that can be filled and emptied safely): with under 100 MB
     free, a new PDF's tile waits and grimoire.log says `not enough room on the storage`; nothing is added to
     `grimoire/templates/.cache`. Free some room and open the sheet again: its pages come.
+
+## 2.2, Web links as a QR card (issue #174): device checks
+
+Not run on a Scribe yet. Automated: `weblinks.rs`'s unit tests, `test_weblinks.rs`, `test_pdflinks_import.rs` (the
+web links' tests), `test_pdf_fill.rs` (the two web links fills), `test_qr.rs`, `test_linkcard.rs`, and the scenarios
+`z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill`, `z_weblinks_4_wide`, `z_weblinks_5_overlap` and
+`z_weblinks_6_hold` (docs/DESIGN.md, Web links as a QR card). The codes
+of `z_weblinks_1_card`'s two shots were read back with `tools/qrdecode.swift` (macOS Vision) as their addresses.
+What only the Scribe and a phone can tell: that the code scans from arm's length, on e-ink, under the room's light.
+The test PDF is `tests/fixtures/pdf/weblinks/Links.pdf` (three pages: a web link on page 1, an address on two lines
+on page 2, one on page 3; a `javascript:` and a `mailto:` link, which are refused); any PDF with web links will do.
+
+1. **Import**: copy `Links.pdf` into `/mnt/us/grimoire/import/` over USB; the Library makes the notebook "Links".
+   grimoire.log has `import: <id>: 4 web link(s) (4 added, 0 already there, 0 refused, 0 left out for room); left
+   out: 0 off the page, 0 over 200 bytes` and `left out: 2 web` on the document links' line (the two refused). Over SSH,
+   `cat /mnt/us/grimoire/notebooks/<id>/weblinks.ini` shows four `web.` lines, each address as the PDF has it.
+2. **The card**: open the notebook and tap the box near the top of page 1: the heavy border around the box, and
+   beside it a card titled `example.org` with `https://example.org/grimoire`, "Scan with a phone's camera", a QR
+   code and Done. No page opens and nothing else happens. Done closes it; a tap outside the card closes it too.
+3. **Scan it**: hold a phone at arm's length (about 50 cm) in the room's ordinary light and point its camera app at
+   the code: it offers to open `https://example.org/grimoire`. Then the same with Invert colors on (the code stays
+   dark on light on the panel), and on page 2 (a longer address, a denser code): both scan.
+4. **What is refused**: tap the box labelled "a script: refused" on page 1 and "mail: refused" on page 2: nothing
+   happens. The tab at the top right of page 1 still goes to page 3, whose address the PDF wrote with spaces around
+   it: its card shows `http://example.com/notes` without them.
+5. **Link areas**: the Links bar's Areas on: the boxes of the two web links of page 2 are drawn, dotted, as the tab's.
+6. **Copy page and Copy to notebook**: in the Pages view copy page 1: the copy's box opens the same card. Copy page
+   2 to another notebook: there too.
+7. **Spanish**: Settings > Language > Español: the card reads "Escanea con la cámara de un teléfono" and "Listo",
+   whole, upright and sideways.
+8. **2.1.0**, if the tester has it: with Grimoire closed, install 2.1.0, open the notebook "Links": its three pages,
+   the tab to page 3 works, a tap on a web link does nothing, and nothing is said. Copy page 1 there, then close it.
+   `cat weblinks.ini` shows the four lines unchanged (the copy has none). Install 2.2 again: the web links work, the
+   copy made in 2.1.0 has the tab and no web link.
