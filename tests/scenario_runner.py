@@ -633,6 +633,13 @@ def l10n(args, hooks):
                          [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'), ('GRIMOIRE_IMPORT_STABLE', 'fast'),
                           ('GRIMOIRE_BG_DELAY_MS', '800')], inis[style] + ['files_card=1'], 5.0)
                 t.copies, t.storage = h['copies'], True
+        # (and in Gothic, which has no Font sheet, the same font's card in Files)
+        h = header('tests/l10n/fonts-card.qs')
+        for lang in langs:
+            n = f'fonts-card-{lang}-gothic'
+            t = task(n, 'tests/l10n/fonts-card.qs', f'{b}/scen/l10n/{n}',
+                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis['gothic'] + ['files_card=1'], 3.0)
+            t.copies, t.storage = h['copies'], True
         # The file picker (2.1.0-beta.2) over a fixture storage root, in every language and style.
         fcopies = header('tests/l10n/files.qs')['copies']
         for lang in langs:

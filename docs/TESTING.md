@@ -3218,8 +3218,8 @@ check with real workers: no font before its check passes, a font that fails its 
 file swapped, too big, the floor, a name taken, names the rules refuse, the Kindle's folder unchanged),
 `test_fsview_writes.rs` (the name rules of a copy) and the scenarios `files_19_add_to_fonts`, `files_20_add_font`
 and `files_21_add_font_full` cover the logic on the Mac (docs/DESIGN.md, Add a font... and Add to fonts), with the
-floor and a failing write simulated; `make l10n-check`'s `fonts-add` runs check that the sheet, the pick and both
-cards fit in every language. What only the Scribe can tell (read grimoire.log over SSH; it names no file):
+floor and a failing write simulated; `make l10n-check`'s `fonts-add` runs (Classic) and `fonts-card` runs
+(Gothic) check that the sheet, the pick and both cards fit in every language. What only the Scribe can tell (read grimoire.log over SSH; it names no file):
 
 1. **The Kindle's own fonts folder**: on firmware 5.9.6 or later, copy a `.ttf` text font into the storage's
    `fonts/` over USB (or use one the Kindle's own font feature added there). Open Grimoire, Settings (Classic) >

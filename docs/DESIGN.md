@@ -2770,7 +2770,8 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
   `files_19_add_to_fonts` (Files' card, " 2", a file its check refuses, the trash), `files_20_add_font` (the sheet's
   row, the pick from the Kindle's folder and from Documents, the wait, the check, a name taken, a refused file, no
   row over a notebook's page), `files_21_add_font_full` (a copy whose writes fail) and `files_5_cards`, and
-  `make l10n-check`'s `fonts-add` runs (the sheet, the pick and both cards in every language).
+  `make l10n-check`'s `fonts-add` runs (the sheet, the pick and both cards in every language, in Classic) and
+  `fonts-card` runs (Files' card in Gothic).
 
 ## Files: rename, delete and restore (2.2, issue #144)
 
