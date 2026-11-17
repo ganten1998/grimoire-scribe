@@ -904,24 +904,26 @@ fn draw_ask(a: &mut App) {
     }
 }
 
-/// The server's question as the screen shows it: a new one is drawn (over the screen, its sheet refreshed), one gone
-/// without an answer here (no answer in two minutes, a second PDF sent, the browser gone) is taken away and says so.
+/// The server's question as the screen shows it. A question shown that the server no longer asks, for whatever
+/// reason (no answer in two minutes, a second PDF sent, the browser gone), or asks another in its place, is taken
+/// away first, with "Not imported."; a new one is drawn (over the screen, its sheet refreshed) only when none is
+/// shown, so never in the same call: a question is never replaced under the user's eyes, even by one that reads
+/// the same.
 fn ask_sync(a: &mut App) {
     let now = httpd_upload_question();
     let shown = s(a).ask.as_ref().map(|k| (k.serial, k.rect));
     match (now, shown) {
-        (Some((serial, name, size)), sh) if sh.map(|x| x.0) != Some(serial) => {
-            let old = sh.map_or(RECT_EMPTY, |x| x.1);
-            s(a).ask = Some(Ask { serial, name, size, ..Ask::default() });
-            draw(a);
-            let r = s(a).ask.as_ref().map_or(RECT_EMPTY, |k| k.rect);
-            app_invalidate(a, rect_union(old, r), RefreshMode::Ui);
-        }
-        (None, Some((_, old))) => {
+        (now, Some((serial, old))) if now.as_ref().map(|q| q.0) != Some(serial) => {
             s(a).ask = None;
             draw(a);
             app_invalidate(a, old, RefreshMode::Ui);
             app_toast(a, tr("Not imported."), 3000);
+        }
+        (Some((serial, name, size)), None) => {
+            s(a).ask = Some(Ask { serial, name, size, ..Ask::default() });
+            draw(a);
+            let r = s(a).ask.as_ref().map_or(RECT_EMPTY, |k| k.rect);
+            app_invalidate(a, r, RefreshMode::Ui);
         }
         _ => {}
     }

@@ -205,9 +205,8 @@ fn answer(a: &mut App, s: &mut TcpStream) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// A browser on the Wi-Fi sends a small PDF named `name` (percent-encoded) as the Share page's script does: the page
-/// for its token, then the POST. Its connection, the body sent; the screen has ticked until it asks.
-fn send_pdf(a: &mut App, name: &str) -> TcpStream {
+/// The Share page's token, as its script reads it from the page (the screen ticking while it is served).
+fn page_token(a: &mut App) -> String {
     let mut g = TcpStream::connect(("127.0.0.1", PORT as u16)).unwrap();
     g.write_all(b"GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
     g.set_nonblocking(true).unwrap();
@@ -215,12 +214,26 @@ fn send_pdf(a: &mut App, name: &str) -> TcpStream {
     const AT: &str = "window.GRIMOIRE_UPLOAD={\"token\":\"";
     let token: String = page.find(AT).map(|i| page[i + AT.len()..].chars().take_while(|c| c.is_ascii_hexdigit()).collect()).unwrap_or_default();
     check!(token.len() == 32);
-    let body = format!("%PDF-1.4\n{}\n%%EOF\n", "x".repeat(1000));
+    token
+}
+
+/// A small PDF named `name` (percent-encoded) sent with `token` as the page's script sends it, `fill` making its
+/// bytes: the connection, everything written, the screen not ticked.
+fn post_pdf(token: &str, name: &str, fill: char) -> TcpStream {
+    let body = format!("%PDF-1.4\n{}\n%%EOF\n", fill.to_string().repeat(1000));
     let mut s = TcpStream::connect(("127.0.0.1", PORT as u16)).unwrap();
     let head = format!("POST /upload HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nOrigin: http://127.0.0.1:{PORT}\r\nContent-Length: {}\r\nX-Grimoire-Token: {token}\r\nX-Grimoire-Name: {name}\r\n\r\n", body.len());
     s.write_all(head.as_bytes()).unwrap();
     s.write_all(body.as_bytes()).unwrap();
     s.set_nonblocking(true).unwrap();
+    s
+}
+
+/// A browser on the Wi-Fi sends a small PDF named `name` (percent-encoded) as the Share page's script does: the page
+/// for its token, then the POST. Its connection, the body sent; the screen has ticked until it asks.
+fn send_pdf(a: &mut App, name: &str) -> TcpStream {
+    let token = page_token(a);
+    let s = post_pdf(&token, name, 'x');
     for _ in 0..5000 {
         tick(a);
         if !probe(a, "share.ask").is_empty() {
@@ -346,6 +359,52 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     std::env::remove_var("GRIMOIRE_SIM_ADDRS");
 }
 
+/// The Share screen open on the Kindle, as the question tests need it.
+fn share_app() -> App {
+    std::env::set_var("GRIMOIRE_SIM_ADDRS", "wlan0=192.168.0.20");
+    ui_set_theme(UiTheme::Gothic);
+    i18n_apply("en");
+    let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+    check!(canvas_init(&mut a.screen, 1860, 2480) == 0);
+    a.settings.http_port = PORT;
+    share_init(&mut a);
+    a.scr = ScreenId::Share;
+    share_enter(&mut a);
+    a
+}
+
+// A question that ends while it is shown, for whatever reason, is taken away first, with "Not imported.", and the
+// next is drawn only at a later tick: here one sender's PDF ends the question about another's and a third arrives in
+// the same poll with the same name and size, so the question would read the same. It is taken away all the same.
+fn a_question_that_ends_is_taken_away_before_another_is_drawn() {
+    let mut a = share_app();
+    let root = store_root();
+    let token = page_token(&mut a);
+    let mut mine = send_pdf(&mut a, "Planner.pdf");
+    check!(probe(&mut a, "share.ask") == "Import \"Planner.pdf\" (1 KB)?");
+    let first = httpd_upload_question().map_or(0, |q| q.0);
+    a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
+    a.toast.set("");
+    // two more, both written before the screen's next tick: the first ends mine, the second comes right behind it
+    let mut other = post_pdf(&token, "Planner.pdf", 'x');
+    let mut theirs = post_pdf(&token, "Planner.pdf", 'y');
+    tick(&mut a);
+    check!(httpd_upload_question().is_some_and(|q| q.0 != first));
+    check!(probe(&mut a, "share.ask").is_empty() && a.toast.as_str() == "Not imported.");
+    check!(grimoire::share::share_control_point(&a, "ask.import").is_none());
+    // the next tick draws the server's new question, as a question of its own: not shown yet
+    tick(&mut a);
+    check!(probe(&mut a, "share.ask") == "Import \"Planner.pdf\" (1 KB)?" && a.asked == Asked::Drawn);
+    check!(answer(&mut a, &mut mine).contains("another PDF was sent"));
+    check!(answer(&mut a, &mut other).contains("another PDF is being sent"));
+    grimoire::share::share_back(&mut a);
+    let _ = answer(&mut a, &mut theirs);
+    check!(!std::path::Path::new(&format!("{root}/import/Planner.pdf")).exists());
+    share_leave(&mut a);
+    share_free(&mut a);
+    std::env::remove_var("GRIMOIRE_SIM_ADDRS");
+}
+
 #[test]
 fn test_share() {
     let root = format!("{}/share-{}", tl_tmp(), std::process::id());
@@ -357,6 +416,7 @@ fn test_share() {
     run!(the_card_knows_whether_it_is_live_view);
     run!(wifi_controls_remain_reachable_on_live_cards_without_an_address);
     run!(the_question_asks_and_only_a_tap_after_it_was_shown_answers);
+    run!(a_question_that_ends_is_taken_away_before_another_is_drawn);
     let _ = std::fs::remove_dir_all(&root);
     done();
 }

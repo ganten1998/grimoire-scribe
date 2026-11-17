@@ -3205,9 +3205,10 @@ on; Esc is Cancel; a turn draws it at its new place and asks again. Import: `Par
 `grimoire/import` under the name, or " 2", " 3"... before `.pdf` where taken, **never over a file** (fsview's
 `rename_noreplace`, the folder reached with O_NOFOLLOW), says "Copied to grimoire/import.", answers the browser 200,
 and asks the Library's scan to look as soon as the Library is in front (`pdfimport::rescan_soon`); a rename that
-fails says "Couldn't import PDF. Is the storage full?" and keeps nothing. Cancel keeps nothing and answers 410. A
-question that goes without an answer here (no answer in two minutes, a second PDF sent, the browser gone) is taken
-away with the toast "Not imported.".
+fails says "Couldn't import PDF. Is the storage full?" and keeps nothing. Cancel keeps nothing and answers 410. **A
+question that ends without an answer here, for whatever reason (no answer in two minutes, a second PDF sent, the
+browser gone), is taken away first, with the toast "Not imported.", and only then can another be drawn**
+(`ask_sync`): a question is never replaced in place, even by one that reads the same.
 
 **After the yes** the file is a PDF in `grimoire/import` like one copied over USB: the scan takes it once it holds
 still, and the sandboxed worker parses it ("The safe loader and the PDF import", above); nothing in the UI process
