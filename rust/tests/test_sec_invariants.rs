@@ -849,6 +849,8 @@ fn pdfs_as_templates_are_told_as_they_are() {
     told_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "if template_pdf(j) { return 4; }");
     stands_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "BgKind::FilePreviews => 4,");
     told_on(&mut fails, DESIGN, "looked at before a page, never between the tries of one", TPLPDF, "if made + marked >= max || mono_ms().saturating_sub(t0) >= s1::SLICE_WALL_MS as u64 {");
+    // the sheet: a PDF's tile it cannot use stays, crossed out (a picture's is left out, as on main)
+    told_on(&mut fails, DESIGN, "A PDF's tile the sheet cannot use stays crossed out in its place at every opening", TPLSHEET, "if s.t[i].bad && !pdf_tile(&s.t[i]) { continue; }");
     // the sheet: nothing read again under a contact
     told_on(&mut fails, DESIGN, "Never under a contact: a count seen while a pen or finger is down on the sheet is read after the lift.", TPLSHEET, "if s.press.down { s.pdf_counted = true; }");
     none_failed(&fails, "PDFs as templates");

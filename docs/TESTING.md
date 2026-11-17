@@ -3343,9 +3343,10 @@ PDF), here `Planner.pdf`, and start Grimoire:
    (grimoire.log: `templates: <notebook>: bg/<id>.png made (1860x2480, colour)` once it is a page's paper), and it
    draws behind the ink as such a template does.
 6. **Refusals**: copy in a PDF of more than 50 pages, a PDF with a password and a file renamed to `.pdf` that is no
-   PDF: none gets a tile, and with no other template the sheet says "Grimoire cannot use 3 files there (see
-   grimoire.log)."; the log says `51 pages, more than the 50` (or the count), `it needs a password` and `no PDF
-   Grimoire can read`.
+   PDF: at the first opening each shows a waiting tile, then a crossed-out tile under its name. With no other
+   template, opening the sheet again shows "Grimoire cannot use 3 files there (see grimoire.log)."; with a picture
+   template beside them, their three tiles stay crossed out beside it at every opening, and none can be picked. The
+   log says `51 pages, more than the 50` (or the count), `it needs a password` and `no PDF Grimoire can read`.
 7. **Files**: Files > Documents > a PDF's card offers Import as notebook, Use as template and Cancel; Use as template
    says "Copied to Templates.", and More layouts... then shows its pages. A PDF over 16 MB says "Too big (over 16
    MB)." and nothing is copied.

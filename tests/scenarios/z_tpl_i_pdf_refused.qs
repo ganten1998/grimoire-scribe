@@ -13,7 +13,7 @@ wait 200
 expect library.sheet is templates
 waitbg
 wait 300
-# (marked while the sheet was open: crossed out in their places, offered no more, until it opens again)
+# (marked while the sheet was open: crossed out in their places, offered no more)
 expect templates.count is 0
 expect templates.names is Broken|Locked
 shot 01-crossed-out
@@ -24,7 +24,9 @@ expect library.paper is 5
 tap library paper.more
 wait 200
 expect library.sheet is templates
+# (no template to offer: the sheet says how to add some and counts the two; their tiles, kept crossed out, are not
+# drawn)
 expect templates.count is 0
-expect templates.names is
+expect templates.names is Broken|Locked
 shot 02-two-files-it-cannot-use
 quit

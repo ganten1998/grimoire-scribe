@@ -647,6 +647,43 @@ fn the_sheet_reads_the_folder_again_once_the_pages_are_counted() {
     canvas_free(&mut a.screen);
 }
 
+/// The Templates sheet opened over the folder as it is, on a screen of the Kindle's size: the app, the sheet.
+fn sheet_open() -> (App, TplSheet) {
+    let mut a = App { dpi: DPI, ..Default::default() };
+    a.w = 1860;
+    a.h = 2480;
+    check!(canvas_init(&mut a.screen, a.w, a.h) == 0);
+    let mut s = TplSheet::default();
+    tplsheet_open(&mut s, &mut a, None, PaperKind::default(), None);
+    tplsheet_draw(&mut s, &mut a);
+    (a, s)
+}
+
+fn probe(s: &TplSheet, k: &str) -> String {
+    let mut out = String::new();
+    tplsheet_probe(s, k, &mut out, 4096);
+    out
+}
+
+// A PDF's tiles the sheet cannot use keep their places, crossed out, whenever it opens: a PDF past the page cap (its
+// one tile) and a page marked alone (here page 2, which crashes its worker), so the user sees what is not used while
+// other templates are offered. A picture it cannot use is left out, as on main. None of them is waited for.
+fn a_pdfs_unusable_tiles_stay_crossed_out() {
+    clean_env();
+    std::env::set_var("GRIMOIRE_PDF_TEST_CRASH_PAGE", "2");
+    folder(&[("Bad.png", b"no picture".to_vec()), ("Lined.png", png_bytes()), ("Long.pdf", pdffix::planner(51)), ("Three.pdf", pdffix::planner(3))]);
+    let _ = scan();
+    settle();
+    clean_env();
+    let (mut a, mut s) = sheet_open();
+    check!(probe(&s, "names") == "Lined|Long|Three p. 1|Three p. 2|Three p. 3");
+    check!(probe(&s, "count") == "3" && probe(&s, "ready") == "3" && !s.pending);
+    let mut d = Rect::default();
+    check!(!tplsheet_tick(&mut s, &mut a, now_ms(), &mut d));
+    tplsheet_close(&mut s);
+    canvas_free(&mut a.screen);
+}
+
 // No worker to be had (none starts, or one without the sandbox's steps where the sandbox is required): nothing is made
 // and nothing marked. A sandbox step that fails, in the job's own child as the app runs it (queued by a look, not called
 // here): nothing made or marked, the child's exit status marks this process's session broken too, and no look queues
@@ -707,6 +744,7 @@ fn test_template_pdfs() {
     run!(a_picture_beside_a_pdf);
     run!(the_pages_wait_behind_other_jobs);
     run!(the_sheet_reads_the_folder_again_once_the_pages_are_counted);
+    run!(a_pdfs_unusable_tiles_stay_crossed_out);
     run!(no_worker_makes_nothing);
     font_shutdown();
     done();

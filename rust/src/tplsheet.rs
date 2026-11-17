@@ -223,19 +223,26 @@ pub struct TplSheet {
 // ---- the sheet ----
 
 // The templates the sheet offers as it opens (every one not bad), and whether any of them waits for
-// a preview.
+// a preview. A PDF's tile it cannot use (#172: the whole PDF's, refused or past the tiles PDFs may give, or a page's
+// that is marked) keeps its place, crossed out, at every opening: nothing else on the sheet tells of it while other
+// templates are offered. A picture it cannot use is left out, as before.
 fn rebuild_shown(s: &mut TplSheet) {
     s.shown.clear();
     s.pending = false;
     for i in 0..s.t.len() {
-        if s.t[i].bad {
+        if s.t[i].bad && !pdf_tile(&s.t[i]) {
             continue;
         }
         s.shown.push(i as i32);
-        if !s.t[i].ready {
+        if !s.t[i].ready && !s.t[i].bad {
             s.pending = true;
         }
     }
+}
+
+// Whether a template is a template PDF's tile: one of its pages, or the whole PDF (#172).
+fn pdf_tile(t: &Template) -> bool {
+    t.page > 0 || crate::bgwork_tplpdf::is_pdf_name(t.path.as_str().rsplit('/').next().unwrap_or(""))
 }
 
 // A shown template the previews job found it cannot use since the sheet opened keeps its tile, so

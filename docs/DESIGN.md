@@ -3184,7 +3184,7 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   the import's worker limits (its address space for the file, its CPU, the page watchdog, band mode under little
   memory), and the free-space floor before every page (room for a page before its worker is asked, and for its
   picture and preview before they are written). A PDF over the page limit is no template as a whole and is never cut
-  to its first pages: its count is in the log, and the sheet leaves it out as it leaves out a picture it cannot use.
+  to its first pages: its count is in the log, and the sheet shows its one tile crossed out (The sheet, below).
   The sheet takes at most `TEMPLATE_PDF_TILES_MAX` (200) tiles of PDF pages in all, four PDFs at the page limit (each
   tile is looked at when the sheet reads the folder, and every 1.5 s while one waits, so many long PDFs must not slow
   it): the PDFs are taken in the order of their names, and one that would take the sheet past the cap (its page
@@ -3211,8 +3211,12 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   after a copy, and the PDF's pages take its place, a tile a page named after the file and the page ("Planner p. 3",
   the Pages view's "p. %d"; the file's name is cut short before the page's part when both do not fit). Never under a
   contact: a count seen while a pen or finger is down on the sheet is read after the lift. The pages' tiles fill in
-  as their pictures are made; a page the job marks is crossed out in its place, as an unusable picture is. A
-  template PDF's tiles are templates only: the Photos sheet lists no PDF.
+  as their pictures are made. A PDF's tile the sheet cannot use stays crossed out in its place at every opening (the
+  tile a picture found unusable while the sheet is open has): the whole PDF's when it is refused (over 50 pages, over
+  16 MB, a password, no PDF) or past the tiles PDFs may give, and a page's that is marked, so the user sees which file
+  or page is not used even while other templates are offered (no string is new). A picture it cannot use is still left
+  out when the sheet opens, as before. With no template to offer, the sheet counts them among the files it cannot use,
+  as for pictures. A template PDF's tiles are templates only: the Photos sheet lists no PDF.
 - **Colour** follows a picture template's: a page with colour is kept in colour, drawn behind the ink as such a
   template is, and its preview is gray.
 - **Users with no PDF in the folder** see what they saw: the same tiles and jobs, and the sheet's tick asks nothing
