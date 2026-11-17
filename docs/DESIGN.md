@@ -3042,16 +3042,21 @@ Files (`browser.rs`) has the rows that set it and the home folder as the top.
 - **Strings**: Home: %s, Set as home, Reset home to Notebooks, Home folder not found. ("Notebooks", "Couldn't open
   folder.", "File changed. Try again." and "Exit Grimoire?" were there.)
 - **Tests**: `home.rs`'s unit tests (the shapes and the value each is kept as, hostile values, the walk on a tree with
-  links in and out of the storage, a file, the trash, Grimoire's notebooks, refused and hidden folders, a name with
-  a control character); `test_store.rs` `home_key`; `browser.rs`'s (the Go to sheet's and a folder's card's rows, a
-  folder home cannot keep, entering home only through the walk, no Back at home, the Go to sheet's rows sideways, a
-  rename and a delete in Files); `library.rs`'s (opening at home in each kind of place, gone or refused with one
-  toast and the line gone, home until the main menu is used, the action and Esc at home, a Library folder's menu,
-  Files' rows through the Library, What's new and KOReader's hand-over, a rename, a move and a merge); and the
-  scenarios `files_*_home_*` from `files_19_home_set` (set, a restart, reset, gone, a link, a `..`, a Library
-  folder, its rename and the start there, a folder's card in Files, its rename, the start there and its delete, a
-  notebook closed, Spanish in Gothic and Classic with every text checked for fit, and the home folder gone or swapped
-  for a link while it is shown). docs/TESTING.md has the Scribe's checks.
+  links in and out of the storage, a file, the trash, Grimoire's notebooks, refused and hidden folders, other
+  spellings of them, a name with a control character); `test_fsview.rs`'s refused folders by identity and parts
+  ending in a dot or a space; `test_store.rs` `home_key`; `browser.rs`'s (the Go to sheet's and a folder's card's
+  rows, a folder home cannot keep, entering home only through the walk, no Back at home, the Go to sheet's rows
+  sideways, a rename and a delete in Files); `library.rs`'s (opening at home in each kind of place, gone or refused
+  with one toast and the line gone, a read error that keeps it, home until the main menu is used, the action and
+  Esc at home, the Exit question with nothing of Files drawn under it, a Library folder's menu and its Remove
+  folder, Files' rows through the Library, What's new and KOReader's hand-over, a rename, a move and a merge);
+  `test_sec_invariants.rs` `files_home_is_told_as_it_is`; and the scenarios `files_*_home_*` from
+  `files_19_home_set` (set, a restart, reset and its save, gone, a link, a `..`, a Library folder, its rename and the
+  start there, a folder's card in Files, its rename, the start there and its delete, a notebook closed, Spanish in
+  Gothic and Classic with every text checked for fit, the home folder gone or swapped for a link while it is shown,
+  the path bar after the home action, KOReader's PDF hand-over, a hand-over that opens nothing, a gone home at a
+  KOReader start, the Files card hidden, What's new, the Exit question through a turn and a sleep, and a start in
+  Covers). docs/TESTING.md has the Scribe's checks.
 
 ## Shared building blocks (2.1, lane L0)
 
