@@ -13,6 +13,11 @@
 //! copy job for the picture picked (bgwork_copy.rs); the tile waits while that copy runs, and when it ends the folder
 //! is read again, with the new picture's tile in view (never while a pen or finger is down on the sheet: after its
 //! lift).
+//!
+//! A PDF in the folder (2.2, issue #172) is a tile a page, named after the file and the page ("Planner p. 3", the
+//! page's number kept in view however long the name), each waiting until its job made the page's picture
+//! (bgwork_tplpdf.rs). Until the job has counted the pages the PDF is one waiting tile; once they are counted the
+//! folder is read again, as after a copy (after the lift, never under a contact), and its pages take its place.
 
 use crate::bgwork_copy::CopyTo;
 use crate::prelude::*;
@@ -210,6 +215,9 @@ pub struct TplSheet {
     /// a copy into this folder was asked (the From a file... tile's, #146) or ran as the sheet opened, and has not
     /// been seen to end: the tile waits, and the folder is read again when it ends
     pub copying: bool,
+    /// a PDF's pages were counted while a contact was down on the sheet (#172): the folder is read again after its
+    /// lift
+    pub pdf_counted: bool,
 }
 
 // ---- the sheet ----
@@ -344,6 +352,13 @@ pub fn tplsheet_copy_asked(s: &mut TplSheet) {
 // A copy into the folder ended (it went in or not): the folder read again as the sheet opened on it, the same paper
 // selected, and in view the new picture (the first file not listed before), else the page that was.
 fn copy_ended(s: &mut TplSheet, a: &mut App) {
+    let new = read_again(s, a, true);
+    qlog!("templates: %s read again after a copy (%d files, %s new)", tplsheet_folder(s).folder(), s.t.len() as i32, if new { "one" } else { "none" });
+}
+
+// The folder read again as the sheet opened on it, the same paper selected; in view the first tile not listed before
+// when `to_new` (and there is one), else the page that was. Whether there was a new one.
+fn read_again(s: &mut TplSheet, a: &mut App, to_new: bool) -> bool {
     let had: Vec<String> = s.t.iter().map(|t| t.path.as_str().to_string()).collect();
     let anchor = s.anchor;
     let nb = s.nb.take();
@@ -351,8 +366,17 @@ fn copy_ended(s: &mut TplSheet, a: &mut App) {
     let path = s.current_path.as_str().to_string();
     open_folder(s, a, nb.as_deref(), current, (!path.is_empty()).then_some(path.as_str()), photos);
     let new = s.shown.iter().position(|&i| !had.iter().any(|p| p.as_str() == s.t[i as usize].path.as_str()));
-    s.anchor = new.map_or(anchor, |k| k as i32);
-    qlog!("templates: %s read again after a copy (%d files, %s new)", tplsheet_folder(s).folder(), s.t.len() as i32, if new.is_some() { "one" } else { "none" });
+    s.anchor = new.filter(|_| to_new).map_or(anchor, |k| k as i32);
+    new.is_some()
+}
+
+// A PDF's pages were counted since the folder was read (#172): it is read again, its pages in the PDF's place, the
+// page in view as it was.
+fn pdf_pages_counted(s: &mut TplSheet, a: &mut App) {
+    s.pdf_counted = false;
+    let had = s.t.len();
+    read_again(s, a, false);
+    qlog!("templates: read again after a PDF's pages were counted (%d tiles, %d before)", s.t.len() as i32, had as i32);
 }
 
 /// Opens it on the templates as they are now (the previews job queued for those that have none):
@@ -370,14 +394,23 @@ pub fn tplsheet_open_photos(s: &mut TplSheet, a: &mut App, nb: &NotebookInfo, cu
 }
 
 // A template's name under its tile, on one line no wider than the tile: centred, or cut short as
-// names are (the fit check does not hear of a name, which is the owner's).
-fn tile_name(c: &mut Canvas, tr: Rect, name: &str, selected: bool) {
+// names are (the fit check does not hear of a name, which is the owner's). A PDF's page (#172) keeps its number in
+// view: the file's name is cut short before it.
+fn tile_name(c: &mut Canvas, tr: Rect, name: &str, page: u32, selected: bool) {
     let f = if selected && ui_theme() != UiTheme::Gothic { FontFace::Bold } else { FontFace::Regular }; // (as the cards' names)
     let px = ui_small_size() * 0.9;
     let mut lr = Rect { x: tr.x, y: tr.y + tr.h + ui_px(16.0), w: tr.w, h: ui_px(64.0) };
     let w = font_measure(f, px, name);
     if w < lr.w {
         lr = Rect { x: lr.x + (lr.w - w) / 2, y: lr.y, w: w + 1, h: lr.h };
+    } else if page > 0 {
+        let suffix = crate::bgwork_tplpdf::page_suffix(page);
+        let sw = font_measure(f, px, &suffix);
+        if let Some(base) = name.strip_suffix(suffix.as_str()).filter(|_| sw < lr.w / 2) {
+            font_draw_left_name(c, f, px, Rect { w: lr.w - sw, ..lr }, base, 0);
+            font_draw_left(c, f, px, Rect { x: lr.x + lr.w - sw, w: sw + 1, ..lr }, &suffix, 0);
+            return;
+        }
     }
     font_draw_left_name(c, f, px, lr, name, 0);
 }
@@ -547,7 +580,7 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
         }
         let sel = i == s.selected;
         ui_frame(c, rect_inflate(tr, if sel { ui_px(10.0) } else { 0 }), ui_px(12.0), 0, false, if sel { ui_px(9.0) } else { ui_px(3.0) });
-        tile_name(c, tr, t.name.as_str(), sel);
+        tile_name(c, tr, t.name.as_str(), t.page, sel);
         if have {
             hits_add(&mut s.hits, Rect { x: tr.x, y: tr.y, w: tr.w, h: tr.h + ui_px(90.0) }, TS_HIT_TILE, i); // (none waiting, unusable)
         }
@@ -656,6 +689,13 @@ pub fn tplsheet_tick(s: &mut TplSheet, a: &mut App, now: u32, dirty: &mut Rect) 
         *dirty = s.rect;
         return true;
     }
+    // (a PDF's pages counted under a contact: read now, after its lift)
+    if s.pdf_counted && !s.press.down {
+        pdf_pages_counted(s, a);
+        tplsheet_draw(s, a);
+        *dirty = s.rect;
+        return true;
+    }
     if !s.pending {
         return false;
     }
@@ -667,7 +707,20 @@ pub fn tplsheet_tick(s: &mut TplSheet, a: &mut App, now: u32, dirty: &mut Rect) 
     }
     s.gen = bgimage_generation();
     s.next_check = now.wrapping_add(CHECK_MS);
-    if template_refresh(&mut s.t) == 0 {
+    let changed = template_refresh(&mut s.t);
+    // A PDF whose pages its job has counted since (#172): the folder read again, as after a copy, its pages in its
+    // place (not under a contact: after the lift). (No PDF in the folder: nothing here is asked, nothing changes.)
+    if s.t.iter().any(|t| t.page == 0 && !t.bad && !t.ready) && crate::bgwork_tplpdf::pdf_pages_counted(&s.t) {
+        if s.press.down {
+            s.pdf_counted = true;
+        } else {
+            pdf_pages_counted(s, a);
+            tplsheet_draw(s, a);
+            *dirty = s.rect;
+            return true;
+        }
+    }
+    if changed == 0 {
         return false;
     }
     s.pending = waiting(s); // (a template found unusable keeps its tile: usable)

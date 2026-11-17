@@ -3,8 +3,9 @@
 // GRIMOIRE_WORK_EXE, as in the app) into the form a picture template takes, in the folder's cache. The scan's tiles
 // (one waiting tile until the pages are counted, then one a page), the job's slices and where it ranks, the cap, the
 // refusals, a page that fails alone, a worker that crashes or hangs, a PDF changed or swapped while its pages are made,
-// no room, no worker; a page used as a notebook's template with the PDF gone. The Linux sandbox's own steps run in the
-// CI job as root (test_sandbox_linux.rs); here the worker is the same binary and protocol without them.
+// no room, no worker; a page used as a notebook's template with the PDF gone; the Templates sheet reading the folder
+// again once the pages are counted (never under a contact). The Linux sandbox's own steps run in the CI job as root
+// (test_sandbox_linux.rs); here the worker is the same binary and protocol without them.
 #![cfg(feature = "sim")]
 mod pdffix;
 mod testlib;
@@ -282,7 +283,9 @@ fn the_page_cap_and_the_size() {
     std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire");
     let (hb, he) = (hash("Big.pdf"), hash("Empty.pdf"));
     let (rc, log) = with_log("big", || (job("Big.pdf"), job("Empty.pdf")));
-    check!(rc == (0, 0) && cache_names() == [format!("{hb}.bad"), format!("{he}.bad")]);
+    let mut want = vec![format!("{hb}.bad"), format!("{he}.bad")];
+    want.sort();
+    check!(rc == (0, 0) && cache_names() == want);
     check!(log.contains("a PDF over 16 MB") && log.contains("an empty file"));
     check!(scan().iter().all(|t| t.bad));
     clean_env();
@@ -452,6 +455,39 @@ fn the_pages_wait_behind_other_jobs() {
     clean_env();
 }
 
+// The Templates sheet over a folder with a PDF: one waiting tile for it; once its job has counted the pages the folder
+// is read again and its pages take its place, but never under a contact: after the lift. Their previews fill in.
+fn the_sheet_reads_the_folder_again_once_the_pages_are_counted() {
+    clean_env();
+    folder(&[("Planner.pdf", pdffix::planner(2))]);
+    let mut a = App { dpi: DPI, ..Default::default() };
+    a.w = 1860;
+    a.h = 2480;
+    check!(canvas_init(&mut a.screen, a.w, a.h) == 0);
+    let mut s = TplSheet::default();
+    tplsheet_open(&mut s, &mut a, None, PaperKind::default(), None);
+    tplsheet_draw(&mut s, &mut a);
+    let probe = |s: &TplSheet, k: &str| {
+        let mut out = String::new();
+        tplsheet_probe(s, k, &mut out, 256);
+        out
+    };
+    check!(probe(&s, "names") == "Planner" && probe(&s, "count") == "1" && probe(&s, "ready") == "0");
+    // a contact down on the sheet (on no tile) while the job counts and makes the pages
+    let (x, y) = ((s.rect.x + 20) as f32, (s.rect.y + 20) as f32);
+    let mut d = Rect::default();
+    tplsheet_pointer(&mut s, &mut a, 0, x, y, 1000, &mut d);
+    settle();
+    check!(!tplsheet_tick(&mut s, &mut a, now_ms(), &mut d) || probe(&s, "names") == "Planner");
+    check!(probe(&s, "names") == "Planner" && s.pdf_counted);
+    check!(tplsheet_pointer(&mut s, &mut a, 2, x, y, 1080, &mut d) == TsResult::None && s.open);
+    // the lift: read again, its pages in its place, ready
+    check!(tplsheet_tick(&mut s, &mut a, now_ms(), &mut d) && !rect_is_empty(d));
+    check!(probe(&s, "names") == "Planner p. 1|Planner p. 2" && probe(&s, "count") == "2" && probe(&s, "ready") == "2");
+    tplsheet_close(&mut s);
+    canvas_free(&mut a.screen);
+}
+
 // No worker to be had (none starts, or a sandbox step fails where the sandbox is required): nothing is made and
 // nothing marked; after a sandbox step failed, this session queues no PDF's job. (Last: it leaves the session broken.)
 fn no_worker_makes_nothing() {
@@ -486,6 +522,8 @@ fn test_template_pdfs() {
     store_set_device(DPI, PW, PH);
     templates_init();
     i18n_set("en");
+    ui_init(DPI);
+    check!(font_init() == 0);
     run!(a_pdf_becomes_a_template_a_page);
     run!(a_page_is_used_as_a_picture_template_is);
     run!(the_pages_come_in_slices);
@@ -497,7 +535,9 @@ fn test_template_pdfs() {
     run!(a_template_pdf_is_never_imported);
     run!(pictures_alone_are_as_they_were);
     run!(the_pages_wait_behind_other_jobs);
+    run!(the_sheet_reads_the_folder_again_once_the_pages_are_counted);
     run!(no_worker_makes_nothing);
+    font_shutdown();
     done();
     let _ = std::fs::remove_dir_all(&top);
 }
