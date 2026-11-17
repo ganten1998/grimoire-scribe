@@ -16,10 +16,11 @@
 //! panel when it can be.
 //!
 //! A web link's card (2.2, issue #174; weblinks.rs), opened by a finger's tap on the link: 780 wide, the host as
-//! its title (110 px), the address as stored under it (1 to 6 lines of 46 px at the small size, broken between its
-//! characters; a longer one ends in "...", the code holds it whole), 'Scan with a phone's camera' (60 px, 12 px
-//! below), the QR code in a 600 px box (a symbol of 37 to 65 modules: 9 to 16 px a module), and Done (118 px, 24
-//! px below it): 1,018 px with one line of address. Nothing on it opens the address.
+//! its title (110 px, in Terminess bold; a host too long for it shows "..." and its end), the address as stored
+//! under it, whole (in Terminess at the small size, 1 to 5 lines of 46 px, broken between its characters: any 200
+//! printable bytes fit in 5 in every look), 'Scan with a phone's camera' (60 px, 12 px below), the QR code in a
+//! 600 px box (a symbol of 37 to 65 modules: 9 to 16 px a module), and Done (118 px, 24 px below it): 1,018 px with
+//! one line of address. Nothing on it opens the address.
 
 use crate::prelude::*;
 
@@ -114,13 +115,40 @@ pub fn linkcard_height(nrows: usize, xn: bool, readonly: bool) -> i32 {
 }
 
 /// The web card's address lines at most, and the side of the box its code is drawn in (logical px).
-const WEB_LINES_MAX: i32 = 6;
+pub const LINKCARD_WEB_LINES_MAX: i32 = 6;
 const WEB_QR_SIDE: f32 = 600.0;
+/// The web card's faces: Terminess in every look, so the address is always shown whole (any 200 printable bytes
+/// take at most 5 lines; a test holds it in every look) and `l`, `1`, `I`, `O` and `0` read apart.
+const WEB_TITLE_FACE: FontFace = FontFace::FixedBold;
+const WEB_ADDRESS_FACE: FontFace = FontFace::Fixed;
 
-/// The lines the web card's address takes, 1 to WEB_LINES_MAX.
+/// The width of the web card's title and address.
+fn web_text_w() -> i32 {
+    u(780.0) - 2 * u(24.0) - u(16.0)
+}
+
+/// The lines an address takes on the web card, all of them (it draws at most LINKCARD_WEB_LINES_MAX).
+pub fn linkcard_web_lines(address: &str) -> i32 {
+    font_wrap_lines(WEB_ADDRESS_FACE, ui_small_size(), address, web_text_w(), None)
+}
+
+/// The lines the web card's address takes, 1 to LINKCARD_WEB_LINES_MAX.
 fn web_lines(c: &LinkCard) -> i32 {
-    let w = u(780.0) - 2 * u(24.0) - u(16.0);
-    font_wrap_lines(FontFace::Regular, ui_small_size(), &c.web, w, None).clamp(1, WEB_LINES_MAX)
+    linkcard_web_lines(&c.web).clamp(1, LINKCARD_WEB_LINES_MAX)
+}
+
+/// The web card's title as drawn: the host whole when it fits, else "..." and as much of its end as fits (a host's
+/// own name is at its end; the start of a long one is where a lookalike name would go).
+pub fn linkcard_web_title(host: &str) -> String {
+    let (ts, w) = (ui_text_size(), web_text_w());
+    if font_measure(WEB_TITLE_FACE, ts, host) <= w {
+        return host.to_string();
+    }
+    (1..host.len())
+        .filter(|&i| host.is_char_boundary(i))
+        .map(|i| format!("...{}", &host[i..]))
+        .find(|t| font_measure(WEB_TITLE_FACE, ts, t) <= w)
+        .unwrap_or_else(|| "...".to_string())
 }
 
 /// The web card's height with `lines` lines of address.
@@ -368,12 +396,12 @@ fn draw_row(c: &mut LinkCard, s: &mut Canvas, k: usize, r: Rect) {
 /// The web card's inside (its frame drawn): the host, the address as stored, the line over the code, the code
 /// (`negative` for the Invert setting, as the Share screen's) and Done.
 fn draw_web(c: &mut LinkCard, s: &mut Canvas, inn: Rect, negative: bool) {
-    let title = Rect { x: inn.x + u(8.0), y: inn.y, w: inn.w - u(16.0), h: u(110.0) };
-    font_draw_left_name(s, FontFace::Bold, ui_text_size(), title, &c.title, 0);
+    let title = Rect { x: inn.x + u(8.0), y: inn.y, w: web_text_w(), h: u(110.0) };
+    font_draw_left_name(s, WEB_TITLE_FACE, ui_text_size(), title, &linkcard_web_title(&c.title), 0);
     // (between its characters: an address has no spaces)
     let lines = web_lines(c);
-    let ar = Rect { x: inn.x + u(8.0), y: inn.y + u(110.0), w: inn.w - u(16.0), h: lines * u(46.0) };
-    font_draw_wrapped_name(s, FontFace::Regular, ui_small_size(), ar, &c.web, lines, 0);
+    let ar = Rect { x: inn.x + u(8.0), y: inn.y + u(110.0), w: web_text_w(), h: lines * u(46.0) };
+    font_draw_wrapped_name(s, WEB_ADDRESS_FACE, ui_small_size(), ar, &c.web, lines, 0);
     let hint = Rect { x: inn.x + u(8.0), y: ar.y + ar.h + u(12.0), w: inn.w - u(16.0), h: u(60.0) };
     // TRANSLATORS: also a web link's card, above the address's QR code (about 680 px at 34 px).
     ui_text(s, FontFace::Regular, ui_small_size(), ui_small_size() * 0.88, hint, tr("Scan with a phone's camera"), 1, false, 0);
@@ -525,6 +553,20 @@ pub fn linkcard_probe(c: &LinkCard, key: &str, out: &mut String, cap: usize) -> 
     if key == "web" {
         // A web link's card (2.2): the address it shows, as stored; empty for none.
         csnprintf!(out, cap, "%s", if c.open { c.web.as_str() } else { "" });
+        return true;
+    }
+    if key == "web_lines" || key == "web_title" {
+        // A web link's card: the lines its address takes and the lines drawn (`5 5`: the whole address), and the
+        // title as drawn (the host, or "..." and its end); empty for none.
+        let web = c.open && !c.web.is_empty();
+        if key == "web_title" {
+            let t = if web { linkcard_web_title(&c.title) } else { String::new() };
+            csnprintf!(out, cap, "%s", t.as_str());
+        } else if web {
+            csnprintf!(out, cap, "%d %d", linkcard_web_lines(&c.web), web_lines(c));
+        } else {
+            csnprintf!(out, cap, "%s", "");
+        }
         return true;
     }
     if key == "qr_rect" {

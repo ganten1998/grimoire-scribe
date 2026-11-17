@@ -615,6 +615,33 @@ fn weblinks_content(k: usize) -> String {
     c
 }
 
+/// The longest address a web link keeps, of wide letters, whose real host ends it: `https://www.example.org.` then
+/// labels of 60, 60 and 40 `W`s and `.evil.example/` (200 bytes).
+pub fn weblinks_wide_address() -> String {
+    let w = |n: usize| "W".repeat(n);
+    format!("https://www.example.org.{}.{}.{}.evil.example/", w(60), w(60), w(40))
+}
+
+/// One page of 465 x 620 points (one point is 4 px on the Scribe's page) with two web links (2.2, issue #174): a box
+/// near the top with weblinks_wide_address(), and a box below with an address whose `\` a browser reads as `/`
+/// (refused). The scenario shows the first's card in the look whose letters are widest.
+pub fn weblinks_wide() -> Vec<u8> {
+    let mut c = String::new();
+    c.push_str("0 G 2 w 20 20 425 580 re S\n");
+    c.push_str("BT /F1 18 Tf 40 580 Td (Wide web links) Tj ET\n");
+    c.push_str(&gray_rect(0.85, 40.0, 480.0, 260.0, 40.0));
+    c.push_str("0 g BT /F1 14 Tf 50 495 Td (the longest address) Tj ET\n");
+    c.push_str(&gray_rect(0.85, 40.0, 380.0, 260.0, 40.0));
+    c.push_str("0 g BT /F1 14 Tf 50 395 Td (a backslash: refused) Tj ET\n");
+    let pages = vec![PageSpec::new(465.0, 620.0, &c)];
+    let wide: &'static str = Box::leak(weblinks_wide_address().into_boxed_str());
+    let links = vec![vec![
+        Lnk::new([40.0, 480.0, 300.0, 520.0], Act::Uri(wide)),
+        Lnk::new([40.0, 380.0, 300.0, 420.0], Act::Uri("https://evil.example\\\\@trusted.example/")),
+    ]];
+    make_linked(&pages, &links, &Extra::default())
+}
+
 fn planner_content_small(k: usize) -> String {
     let mut c = String::new();
     c.push_str("0 G 2 w 20 20 425 580 re S\n");
@@ -637,5 +664,6 @@ pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
         ("pick/Planner.pdf", planner(2)),
         ("tabs/Tabs Planner.pdf", tabs()),
         ("weblinks/Links.pdf", weblinks()),
+        ("weblinks_wide/Wide.pdf", weblinks_wide()),
     ]
 }

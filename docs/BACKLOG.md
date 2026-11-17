@@ -322,11 +322,12 @@ The smallest coherent reading was taken for each call; each can change without a
   refused form is one whose host a browser reads otherwise than its text says, so the card's title is always the
   host a phone opens. Not kept:
   `mailto:` (a phone would open it too: it could be added to the rules), `tel:`, internationalised addresses in raw
-  UTF-8 (a PDF should write them as ASCII; percent-encoded ones are kept), and longer addresses (a larger code, up to
-  version 20 and 666 bytes, would need qr.rs's QR_MAX_VERSION raised).
+  UTF-8 (a PDF should write them as ASCII: the host in its `xn--` form, the rest percent-encoded, as kept), and
+  longer addresses (a larger code, up to version 20 and 666 bytes, would need qr.rs's QR_MAX_VERSION raised).
 - **The card**: a tap opens it (the Kindle cannot follow a web link); a hold arms Select as on a document link
-  (taken). The title is the host; the address is shown whole up to six lines, a longer one ends in "..." while the
-  code holds it whole. No new string: Done and "Scan with a phone's camera" are the catalog's.
+  (taken). The title is the host (a long one shows its end); the address is always shown whole, in Terminess in
+  every look (any 200 bytes take at most 5 lines), title and address in a face that tells `l`, `1`, `I`, `O` and
+  `0` apart. No new string: Done and "Scan with a phone's camera" are the catalog's.
 - **Limits**: 4,000 a notebook (3,600 kept by an import's water level), 256 a page, as the document links' rule
   (taken). Refused addresses are counted in the import's log line; web links left out for room count in "Some links
   were left out.".

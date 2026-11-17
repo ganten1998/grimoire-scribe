@@ -124,6 +124,48 @@ fn a_web_links_card_shows_its_address_and_done() {
     check!(linkcard_probe(&c, "web", &mut out, 256) && out.is_empty());
 }
 
+// A web link's card shows the whole address and the real end of its host in every look the l10n check runs (Gothic,
+// and Classic in Terminess, Atkinson, Noto Sans and Literata): the address is drawn in Terminess, where 200 bytes of
+// any printable character take 5 lines, under the 6 the card draws; the title, in Terminess bold, shows a host too
+// long for it as "..." and its end. (In a look's own face, 200 bytes of a wide character took up to 9 lines.)
+fn a_web_links_card_shows_the_whole_address_in_every_look() {
+    check!(font_init() == 0);
+    let mut looks: Vec<(&str, bool, usize)> = vec![("gothic", true, 0), ("classic", false, 0)];
+    for id in ["atkinson", "noto-sans", "literata"] {
+        looks.push((id, false, font_family_find(id.as_bytes()).expect(id)));
+    }
+    let host = format!("www.example.org.{}.evil.example", "W".repeat(WEBLINK_ADDRESS_MAX - 8 - 16 - 13 - 1));
+    let spoof = format!("https://{host}/");
+    check!(spoof.len() == WEBLINK_ADDRESS_MAX && weblinks_address_ok(spoof.as_bytes()));
+    for (name, gothic, family) in looks {
+        font_set_gothic(gothic);
+        font_set_family(family);
+        let mut worst = (0, ' ');
+        for b in 0x21u8..=0x7e {
+            let a = format!("https://{}", (b as char).to_string().repeat(WEBLINK_ADDRESS_MAX - 8));
+            let n = linkcard_web_lines(&a);
+            if n > worst.0 {
+                worst = (n, b as char);
+            }
+        }
+        if worst.0 > 5 || worst.0 > LINKCARD_WEB_LINES_MAX {
+            println!("{name}: 200 bytes of {:?} take {} lines", worst.1, worst.0);
+            check!(false);
+        }
+        // the title: the host whole when it fits, else its end
+        check!(linkcard_web_title("example.org") == "example.org");
+        let t = linkcard_web_title(&host);
+        check!(t.starts_with("...") && t.ends_with(".evil.example") && host.ends_with(&t[3..]));
+        check!(font_measure(FontFace::FixedBold, ui_text_size(), &t) <= 780 - 2 * 24 - 16);
+        let mut c = LinkCard::default();
+        linkcard_set_web(&mut c, 1, 1, &spoof);
+        let mut out = String::new();
+        check!(linkcard_probe(&c, "web_lines", &mut out, 64) && out == format!("{0} {0}", linkcard_web_lines(&spoof)));
+    }
+    font_set_gothic(false);
+    font_set_family(0);
+}
+
 // The four strips do not overlap and together are exactly what the border paints: on a mid-gray canvas every
 // pixel in them turns black or white and none outside them changes.
 fn the_strips_are_what_the_border_paints() {
@@ -163,6 +205,7 @@ fn test_linkcard() {
     run!(the_rows_follow_the_link);
     run!(the_card_is_as_tall_as_its_rows);
     run!(a_web_links_card_shows_its_address_and_done);
+    run!(a_web_links_card_shows_the_whole_address_in_every_look);
     run!(the_strips_are_what_the_border_paints);
     done();
 }

@@ -1499,8 +1499,10 @@ code made from it, and nothing else.
   under it tries a document link, then a web link (`weblinks_at`: exact area first, then the 7 mm growth); a
   document link reached only through its growth gives way to a web link whose own area holds the point. The tap
   opens the long-press card in a form of its own (`linkcard_set_web`, `LinkCard.web`): the heavy border around the
-  link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`), the
-  address as stored (up to six lines broken between its characters), "Scan with a phone's camera",
+  link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`, in Terminess
+  bold; a host too long for the card shows "..." and its end, where its own name is), the address as stored and
+  always whole (in Terminess, the face of every look, broken between its characters: any 200 printable bytes take at
+  most 5 lines; in a look's own face 200 wide letters took up to 9), "Scan with a phone's camera",
   the code in a 600 px box (a symbol of 37 to 65 modules: 9 to 16 px, 0.8 to 1.4 mm a module on the Scribe; its
   negative under Invert, as the Share screen's) and Done; a tap outside closes it too. A finger held on a web link
   arms Select, as on a document link. The eye draws their boxes with the document links' (`LinkBoxes.doc`). Copy
@@ -1513,9 +1515,10 @@ code made from it, and nothing else.
   2.1.0's readers see and write, Copy page and Copy to notebook, raw zips); `test_pdflinks_import.rs` (the rules
   through a real worker, the `W` record, an import's other files byte for byte those of the PDF without web links,
   a page past 256); `test_pdf_fill.rs` (a fill, and a fill into a notebook with no `weblinks.ini`); `test_qr.rs`
-  (`ui_qr_matches`, every address's code); `test_linkcard.rs`; scenarios `z_weblinks_1_card`, `z_weblinks_2_es`,
-  `z_weblinks_3_fill`, whose `editor.link_card.qr` checks the code on the screen module for module against the
-  address's.
+  (`ui_qr_matches`, every address's code); `test_linkcard.rs` (the whole address and the host's end in every look
+  the l10n check runs); scenarios `z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill` and
+  `z_weblinks_4_wide` (the longest address of wide letters in Literata), whose `editor.link_card.qr` checks the code
+  on the screen module for module against the address's.
 
 ## The notebook PDF, incremental and streamed (2.1.0-beta.2, lane L9)
 
