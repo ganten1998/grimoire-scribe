@@ -3194,7 +3194,8 @@ KOReader plugin carry the reader's contrast.
   `last_migration_date`); the plugin reads them as KOReader does until then, a book's `gamma` first and a default
   not yet moved turned back, so Open with draws (version 1) and asks (version 2) at the reader's contrast there too.
 - **Not darkened**: Files' previews of a PDF (they show the file), and the pages KOReader draws (Annotate this page,
-  Open this book by version 1), which come at KOReader's own contrast.
+  Open this book by version 1), which come at KOReader's own contrast. Template pages made from a PDF (issue #172)
+  do not take the level either: the setting is the import's, and a template is paper under the ink.
 - **Logs**: `import: <id>: darker lines: its gray pages are drawn at gamma 1.5 (the import's)` (or `its notebook's`
   for a fill), and `book: the request asks for darker lines at gamma 2.0`; the plugin's crash.log line ends `with
   gamma=2.0`. Never a name.
