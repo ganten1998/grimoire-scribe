@@ -473,6 +473,31 @@ fn pictures_alone_are_as_they_were() {
     check!(scan().iter().all(|t| t.ready && t.page == 0) && !bg_busy());
 }
 
+/// A small PNG's bytes (60 x 80, gray).
+fn png_bytes() -> Vec<u8> {
+    let mut p = BgPicture { px: vec![200; 60 * 80], w: 60, h: 80, ch: 1 };
+    let path = format!("{}/x.png", tl_tmp());
+    check!(bgimage_write_png(&path, &p) == 0);
+    bgpicture_free(&mut p);
+    std::fs::read(&path).unwrap()
+}
+
+// A new picture beside a PDF: the folder's previews job (ranked first) makes the picture's preview and leaves the PDF
+// to its own job (it never hands a PDF to the picture worker, which would find it no picture and mark it for good),
+// so the PDF's pages are made too.
+fn a_picture_beside_a_pdf() {
+    clean_env();
+    folder(&[("Lined.png", png_bytes()), ("Plan.pdf", pdffix::planner(2))]);
+    let h = hash("Plan.pdf");
+    let t = scan();
+    check!(names(&t) == ["Lined", "Plan"] && t.iter().all(|t| !t.ready && !t.bad));
+    check!(bg_job_pending(BgKind::Template, "", &tpl()) && bg_job_pending(BgKind::Template, "", &format!("{}/Plan.pdf", tpl())));
+    settle();
+    check!(!std::path::Path::new(&format!("{}/{h}.bad", cache())).exists());
+    let t = scan();
+    check!(names(&t) == ["Lined", "Plan p. 1", "Plan p. 2"] && t.iter().all(|t| t.ready && !t.bad));
+}
+
 // Where a PDF's slices run: behind a picture the user picked (a template's picture for a notebook) and behind a font
 // check, though queued before them; a slice that leaves pages is queued again behind the jobs queued meanwhile.
 fn the_pages_wait_behind_other_jobs() {
@@ -579,6 +604,7 @@ fn test_template_pdfs() {
     run!(no_room_makes_nothing);
     run!(a_template_pdf_is_never_imported);
     run!(pictures_alone_are_as_they_were);
+    run!(a_picture_beside_a_pdf);
     run!(the_pages_wait_behind_other_jobs);
     run!(the_sheet_reads_the_folder_again_once_the_pages_are_counted);
     run!(no_worker_makes_nothing);
