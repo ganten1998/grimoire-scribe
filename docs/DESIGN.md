@@ -2963,16 +2963,18 @@ Files (`browser.rs`) has the rows that set it and the home folder as the top.
 - **The setting**, settings.ini `home=`: absent, empty or `notebooks` is the Library's top (no line is written for
   it); `notebooks/<folder>` is a Library folder by its path (`notebooks/School/2026`); `files/<path>` a folder of
   the storage by its path from the storage root (`files/documents/Planners`). `Home::parse` takes these shapes
-  alone: under `FS_PATH_MAX` + 8 bytes, in UTF-8, with no control character, no absolute path and no empty, `.` or
-  `..` part (a Library folder as `store_folder_valid` takes one, a storage path as `StoragePath::new` takes one,
-  never the root). Any other value names no home. No file or folder is looked at to read the line.
+  alone: under 608 bytes (`HOME_MAX`, `FS_PATH_MAX` + 8), in UTF-8, with no control character, no absolute path and
+  no empty, `.` or `..` part (a Library folder as `store_folder_valid` takes one, a storage path as
+  `StoragePath::new` takes one, never the root). Any other value names no home. No file or folder is looked at to
+  read the line.
 - **What it names is resolved one way only.** The line is anyone's to write (the user, another program, another
   version; Grimoire runs as root). A Library folder is a name looked up in the Library's own list (`folders`, as
   `reload` reads it), never a path on the storage. A folder inside Files is reached only through Files' walk
   (`FsStorage::folder`: each part opened from the one before with no link followed, on the storage's device, in no
   refused place, not Grimoire's notebooks, never the storage's root, and never the trash or anything in it, which
   is known by the trash's identity), and Files enters it as a tap would (`Browser::enter_home`). Nothing joins the
-  value into a path and opens it, and nothing is listed, read or made at a home that fails.
+  value into a path and opens it, and nothing is listed, read or made at a home that fails: `home_files` walks to
+  it (`home_folder_there`) before Files is opened.
 - **Where Grimoire opens.** The main menu opens at home as it comes in front until it is used in a run
   (`LibraryState.home_pending`, which the first contact, gesture or key action on the Library ends): at the start,
   and again when a notebook KOReader opened at the start closes. After that it comes back as it was left: closing a
