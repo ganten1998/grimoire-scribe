@@ -952,6 +952,12 @@ fn web_links_are_told_as_they_are() {
             gone(&mut fails, f, call);
         }
     }
+    // A template PDF's web links are never read: LINKS is the one command answered with W records, and the template
+    // job never sends it (a call added there fails here).
+    let templates = "the template job asks the worker for the page count and the pages only (`PROBE`, `R`), never `LINKS`, the one command whose answer holds `W` records, so a template PDF's web links are never read";
+    told_on(&mut fails, DESIGN, templates, PDFWORK, r#"["LINKS", w, h] => {"#);
+    gone(&mut fails, TPLPDF, ".links(");
+    gone(&mut fails, TPLPDF, "LINKS");
     gone(&mut fails, FORMAT, "Web links (URI) are left out and counted in the log");
     gone(&mut fails, BACKLOG, "web links are counted and left out");
     none_failed(&fails, "web links in the documents");

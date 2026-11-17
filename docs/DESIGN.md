@@ -1522,7 +1522,10 @@ code made from it, and nothing else.
   document links' toasts say so. Raw zips carry `raw/weblinks.ini`.
 - **Where they never appear**: the Links bar, the backlinks cache, the library index and the Graph (a web link
   points at no page), the Index and Find (they list pages and names), the notebook's PDF (a choice for the owner:
-  BACKLOG.md), the lasso, Select, Clear page and the clipboard.
+  BACKLOG.md), the lasso, Select, Clear page and the clipboard. Nor in a PDF used as a template (PDFs as
+  templates): the template job asks the worker for the page count and the pages only (`PROBE`, `R`), never `LINKS`,
+  the one command whose answer holds `W` records, so a template PDF's web links are never read; a template is drawn
+  under a page as a picture template is, with no link of either kind.
 - **Tests**: `weblinks.rs`'s unit tests and `tests/test_weblinks.rs` (the file, the caps, carried lines, what
   2.1.0's readers see and write, Copy page and Copy to notebook, raw zips); `test_pdflinks_import.rs` (the rules
   through a real worker, the `W` record, an import's other files byte for byte those of the PDF without web links,
