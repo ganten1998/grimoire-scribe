@@ -104,6 +104,11 @@
   drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
   once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
   Deleting `grimoire/fonts/.cache` still has every font checked again.
+- **PDFs as templates** (#172). A PDF in `grimoire/templates` gives a template for each of its pages: More layouts...
+  shows a tile a page ("Planner p. 3"), drawn once in the background by the same separate, sandboxed reader as a PDF
+  import, after any import. A page works as a picture template does, in colour where the PDF has colour. In Files, a
+  PDF's card offers Use as template. A PDF of more than 50 pages, over 16 MB, with a password, or that cannot be read
+  is not used, as a picture that cannot be used is not.
 
 ## 2.1.0 (2026-11-13)
 

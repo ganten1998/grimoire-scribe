@@ -42,6 +42,10 @@ const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
 const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
 const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
+const TPLPDF: File = ("rust/src/bgwork_tplpdf.rs", include_str!("../src/bgwork_tplpdf.rs"));
+const BGJOB: File = ("rust/src/bgjob.rs", include_str!("../src/bgjob.rs"));
+const TPLSHEET: File = ("rust/src/tplsheet.rs", include_str!("../src/tplsheet.rs"));
+const PDFIMPORT: File = ("rust/src/pdfimport.rs", include_str!("../src/pdfimport.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -772,4 +776,51 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
     gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
     none_failed(&fails, "a font added from a file");
+}
+
+// PDFs as templates (issue #172): the safety sentences of DESIGN.md held with the code that makes them true (only the
+// worker parses the PDF, nothing drawn or marked without one, no job queued in a broken session, the page limit whole,
+// the cache reached with no link, the floor, nothing kept of a file that changed, never an import, the job's rank,
+// nothing read again under a contact), and the page limit's figure beside its name in DESIGN.md and FORMAT.md.
+#[test]
+fn pdfs_as_templates_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    let max = grimoire::bgwork_tplpdf::TEMPLATE_PDF_MAX_PAGES.to_string();
+    beside(&mut fails, DESIGN, "`TEMPLATE_PDF_MAX_PAGES`", &max);
+    present(&mut fails, FORMAT, &format!("n from 1 to {max} in decimal"));
+    present(&mut fails, FORMAT, &format!("more than {max} pages"));
+    // only the worker parses the PDF, the file the job opened
+    told_on(&mut fails, DESIGN, "the writer and the UI never parse PDF syntax", TPLPDF, "let mut s = Session::start(self.file.as_raw_fd(), self.md.len(), &self.limits)?;");
+    told_on(&mut fails, DESIGN, "The job opens the PDF once, with no link followed", TPLPDF, "let Ok((file, md)) = open_read_nofollow(src) else {");
+    // no worker: nothing drawn, nothing marked; a broken session queues nothing
+    let waits = "nothing is drawn and nothing is marked: the PDF's tile waits, as a picture's does";
+    told_on(&mut fails, DESIGN, waits, TPLPDF, r#"Err(StartErr::Worker(why)) => return Err(Stop::Later(format!("no worker ({why})"))),"#);
+    told_on(&mut fails, DESIGN, waits, TPLPDF, "crate::sandbox::session_set_broken(); Stop::Later(");
+    told_on(&mut fails, DESIGN, "a session marked broken (as an import's failed step marks the UI's) queues no PDF's job", TPLPDF, "if crate::sandbox::session_broken() { return; }");
+    // the page limit, whole
+    told_on(&mut fails, DESIGN, "is no template as a whole and is never cut to its first pages", TPLPDF, "if n > TEMPLATE_PDF_MAX_PAGES {");
+    told_on(&mut fails, DESIGN, "over 16 MB (marked before any worker starts)", TPLPDF, "if size > TEMPLATE_MAX_BYTES as u64 {");
+    // written only in Grimoire's own folder, reached with no link; the floor before every page
+    told_on(&mut fails, DESIGN, "into a cache folder reached with no link on the way", TPLPDF, "if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {");
+    told_on(&mut fails, DESIGN, "the free-space floor before every page", TPLPDF, "Some(free) if !crate::fsview::fsview_room_for(free, need) =>");
+    // a file changed while its pages are made: nothing of it after the change is kept
+    told_on(
+        &mut fails,
+        DESIGN,
+        "no page of it drawn after the change is kept",
+        TPLPDF,
+        "(nothing of a file that changed while its worker read it is kept) if !self.same() { return Err(Stop::Changed); } return self.store(k, p);",
+    );
+    // a page is its picture: drawing or picking it never reads the PDF
+    told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TPLPDF, r#"t.path.set(&f("png"));"#);
+    told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TEMPLATES, "if let Some(stem) = crate::bgwork_tplpdf::page_stem(path) {");
+    // never an import
+    told_on(&mut fails, DESIGN, "The import watch reads `grimoire/import` alone", PDFIMPORT, r#"let dir = root_path("import");"#);
+    // the job's rank, and its slices
+    told_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "if template_pdf(j) { return 4; }");
+    stands_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "BgKind::FilePreviews => 4,");
+    told_on(&mut fails, DESIGN, "looked at before a page, never between the tries of one", TPLPDF, "if made + marked >= max || mono_ms().saturating_sub(t0) >= s1::SLICE_WALL_MS as u64 {");
+    // the sheet: nothing read again under a contact
+    told_on(&mut fails, DESIGN, "Never under a contact: a count seen while a pen or finger is down on the sheet is read after the lift.", TPLSHEET, "if s.press.down { s.pdf_counted = true; }");
+    none_failed(&fails, "PDFs as templates");
 }

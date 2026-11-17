@@ -51,7 +51,7 @@ root/touch-trace                        an empty file the owner makes: asks for 
 root/touch-trace.txt                    the touch trace (docs/KINDLE.md), never exported (2.0)
 root/bluetooth/                         the Bluetooth helper, unpacked by the owner, and its own data (2.0)
 root/.update-failed                     an update KPM could not install: told at the next start, then removed (2.0)
-root/templates/                         pictures the owner copies in to use as paper (Templates)
+root/templates/                         pictures the owner copies in to use as paper, and PDFs, a template a page (Templates; Template PDFs, 2.2)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
 root/fonts/                             font files the owner copies in, for Classic's text (2.1.0-beta.2; Your own fonts)
 root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
@@ -616,6 +616,32 @@ still holds, byte for byte, what it held before the job read the first page (che
 the rename). The editor, which may have the notebook open, writes the card itself when it leaves
 the first page or closes the notebook, saving the page first: if it did meanwhile, the job draws
 the card again from the page as it is then, and after three tries leaves the editor's.
+
+### Template PDFs: `root/templates/*.pdf` (2.2)
+
+A file of `templates/` whose name ends in `.pdf` (any case), does not start with a dot and is a plain file is a
+template PDF: one template a page. Its pages are drawn once, by the sandboxed PDF worker, into `templates/.cache/`
+beside the pictures' previews, under the same `<hash>` (of the PDF's name, size and time):
+
+- `<hash>.pages`: the PDF's page count, exactly `<n>` and a line break, n from 1 to 50 in decimal with no sign or
+  leading zero; written once the worker has counted the pages, before any page. Anything else is no count (the
+  pages are counted again).
+- for page n (from 1, four digits: `p0001`): `<hash>-p<nnnn>.png`, the page fitted and centred on a white page of the
+  Kindle's page size, 8-bit gray, or 8-bit RGB for a page with colour (as the PDF import stores its pages);
+  `<hash>-p<nnnn>.key`, the line a template's `.key` has (the hash of that PNG's bytes, 16 hex digits, then its width
+  and height); `<hash>-p<nnnn>.pgm`, its preview (P5 PGM, a sixth of the page). Written in that order: a page is
+  made when its preview is there with the two before it. `<hash>-p<nnnn>.bad` for a page that cannot be drawn: empty,
+  or `died` and a line break when its worker ended or stalled on it twice.
+- `<hash>.bad`, empty, for a PDF that is no template: empty, over 16 MB, more than 50 pages, refused by the worker
+  (no PDF Grimoire reads, a password, no page), a worker that lied, ended or stalled twice opening it, two pages
+  marked `died`, or no page drawn. It then has no `.pages` and no page files.
+
+A page is then a template as a picture is: its path is its `.png` in the cache, its key and preview are beside it,
+and a page given one gets the template's image paper (role 0) with its picture made for the notebook from that PNG
+(Ids). A notebook keeps its own copy (`bg/`): deleting or changing the PDF, or the cache, never changes a page
+already on it. The entries of a PDF that changed (another `<hash>`) or went are removed by the next previews job or
+template PDF job, as a picture's are. Deleting `templates/.cache/` loses nothing: the pages are drawn again at the
+next look.
 
 ### Photos: `root/photos/` (2.0.0-beta.5 on)
 
@@ -2037,6 +2063,14 @@ What 2.1.0 and the versions before it do with KOReader's hand-over by path (2.2)
 |---|---|
 | `import/.book/request.ini` version 2 | never sent to them: the plugin sends version 2 only to a launcher whose Capabilities line says `pdf`, and no launcher before 2.2 does (a 2.2 plugin sends them version 1, KOReader drawing the pages). One that reaches them anyway does not read (2.0.0-beta.5 to 2.1.0: "a version of request this Grimoire does not know"): nothing opened, "Couldn't open book from KOReader (see grimoire.log).", the folder emptied. 2.0.0-beta.4 and before never read the folder |
 | a notebook made or filled through version 2 | a notebook the PDF import made or filled (the tables above) |
+
+What 2.1.0 and the versions before it do with template PDFs (2.2):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| a PDF in `templates/` | not listed: their Templates sheet takes pictures alone, and they never read the file |
+| a template PDF's entries in `templates/.cache/` (`<hash>.pages`, `<hash>-p<nnnn>.*`, `<hash>.bad`) | never read; their previews job, when a picture of the folder lacks its preview, removes them as entries of a file it does not list. Back in 2.2 the pages are drawn again at the next look |
+| a page whose paper came from a template PDF's page | an ordinary page on a template's picture (`bg/`), drawn as any (Image papers) |
 
 ## Highlighter rendering in 1.2.0
 
