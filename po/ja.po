@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 23:07-0600\n"
+"POT-Creation-Date: 2026-11-17 07:42-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -1910,7 +1910,10 @@ msgstr "固定"
 
 #. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
 #. that (116 px at 34 px, as Pin).
+#. TRANSLATORS: also the only row of a web link's card (the address and its QR code): closes the card (about
+#. 600 px at 44 px).
 #: rust/src/editor.rs rust/src/i18n.rs rust/src/keyboard.rs rust/src/library.rs
+#: rust/src/linkcard.rs
 msgid "Done"
 msgstr "完了"
 
@@ -4302,7 +4305,8 @@ msgid "Links"
 msgstr ""
 
 #. TRANSLATORS: Settings > System > About > a link, above the link's QR code.
-#: rust/src/library.rs
+#. TRANSLATORS: also a web link's card, above the address's QR code (about 680 px at 34 px).
+#: rust/src/library.rs rust/src/linkcard.rs
 msgid "Scan with a phone's camera"
 msgstr ""
 

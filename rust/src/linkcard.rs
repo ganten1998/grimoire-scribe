@@ -14,6 +14,12 @@
 //! Where it goes is the shared popout's place (popout.rs, popout_place, with the panel and the clock's corner to
 //! avoid): beside the border, never over it when any place avoids it, never over the clock's corner, and off the
 //! panel when it can be.
+//!
+//! A web link's card (2.2, issue #174; weblinks.rs), opened by a finger's tap on the link: 780 wide, the host as
+//! its title (110 px), the address as stored under it (1 to 6 lines of 46 px at the small size, broken between its
+//! characters; a longer one ends in "...", the code holds it whole), 'Scan with a phone's camera' (60 px, 12 px
+//! below), the QR code in a 600 px box (a symbol of 37 to 65 modules: 9 to 16 px a module), and Done (118 px, 24
+//! px below it): 1,018 px with one line of address. Nothing on it opens the address.
 
 use crate::prelude::*;
 
@@ -32,6 +38,8 @@ pub enum CardRow {
     Redraw,
     /// Delete link (Delete %d links)
     Delete,
+    /// Done: closes a web link's card (2.2)
+    Close,
 }
 
 /// What a press on the card asks the editor to do.
@@ -62,6 +70,11 @@ pub struct LinkCard {
     /// nothing that edits a link (`doc_target`: the page they go to)
     pub doc: bool,
     pub doc_target: u32,
+    /// the card of a web link (2.2): its address as stored, which the card shows with its QR code; empty for any
+    /// other card
+    pub web: String,
+    /// screen px: the web card's code as drawn (ui_qr's symbol rect, quiet zone included)
+    pub qr: Rect,
     pub from_bar: bool,
     pub rows: [CardRow; 4],
     pub nrows: usize,
@@ -100,8 +113,26 @@ pub fn linkcard_height(nrows: usize, xn: bool, readonly: bool) -> i32 {
     u(24.0) + u(110.0) + rows + if xn { u(12.0) + u(60.0) } else { 0 } + u(24.0)
 }
 
+/// The web card's address lines at most, and the side of the box its code is drawn in (logical px).
+const WEB_LINES_MAX: i32 = 6;
+const WEB_QR_SIDE: f32 = 600.0;
+
+/// The lines the web card's address takes, 1 to WEB_LINES_MAX.
+fn web_lines(c: &LinkCard) -> i32 {
+    let w = u(780.0) - 2 * u(24.0) - u(16.0);
+    font_wrap_lines(FontFace::Regular, ui_small_size(), &c.web, w, None).clamp(1, WEB_LINES_MAX)
+}
+
+/// The web card's height with `lines` lines of address.
+pub fn linkcard_web_height(lines: i32) -> i32 {
+    u(24.0) + u(110.0) + lines * u(46.0) + u(12.0) + u(60.0) + u(WEB_QR_SIDE) + u(24.0) + u(118.0) + u(24.0)
+}
+
 /// The card's size as linkcard_set left it: 780 wide, as tall as its rows need (the same sideways).
 pub fn linkcard_size(c: &LinkCard) -> (i32, i32) {
+    if !c.web.is_empty() {
+        return (u(780.0), linkcard_web_height(web_lines(c)));
+    }
     (u(780.0), linkcard_height(c.nrows, c.seeds.len() > 1, c.readonly))
 }
 
@@ -224,6 +255,24 @@ pub fn linkcard_set_doc(c: &mut LinkCard, pid: u32, target: u32, nb: &NotebookIn
     c.nrows = 1;
 }
 
+/// The card of a web link (2.2), opened by a finger's tap on it (`seed` on page pid): the host as its title, the
+/// address as stored, its QR code for a phone's camera, and one row, Done, which closes it.
+pub fn linkcard_set_web(c: &mut LinkCard, pid: u32, seed: u32, address: &str) {
+    let kb = std::mem::take(&mut c.kb);
+    let boxes = std::mem::take(&mut c.boxes);
+    *c = LinkCard { open: true, pid, page: -1, kb, boxes, ..Default::default() };
+    c.boxes.clear();
+    c.seeds.push(seed);
+    c.web = address.to_string();
+    c.title = weblinks_host(address).to_string();
+    c.rows[0] = CardRow::Close;
+    c.enabled[0] = true;
+    // TRANSLATORS: also the only row of a web link's card (the address and its QR code): closes the card (about
+    // 600 px at 44 px).
+    c.labels[0] = tr("Done").to_string();
+    c.nrows = 1;
+}
+
 /// The card from a Links bar row (PHASE2 8.10): above the bar, 16 px over it, in the held chip's column,
 /// kept 20 px in from the screen's sides.
 pub fn linkcard_place_above(w: i32, h: i32, chip: Rect, bar: Rect, screen: Rect) -> Rect {
@@ -296,17 +345,60 @@ fn row_icon(r: CardRow) -> IconKind {
         CardRow::Retarget => IconKind::Link,
         CardRow::Redraw => IconKind::Pencil,
         CardRow::Delete => IconKind::Trash,
+        CardRow::Close => IconKind::Close,
     }
+}
+
+/// Row k drawn at r (its icon and label; a disabled one gray), its hit registered when it is enabled.
+fn draw_row(c: &mut LinkCard, s: &mut Canvas, k: usize, r: Rect) {
+    let on = c.enabled[k];
+    let st = if on { ButtonStyle::Plain } else { ButtonStyle::Disabled };
+    ui_button(s, r, IconKind::None, "", st);
+    let fg = if on { 0 } else { 170 };
+    let d = u(64.0);
+    ui_icon(s, row_icon(c.rows[k]), Rect { x: r.x + u(28.0), y: r.y + (r.h - d) / 2, w: d, h: d }, fg);
+    let lr = Rect { x: r.x + u(120.0), y: r.y, w: r.w - u(120.0) - u(20.0), h: r.h };
+    // (a long translation takes a smaller size on one line, down to the small one, then two lines)
+    ui_text(s, FontFace::Regular, ui_text_size(), ui_small_size(), lr, &c.labels[k], 2, false, fg);
+    if on {
+        hits_add(&mut c.hits, r, LC_ROW, k as i32);
+    }
+}
+
+/// The web card's inside (its frame drawn): the host, the address as stored, the line over the code, the code
+/// (`negative` for the Invert setting, as the Share screen's) and Done.
+fn draw_web(c: &mut LinkCard, s: &mut Canvas, inn: Rect, negative: bool) {
+    let title = Rect { x: inn.x + u(8.0), y: inn.y, w: inn.w - u(16.0), h: u(110.0) };
+    font_draw_left_name(s, FontFace::Bold, ui_text_size(), title, &c.title, 0);
+    // (between its characters: an address has no spaces)
+    let lines = web_lines(c);
+    let ar = Rect { x: inn.x + u(8.0), y: inn.y + u(110.0), w: inn.w - u(16.0), h: lines * u(46.0) };
+    font_draw_wrapped_name(s, FontFace::Regular, ui_small_size(), ar, &c.web, lines, 0);
+    let hint = Rect { x: inn.x + u(8.0), y: ar.y + ar.h + u(12.0), w: inn.w - u(16.0), h: u(60.0) };
+    // TRANSLATORS: also a web link's card, above the address's QR code (about 680 px at 34 px).
+    ui_text(s, FontFace::Regular, ui_small_size(), ui_small_size() * 0.88, hint, tr("Scan with a phone's camera"), 1, false, 0);
+    let side = u(WEB_QR_SIDE);
+    let qbox = Rect { x: inn.x + (inn.w - side) / 2, y: hint.y + hint.h, w: side, h: side };
+    let web = std::mem::take(&mut c.web);
+    c.qr = ui_qr(s, qbox, &web, negative);
+    c.web = web;
+    let row = Rect { x: inn.x, y: qbox.y + side + u(24.0), w: inn.w, h: u(118.0) };
+    draw_row(c, s, 0, row);
 }
 
 /// Draws the card at c.rect into a.screen and registers the hits of its enabled rows; returns its rect.
 pub fn linkcard_draw(c: &mut LinkCard, a: &mut App, _nb: &NotebookInfo, _nav: &Nav) -> Rect {
     hits_clear(&mut c.hits);
     let card = c.rect;
+    let negative = a.settings.invert; // (inverted on the panel: the code's dark modules on light, as the Share screen's)
     let s = &mut a.screen;
     ui_frame(s, card, u(24.0), 255, true, 0);
     ui_frame(s, card, u(24.0), 0, false, u(6.0));
     let inn = Rect { x: card.x + u(24.0), y: card.y + u(24.0), w: card.w - 2 * u(24.0), h: card.h - 2 * u(24.0) };
+    if !c.web.is_empty() {
+        draw_web(c, s, inn, negative);
+        return card;
+    }
     // The title row: the name, and at the right where it goes and how many links.
     let col_w = u(150.0);
     let title = Rect { x: inn.x + u(8.0), y: inn.y, w: inn.w - col_w - u(24.0), h: u(110.0) };
@@ -332,18 +424,7 @@ pub fn linkcard_draw(c: &mut LinkCard, a: &mut App, _nb: &NotebookInfo, _nav: &N
     }
     for k in 0..c.nrows {
         let r = row_rect(c, k);
-        let on = c.enabled[k];
-        let st = if on { ButtonStyle::Plain } else { ButtonStyle::Disabled };
-        ui_button(s, r, IconKind::None, "", st);
-        let fg = if on { 0 } else { 170 };
-        let d = u(64.0);
-        ui_icon(s, row_icon(c.rows[k]), Rect { x: r.x + u(28.0), y: r.y + (r.h - d) / 2, w: d, h: d }, fg);
-        let lr = Rect { x: r.x + u(120.0), y: r.y, w: r.w - u(120.0) - u(20.0), h: r.h };
-        // (a long translation takes a smaller size on one line, down to the small one, then two lines)
-        ui_text(s, FontFace::Regular, ts, ui_small_size(), lr, &c.labels[k], 2, false, fg);
-        if on {
-            hits_add(&mut c.hits, r, LC_ROW, k as i32);
-        }
+        draw_row(c, s, k, r);
     }
     if c.seeds.len() > 1 {
         let y = row_rect(c, c.nrows.max(1) - 1).y + u(118.0) + u(12.0);
@@ -405,6 +486,7 @@ fn row_name(r: CardRow) -> &'static str {
         CardRow::Retarget => "retarget",
         CardRow::Redraw => "redraw",
         CardRow::Delete => "delete",
+        CardRow::Close => "close",
     }
 }
 
@@ -420,6 +502,16 @@ pub fn linkcard_hit_name(c: &LinkCard, x: i32, y: i32) -> String {
     }
 }
 
+/// The middle of the card's row named `name` (as linkcard_hit_name names it, without `card.`), for the runner's
+/// `tap panel card.<row>`; None for a row the card has not, or a disabled one.
+pub fn linkcard_point(c: &LinkCard, name: &str) -> Option<(f32, f32)> {
+    if !c.open || c.kb.open {
+        return None;
+    }
+    let h = c.hits.h.iter().find(|h| h.id == LC_ROW && h.arg >= 0 && (h.arg as usize) < c.nrows && row_name(c.rows[h.arg as usize]) == name)?;
+    Some(((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32))
+}
+
 /// The runner's keys for the card, without "editor.link_card.": "rows" (the row names in order, a disabled one
 /// with a leading `-`; `readonly` for the read-only card), "title" (as drawn), "rect" (`x y w h`, empty
 /// closed), "links" (how many it acts on) and "border" (how many boxes carry the heavy border now). false for
@@ -428,6 +520,20 @@ pub fn linkcard_probe(c: &LinkCard, key: &str, out: &mut String, cap: usize) -> 
     if key == "doc" {
         // 1 for the card of a document-link chip (read only: Rename the page alone), 0 otherwise.
         csnprintf!(out, cap, "%d", (c.open && c.doc) as i32);
+        return true;
+    }
+    if key == "web" {
+        // A web link's card (2.2): the address it shows, as stored; empty for none.
+        csnprintf!(out, cap, "%s", if c.open { c.web.as_str() } else { "" });
+        return true;
+    }
+    if key == "qr_rect" {
+        // A web link's card: its code's rect on the screen, quiet zone included, `x y w h`; empty for none.
+        if c.open && !c.web.is_empty() && !rect_is_empty(c.qr) {
+            csnprintf!(out, cap, "%d %d %d %d", c.qr.x, c.qr.y, c.qr.w, c.qr.h);
+        } else {
+            csnprintf!(out, cap, "%s", "");
+        }
         return true;
     }
     if key == "rows" {
