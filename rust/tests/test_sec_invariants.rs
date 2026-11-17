@@ -45,6 +45,7 @@ const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"))
 const WEBLINKS: File = ("rust/src/weblinks.rs", include_str!("../src/weblinks.rs"));
 const DOCLINKS: File = ("rust/src/doclinks.rs", include_str!("../src/doclinks.rs"));
 const LINKCARD: File = ("rust/src/linkcard.rs", include_str!("../src/linkcard.rs"));
+const EDITOR: File = ("rust/src/editor.rs", include_str!("../src/editor.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -804,7 +805,24 @@ fn web_links_are_told_as_they_are() {
     told_on(&mut fails, FORMAT, checked, PDFWORK, "if l.src < 1 || l.src > pages || off || !crate::weblinks::weblinks_address_ok(l.address.as_bytes()) {");
     told_on(&mut fails, FORMAT, checked, WEBLINKS, "if !nav_area_valid(area) || !weblinks_address_ok(t) {");
     told_on(&mut fails, FORMAT, "a notebook without web links has no `weblinks.ini`", WEBLINKS, "if !wl.file && n == 0 && wl.unknown.is_empty() {");
-    told_on(&mut fails, DESIGN, "The Kindle never opens, fetches or runs an address: the card draws the stored text and a code made from it, and nothing else.", LINKCARD, "c.qr = ui_qr(s, qbox, &web, negative);");
+    // The card opens nothing: both sentences stand on the whole of linkcard_set_web (its one row, Close, and its
+    // title, address and code: a row added fails here), on what the editor does with that row (it closes the card),
+    // on the card drawing the code of the stored address, and on weblinks.rs and linkcard.rs making no process and
+    // no network call (a call added to either fails here).
+    const SET_WEB: &str = r#"pub fn linkcard_set_web(c: &mut LinkCard, pid: u32, seed: u32, address: &str) { let kb = std::mem::take(&mut c.kb); let boxes = std::mem::take(&mut c.boxes); *c = LinkCard { open: true, pid, page: -1, kb, boxes, ..Default::default() }; c.boxes.clear(); c.seeds.push(seed); c.web = address.to_string(); c.title = weblinks_host(address); c.rows[0] = CardRow::Close; c.enabled[0] = true; c.labels[0] = tr("Done").to_string(); c.nrows = 1; }"#;
+    for (f, opens_nothing) in [
+        (DESIGN, "The Kindle never opens, fetches or runs an address: the card draws the stored text and a code made from it, and nothing else."),
+        (FORMAT, "Nothing on the Kindle opens, fetches or runs an address: the card shows the stored text and a code made from it."),
+    ] {
+        told_on_code(&mut fails, f, opens_nothing, LINKCARD, "pub fn linkcard_set_web(", SET_WEB);
+        told_on(&mut fails, f, opens_nothing, EDITOR, "LcResult::Row(CardRow::Close) => card_close(a),");
+        told_on(&mut fails, f, opens_nothing, LINKCARD, "c.qr = ui_qr(s, qbox, &web, negative);");
+    }
+    for f in [WEBLINKS, LINKCARD] {
+        for call in ["std::process", "Command::new", "std::net", "TcpStream", "TcpListener", "UdpSocket", "libc::exec", "libc::fork", "posix_spawn", "libc::socket", "libc::connect"] {
+            gone(&mut fails, f, call);
+        }
+    }
     gone(&mut fails, FORMAT, "Web links (URI) are left out and counted in the log");
     gone(&mut fails, BACKLOG, "web links are counted and left out");
     none_failed(&fails, "web links in the documents");
