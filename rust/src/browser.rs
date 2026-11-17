@@ -786,9 +786,13 @@ impl Browser {
         if !self.storage.as_ref().is_some_and(|st| home_folder_ok(st, p)) {
             return false;
         }
-        // (a place of the root is entered as its row enters it: Back's way up from the folders in it ends there)
+        // (a place of the root is entered as its row enters it: Back's way up from the folders in it ends there. Any
+        // other folder as at a start, with no place the way in began at: the path bar reads the same however home was
+        // reached, from the nearest place that holds it)
         let from_root = self.mode_places().iter().any(|&k| self.place_path(k).as_ref() == Some(p));
+        let began = self.place_root.take();
         if !self.enter(p.clone(), from_root, now_ms()) {
+            self.place_root = began;
             self.toast = None;
             return false;
         }
