@@ -8254,10 +8254,21 @@ fn home_lost(a: &mut App) {
         reload(a);
     }
     qlog!("home: the home folder was not found: home is Notebooks again");
+    app_toast(a, home_not_found(), 4000);
+}
+
+fn home_not_found() -> &'static str {
     // TRANSLATORS: a toast as Grimoire starts (or goes home): the folder set as home is not there any more, or is
     // not one Grimoire opens, so the Library's top level shows and home is Notebooks again. One line of about
     // 1000 px at 44 px in bold.
-    app_toast(a, tr("Home folder not found."), 4000);
+    tr("Home folder not found.")
+}
+
+/// Whether the toast up is "Home folder not found.", as a start that went home and found it gone said it: app_init
+/// keeps it rather than put a later start toast over it, since it says why the main menu is not at home (2.2,
+/// issue #160).
+pub fn library_home_said(a: &App) -> bool {
+    a.toast_visible && a.toast.as_str() == home_not_found()
 }
 
 /// Whether the Graph (or its notebooks' browser) is up over the Library: a key pressed now is the Graph's.

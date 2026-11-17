@@ -808,7 +808,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     if passcode.as_deref() == Some("left-off") {
         qlog!("device passcode: left off by an earlier session");
     }
-    if annotate_failed {
+    if crate::library::library_home_said(a) {
+        // (the start said "Home folder not found." as it went home: that toast stays, as it says why the main menu
+        // is not at home; none of the ones below is put over it, 2.2)
+    } else if annotate_failed {
         app_toast(a, &note, 8000);
     } else if a.book.state == BookState::Failed {
         book_failed(a);
