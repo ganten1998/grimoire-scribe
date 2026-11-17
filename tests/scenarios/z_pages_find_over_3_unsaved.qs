@@ -1,11 +1,16 @@
 # rust-only
 # generate: tests/drag_pages_fixture.py
 # env: GRIMOIRE_CHECK_FIT=1
+# env: GRIMOIRE_SIM_CLOCK=script
 # A row picked in the Find sheet over the Pages view when the open page cannot be saved (the store full, after a
 # delete in the view left page 1 to write again): the view closes on the page, which stays, said once, in one full
 # refresh of the screen (go_to_page's own; the row's press its fast one before it).
 # (past the two launch repaints, at 1.2 s and 3.5 s, which refresh the whole screen)
 # (the clock corner held still: its minute's refresh would land among the counted ones)
+# (the script's clock, GRIMOIRE_SIM_CLOCK=script: the idle save tries the page again 2 s after it changed, at the
+# delete, and says so again with a refresh of its own. The waits since the delete add up to 900 ms; by the real
+# clock each wait that ended late brought that try nearer, and with every wait 400 ms late it came inside the
+# counted one, issue #184. By the script's clock they are 900 ms however late they end.)
 clock 1700000000
 wait 3600
 tap library folder.Void
