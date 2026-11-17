@@ -19,7 +19,9 @@ pub enum BgKind {
     MirrorPdf = 0, // BG_MIRROR_PDF
     /// id: the notebook; drops strokes that erasing made invisible (src/bgwork_compact.c)
     CompactPages = 1, // BG_COMPACT_PAGES
-    /// id: the notebook, path: the source image; normalizes it into the notebook (src/bgwork_template.c)
+    /// id: the notebook, path: the source image; normalizes it into the notebook (src/bgwork_template.c). With no
+    /// notebook: the templates folder's previews (path: the folder), or (2.2, issue #172) a slice of a template PDF's
+    /// pages (path: the PDF), which ends 0, or 3 while pages are left (queued again, behind whatever ranks higher).
     Template = 2, // BG_TEMPLATE
     /// path: a folder of page images; makes a notebook of them (src/bgwork_template.c)
     ImportFolder = 3, // BG_IMPORT_FOLDER
@@ -235,13 +237,15 @@ pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<S
             let code = if r == pid && libc::WIFEXITED(st) { libc::WEXITSTATUS(st) } else { -1 };
             let (kind, notify, id, job) = with(|s| if extra { (s.extra.kind, s.extra.notify, s.extra.id, s.extra) } else { (s.running.kind, s.running_notify, s.running.id, s.running) });
             let is_pdf = kind == BgKind::PdfImport;
+            // (a template PDF's slice that left pages for the next, 2.2: queued again as an import's slice is)
+            let tpl_more = template_pdf(&job) && code == crate::bgwork_tplpdf::CODE_MORE;
             // (a font check's 3: some files were still being copied and wait for the next look)
-            let ok = code == 0 || (is_pdf && (code == 2 || code == 3)) || (kind == BgKind::FontCheck && (code == 3 || code == 5));
+            let ok = code == 0 || (is_pdf && (code == 2 || code == 3)) || (kind == BgKind::FontCheck && (code == 3 || code == 5)) || tpl_more;
             if let Some(done)=done_id.as_deref_mut(){*done=id;}
-            if is_pdf && code == 3 {
+            if (is_pdf && code == 3) || tpl_more {
                 with(|s| if extra { s.extra_pid = -1 } else { s.pid = -1 });
                 let (id, dir) = (job.id, job.dir);
-                bg_queue(BgKind::PdfImport, Some(id.as_str()), Some(dir.as_str()), job.dpi, false);
+                bg_queue(kind, Some(id.as_str()), Some(dir.as_str()), job.dpi, false);
                 break; // (nothing finished: the notice and the progress record tell how far it is)
             }
             qlog!("bg: %s pid %d %s", K_KIND_NAMES[kind as usize], pid, if ok { "done" } else { "FAILED" });
@@ -286,7 +290,8 @@ pub fn bg_detach_rest() {
     for j in &left {
         qlog!("bg: notebook work for %s left for the next run", &j.id);
     }
-    // Files' previews were for the screen that asked: none is made after Grimoire ends.
+    // Files' previews were for the screen that asked: none is made after Grimoire ends. Nor are a template PDF's
+    // pages (2.2): the next look at the templates folder queues them again, and they go on from the pages made.
     let previews = with(|s| {
         let n = s.q.len();
         s.q.retain(|j| j.kind != BgKind::FilePreviews);
@@ -294,6 +299,14 @@ pub fn bg_detach_rest() {
     });
     if previews > 0 {
         qlog!("bg: %d file preview(s) dropped (Grimoire ends)", previews as i32);
+    }
+    let pdf_pages = with(|s| {
+        let n = s.q.len();
+        s.q.retain(|j| !template_pdf(j));
+        n - s.q.len()
+    });
+    if pdf_pages > 0 {
+        qlog!("bg: %d template PDF job(s) left for the next look (Grimoire ends)", pdf_pages as i32);
     }
     let (mut jobs, running) = with(|s| (s.q.clone(), s.pid));
     // A PDF import slice that is running goes on in the detached child too: its next slice is not queued
@@ -534,10 +547,16 @@ fn child_setup(keep_lock: bool) {
 }
 
 // Which job goes first: something the user waits on (an export they asked for, a template's
-// picture), then the mirror PDFs, then imports, then Files' previews, and compaction last. A compaction
+// picture), then the mirror PDFs, then imports, then Files' previews and a template PDF's pages, and compaction last. A compaction
 // can take minutes on the Kindle, and its pages stay listed until it is done, so nothing is lost by its
 // waiting.
 fn rank(j: &Job) -> i32 {
+    // A template PDF's pages (2.2, issue #172): drawn for a sheet that shows them as they come, never one picture the
+    // user picked and waits on. Behind imports and font checks, with Files' previews (first queued, first run); a
+    // slice at a time, so a picture picked meanwhile waits at most one slice.
+    if template_pdf(j) {
+        return 4;
+    }
     // (a file's preview is never a job the user waits on by name, whoever queued it)
     if (j.notify && j.kind != BgKind::FilePreviews) || j.kind == BgKind::Template {
         return 0;
@@ -559,13 +578,21 @@ fn rank(j: &Job) -> i32 {
     }
 }
 
-// What a job works on, for the log: its notebook, else "a file" (a file's preview) or "a folder" (never a name).
+// What a job works on, for the log: its notebook, else "a file" (a file's preview, a template PDF's pages) or "a
+// folder" (never a name).
 fn job_of(j: &Job) -> &str {
     match (j.id.is_empty(), j.kind) {
         (false, _) => j.id.as_str(),
         (true, BgKind::FilePreviews) => "a file",
+        (true, _) if template_pdf(j) => "a file",
         (true, _) => "a folder",
     }
+}
+
+// Whether a job is a slice of a template PDF's pages (2.2, issue #172): BgKind::Template with no notebook and a PDF's
+// path (the previews job's path is the folder).
+fn template_pdf(j: &Job) -> bool {
+    j.kind == BgKind::Template && j.id.is_empty() && crate::bgwork_tplpdf::is_pdf_name(j.dir.as_str().rsplit('/').next().unwrap_or(""))
 }
 
 fn take(q: &mut Vec<Job>, i: usize) -> Job {
@@ -748,7 +775,8 @@ fn start_job(j: Job, extra: bool) -> bool {
         // long a path.)
         let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3))
             || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4 || rc == 5 || rc == 6))
-            || (j.kind == BgKind::CopyFile && (rc == 2 || rc == 3 || rc == 4));
+            || (j.kind == BgKind::CopyFile && (rc == 2 || rc == 3 || rc == 4))
+            || (template_pdf(&j) && rc == crate::bgwork_tplpdf::CODE_MORE);
         unsafe { libc::_exit(if rc == 0 { 0 } else if says_more { rc } else { 1 }) };
     }
     let beside = with(|s| {

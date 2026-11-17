@@ -129,7 +129,7 @@ fn job_cpu_cap_ms(pages: u32) -> u64 {
 }
 
 /// The slice length: the table's, or (headless and test builds) GRIMOIRE_PDF_SLICE_PAGES.
-fn slice_pages() -> usize {
+pub(crate) fn slice_pages() -> usize {
     #[cfg(not(feature = "kindle"))]
     if let Some(n) = std::env::var("GRIMOIRE_PDF_SLICE_PAGES").ok().and_then(|v| v.parse::<usize>().ok()).filter(|&n| n > 0) {
         return n;
@@ -1977,7 +1977,7 @@ fn mono_ms_now() -> u64 {
     mono_ms()
 }
 
-fn read_mem_available() -> Option<u64> {
+pub(crate) fn read_mem_available() -> Option<u64> {
     #[cfg(not(feature = "kindle"))]
     if let Some(v) = std::env::var("GRIMOIRE_PDF_BANDS").ok().and_then(|v| v.parse::<u64>().ok()) {
         // (the runner asks for band mode: report little memory)
@@ -1988,7 +1988,7 @@ fn read_mem_available() -> Option<u64> {
     Some(l.split_whitespace().nth(1)?.parse::<u64>().ok()? * 1024)
 }
 
-fn free_bytes() -> Option<u64> {
+pub(crate) fn free_bytes() -> Option<u64> {
     #[cfg(not(feature = "kindle"))]
     if let Some(v) = std::env::var("GRIMOIRE_PDF_FREE_BYTES").ok().and_then(|v| v.parse::<u64>().ok()) {
         return Some(v);
@@ -3115,7 +3115,7 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
     commit(id, src, abs, &state, source, pw, ph)
 }
 
-fn death_text(d: &Death) -> String {
+pub(crate) fn death_text(d: &Death) -> String {
     match d {
         Death::Timeout => "stalled".to_string(),
         Death::TimeoutAfterWake => "stalled right after a wake".to_string(),
