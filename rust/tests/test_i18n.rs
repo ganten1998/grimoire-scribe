@@ -296,7 +296,7 @@ fn count_entry(code: &str, e: &I18nEntry, forms: i32, bad: &mut i32) {
 }
 
 // The Plural-Forms line each language's catalog must carry: src/i18n.c has the same rule by hand.
-const K_RULES: [(&str, &str); 2] = [
+const K_RULES: [(&str, &str); 3] = [
     ("es", "Plural-Forms: nplurals=2; plural=(n != 1);"),
     ("ja", "Plural-Forms: nplurals=1; plural=0;"),
     ("pl", "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);"),

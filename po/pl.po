@@ -5049,7 +5049,7 @@ msgstr "pochylenie: niezgłaszane"
 #: rust/src/pensettings.rs
 #, c-format
 msgid "tilt %d deg -> %.2f"
-msgstr "pochylenie %d° → %.2f"
+msgstr "pochylenie %d° do %.2f"
 
 #. TRANSLATORS: Pen feel's readout while the calligraphy pen draws on the test pad, two
 #. spaces apart: the raw pressure and what the curve makes of it, the tilt (above), the
@@ -5057,7 +5057,7 @@ msgstr "pochylenie %d° → %.2f"
 #: rust/src/pensettings.rs
 #, c-format
 msgid "pressure %.2f -> %.2f  %s  nib %.2f mm at %d deg"
-msgstr "nacisk %.2f → %.2f  %s  stalówka %.2f mm pod %d°"
+msgstr "nacisk %.2f do %.2f  %s  stalówka %.2f mm pod %d°"
 
 #. TRANSLATORS: Pen feel's readout while a tool draws on the test pad, two spaces apart:
 #. the raw pressure and what the curve makes of it, the tilt (above), the line's width
@@ -5065,7 +5065,7 @@ msgstr "nacisk %.2f → %.2f  %s  stalówka %.2f mm pod %d°"
 #: rust/src/pensettings.rs
 #, c-format
 msgid "pressure %.2f -> %.2f  %s  width %.2f mm  ink %.2f"
-msgstr "nacisk %.2f → %.2f  %s  szerokość %.2f mm  tusz %.2f"
+msgstr "nacisk %.2f do %.2f  %s  szerokość %.2f mm  tusz %.2f"
 
 #. TRANSLATORS: the calligraphy pen's names for "Tilt starts at" and "Tilt full at" (570 px at
 #. 44 px in Gothic, 600 in Classic, beside an angle).
