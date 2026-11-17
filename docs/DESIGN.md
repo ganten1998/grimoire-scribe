@@ -2765,7 +2765,7 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
 - **Tests**: `browser.rs`'s unit tests (the font pick's root with and without the Kindle's folder, a link in its
   place, its rows and its card inside and outside `grimoire/fonts`; a font's card in Files, the Kindle's folder
   read only, a collection and a web font as other files), `library.rs`'s `the_font_sheets_add_a_font_row` (the
-  row's place and pages, its tap, the wait and its end, no row over a notebook's page),
+  row's place and pages, its tap, the wait and its end, held under a contact, no row over a notebook's page),
   `rust/tests/test_addfont.rs` (the pick and the real copy job and font check with real workers: no font before its
   check passes, and only those bytes; a Covers preview, the worker's, which gives a copied font nothing; a font that
   fails its check; a copy cut short and what a dead copy left; a

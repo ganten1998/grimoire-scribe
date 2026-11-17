@@ -10259,9 +10259,10 @@ mod tests {
     // folder's text while it is empty), on the page that holds it, and alone on the next page when the last page
     // of fonts is full. A tap opens the font pick over the sheet, the Kindle's own fonts folder first. A copy asked
     // there brings the sheet back with the row waiting (greyed, no tap) until the copy job is no longer queued or
-    // running; the folder is then read again and the row takes taps again. A copy that ends while the sheet is in
-    // front is the sheet's to show, not a toast's, and not while the pick is over it. Over a notebook's page
-    // (Settings opened from the editor) the sheet has no such row, and its pages are counted without it.
+    // running; the folder is then read again (not under a pen or finger down on the sheet: after its lift) and the
+    // row takes taps again. A copy that ends while the sheet is in front is the sheet's to show, not a toast's, and
+    // not while the pick is over it. Over a notebook's page (Settings opened from the editor) the sheet has no such
+    // row, and its pages are counted without it.
     #[test]
     fn the_font_sheets_add_a_font_row() {
         use crate::bgwork_copy::CopyTo;
@@ -10325,7 +10326,13 @@ mod tests {
         assert_eq!(probe(&mut a, "font.copying"), "1");
         assert!(add(&a).is_none(), "no tap while it waits");
         assert_eq!(library_sheet_folder(&a), Some(CopyTo::Fonts));
-        // no copy queued or running (none was: the test asked none of the job): the folder is read again
+        // no copy queued or running (none was: the test asked none of the job), but a pen or finger down on a row:
+        // the folder is not read yet (it would number the rows anew under the press), the lift comes first
+        lib(&mut a).pressed = Some(Hit { id: H_FONT_OWN, ..Default::default() });
+        font_sheet_tick(&mut a, now_ms());
+        assert_eq!(probe(&mut a, "font.copying"), "1", "not read under a contact");
+        // lifted: the folder is read again
+        lib(&mut a).pressed = None;
         font_sheet_tick(&mut a, now_ms());
         assert_eq!(probe(&mut a, "font.copying"), "0");
         assert_eq!(probe(&mut a, "font.rows"), "0", "grimoire/fonts read again: empty");
