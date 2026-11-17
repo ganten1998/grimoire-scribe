@@ -201,6 +201,9 @@ const H_NEW_FILE: i32 = 95;
 // and the pages of them (arg: -1 back, 1 on).
 const H_FONT_OWN: i32 = 96;
 const H_FONT_PAGE: i32 = 97;
+// 2.2 (issue #161): the Font sheet's Add a font... row, after the last of the owner's own fonts (the font pick
+// over the sheet). (Numbered apart from the ids other work of the same release adds after 198.)
+const H_FONT_ADD: i32 = 240;
 // The page arrows of Settings' lists (ui_row_page): the categories down the left, the rows of the open
 // category, and a submenu's rows (arg: -1 back, 1 on).
 const H_SET_CAT_PAGE: i32 = 130;
@@ -277,6 +280,9 @@ pub struct LibraryState {
     font_picked: bool,
     font_sample_how: &'static str,
     fonts_looked_ms: u32,
+    /// the Add a font... row asked the copy job for a font (issue #161), or a copy into grimoire/fonts ran as the
+    /// sheet opened, and it has not been seen to end: the row waits, and the folder is read again when it ends
+    font_copying: bool,
     /// The file picker (2.1.0-beta.2, browser.rs), open over New notebook's sheet (which stays under it: Cancel
     /// and Esc at the picker's root come back to it), and whether the sheet's name was typed (D28: a typed name is
     /// the imported notebook's, else the file's own).
@@ -5084,7 +5090,9 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
 /// Settings > Font (2.1, Classic only): on top a sample of the font highlighted (its name at the title size,
 /// a sentence at the text size, digits and accents at the small size, all in it), then Built in: every family
 /// by its name, each drawn in itself; then Your fonts (2.1.0-beta.2): the files of grimoire/fonts, a page of
-/// them at a time (or where to copy some); the one in use with a check; then Back and Done. A tap applies a
+/// them at a time (or where to copy some), and after the last of them Add a font... (2.2, issue #161: the font
+/// pick, which copies a font file in; the file is listed while it is checked and can be tapped once it has
+/// passed, as one copied over USB); the one in use with a check; then Back and Done. A tap applies a
 /// font at once, so the sheet's own words are in the font in use, unless that font is one of the owner's own:
 /// then they are Terminess, so a font that went wrong can always be taken back.
 fn draw_font_sheet(a: &mut App) {
@@ -5167,9 +5175,13 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
     let rows_max = ((in_.h - fixed + gap) / (rh + gap)).max(1) as usize;
     let per_page = rows_max * cols;
     let nown = s.fonts.len();
+    // (the Add a font... row is the list's last item, after every font: no font's row moves for it, and with a
+    // full last page it is the next page's only row)
+    let add = font_add_offered(s);
+    let items = nown + add as usize;
     s.font_per_page = per_page;
-    if s.font_first >= nown {
-        s.font_first = nown.saturating_sub(1) / per_page * per_page;
+    if s.font_first >= items {
+        s.font_first = items.saturating_sub(1) / per_page * per_page;
     }
     s.font_first -= s.font_first % per_page;
     let first = s.font_first;
@@ -5202,7 +5214,7 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
     // TRANSLATORS: (Settings > Font) the heading over the fonts the owner copied onto the Kindle; %s is
     // their folder there, grimoire/fonts. 34 px bold, about 800 px.
     csnprintf!(&mut heading, 160, tr("Your fonts (%s)"), "grimoire/fonts");
-    let pages = nown.div_ceil(per_page).max(1);
+    let pages = items.div_ceil(per_page).max(1);
     let hw = if pages > 1 { in_.w - ui_px(420.0) } else { in_.w };
     font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(in_.x, y, hw, lh2), &heading, 0);
     if pages > 1 {
@@ -5242,6 +5254,29 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
         }
         s.font_own_rows.push((idx, r));
     }
+    // Add a font... (issue #161): the place after the last font, on the page that holds it; under the text while
+    // the folder is empty. While a copy it asked for runs it waits: an hourglass, greyed, and no tap.
+    let place = if nown == 0 { Some(cols) } else { (nown >= first && nown - first < per_page).then(|| nown - first) };
+    if let Some(k) = place.filter(|_| add) {
+        let r = cell(k, y);
+        let busy = s.font_copying;
+        let fg: u8 = if busy { 110 } else { 0 };
+        settings_card(c, r, if busy { ButtonStyle::Disabled } else { ButtonStyle::Plain });
+        let isz = rh - ui_px(50.0);
+        ui_icon(c, if busy { IconKind::Hourglass } else { IconKind::Plus }, Rect::new(r.x + settings_pad(), r.y + (rh - isz) / 2, isz, isz), fg);
+        let tx = r.x + settings_pad() + isz + settings_gap();
+        font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(tx, r.y, r.x + r.w - settings_pad() - tx, rh), tr("Add a font..."), fg);
+        if !busy {
+            hits_add(&mut s.hits, r, H_FONT_ADD, 0);
+        }
+    }
+}
+
+/// Whether the Font sheet has its Add a font... row (issue #161): where the Library hosts Settings. Over a
+/// notebook's page (Settings opened from the editor) the Library's file picker has no screen, so the row is not
+/// there, and the sheet is as it was.
+fn font_add_offered(s: &LibraryState) -> bool {
+    !s.settings_return_editor
 }
 
 /// Applies what the Font sheet has highlighted now: a family (settings.ini's font=) or one of the owner's own
@@ -5290,7 +5325,8 @@ fn font_apply_pick(a: &mut App) -> bool {
 /// The Font sheet's staying notice while fonts are checked ("Checking 3 fonts..."), gone when none is.
 fn font_notice(a: &mut App) {
     let n = crate::userfonts::userfonts_checking(&lib(a).fonts);
-    if lib(a).modal != Modal::Font || n == 0 {
+    // (not over the font pick the sheet's Add a font... opened: the notice is the sheet's)
+    if lib(a).modal != Modal::Font || lib(a).files.open || n == 0 {
         app_notice_clear(a, NoticeKey::FontCheck);
         return;
     }
@@ -5326,13 +5362,39 @@ fn font_sheet_closed(a: &mut App) {
     s.fonts = Vec::new();
     s.font_file.clear();
     s.font_own_rows.clear();
+    s.font_copying = false;
     app_notice_clear(a, NoticeKey::FontCheck);
+}
+
+/// A copy into grimoire/fonts that the sheet waited for has ended, made or not (the Add a font... row's, issue
+/// #161): the folder is read again as when the sheet opens, and the new file, the first not listed before, has
+/// its page shown. Its row says "Checking..." until the check has ended (the app's tick asked for it:
+/// `userfonts_added`), and takes no tap before it passed. A copy that failed adds no row (a toast said why).
+fn font_copy_ended(a: &mut App) {
+    let had: Vec<String> = lib(a).fonts.iter().map(|f| f.rel.clone()).collect();
+    font_list_scan(a);
+    let s = lib(a);
+    s.font_copying = false;
+    let new = s.fonts.iter().position(|f| !had.contains(&f.rel));
+    if let Some(i) = new {
+        s.font_first = i; // (the draw takes the page that holds it)
+    }
+    qlog!("fonts: the folder read again after a copy (%d files, %s new)", s.fonts.len() as i32, if new.is_some() { "one" } else { "none" });
+    font_notice(a);
+    redraw(a, RefreshMode::Ui);
 }
 
 /// While the Font sheet is up: the rows of fonts being checked fill in as their verdicts land (the cache is
 /// looked at twice a second, a listing of one small folder), and the folder is read again when a check left
 /// files for later.
 fn font_sheet_tick(a: &mut App, now: u32) {
+    // The copy the Add a font... row waits for is no longer queued or running (bg_pending counts a child until the
+    // app's tick has reaped it, and that tick asks for the new file's check). Not under a pen or finger that is
+    // down on the sheet: reading the folder numbers the rows anew, and its lift would act on another row.
+    if lib(a).font_copying && lib(a).pressed.is_none() && !bg_pending(BgKind::CopyFile, crate::bgwork_copy::CopyTo::Fonts.folder()) {
+        font_copy_ended(a);
+        return;
+    }
     if crate::userfonts::userfonts_look_again(now) {
         font_list_scan(a);
         font_notice(a);
@@ -5363,7 +5425,8 @@ pub fn library_fonts_checked(a: &mut App, changed: bool) {
     if changed {
         httpd_restyle(ui_theme() == UiTheme::Gothic);
         redraw(a, RefreshMode::Full);
-    } else if lib(a).modal == Modal::Font {
+    } else if lib(a).modal == Modal::Font && !lib(a).files.open {
+        // (not while the font pick is over the sheet: its rows are drawn when the pick closes)
         redraw(a, RefreshMode::Ui);
     }
 }
@@ -7325,10 +7388,14 @@ fn act(a: &mut App, h: &Hit) {
                 _ => 0,
             };
             s.font_per_page = 1;
+            // (a copy into the folder that runs as the sheet opens: its Add a font... row waits for it)
+            s.font_copying = bg_pending(BgKind::CopyFile, crate::bgwork_copy::CopyTo::Fonts.folder());
             lib(a).modal = Modal::Font;
             font_notice(a);
             redraw(a, RefreshMode::Ui);
         }
+        // Add a font... (issue #161): the font pick over the sheet, which stays under it
+        H_FONT_ADD => files_open_font(a),
         // A font tapped applies at once, saved: a family (and with it a font=file: that does not draw goes),
         // or one of the owner's own fonts.
         H_FONT_PICK => {
@@ -7710,11 +7777,16 @@ pub fn library_shows_folder(a: &App, folder: &str) -> bool {
         && a.lib.as_deref().is_some_and(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open && s.cur_folder.as_str() == folder)
 }
 
-/// The folder of the Templates sheet in front over New notebook (the picker not over it), None for none: a copy into
-/// it that ends is shown there, with no toast (app.rs).
+/// The folder of the Templates sheet in front over New notebook (the picker not over it), or Grimoire's fonts for
+/// the Font sheet in front, in the Library or over a notebook's page (Settings opened from the editor, which reads
+/// the folder again too), None for none: a copy into it that ends is shown there, with no toast (app.rs).
 pub fn library_sheet_folder(a: &App) -> Option<crate::bgwork_copy::CopyTo> {
-    let s = a.lib.as_deref().filter(|s| a.scr == ScreenId::Library && s.modal == Modal::Templates && s.ts.open && !s.files.open)?;
-    Some(tplsheet_folder(&s.ts))
+    let s = a.lib.as_deref().filter(|s| !s.files.open)?;
+    match s.modal {
+        Modal::Templates if s.ts.open && a.scr == ScreenId::Library => Some(tplsheet_folder(&s.ts)),
+        Modal::Font if a.scr == ScreenId::Library || library_settings_active(a) => Some(crate::bgwork_copy::CopyTo::Fonts),
+        _ => None,
+    }
 }
 
 pub fn library_import_place_up(a: &App) -> bool {
@@ -7744,6 +7816,17 @@ fn files_open(a: &mut App) {
 fn files_open_picture(a: &mut App, to: crate::bgwork_copy::CopyTo) {
     let prefs = files_prefs(a);
     let ok = with_files(a, |b, _| b.open(PickSpec::picture(to), prefs));
+    files_opened(a, ok);
+}
+
+/// The Font sheet's Add a font... (2.2, #161): the font pick over the sheet, which stays under it (Back at the
+/// picker's root, and a copy asked, come back to it). The pick lists font files by name, size and date and opens
+/// none; what it copies into grimoire/fonts is checked there before the sheet lets it be tapped.
+fn files_open_font(a: &mut App) {
+    let prefs = files_prefs(a);
+    let ok = with_files(a, |b, _| b.open(PickSpec::font(), prefs));
+    // (the sheet's notice of a check under way is the sheet's: off while the pick is up, back when it closes)
+    font_notice(a);
     files_opened(a, ok);
 }
 
@@ -7786,6 +7869,9 @@ fn files_close(a: &mut App, to_library: bool) {
     app_notice_clear(a, NoticeKey::Previews);
     if to_library {
         reload(a);
+    }
+    if lib(a).modal == Modal::Font {
+        font_notice(a); // (the font pick closed over the Font sheet: its notice of a check under way again)
     }
     redraw(a, RefreshMode::Full);
 }
@@ -7854,12 +7940,17 @@ fn files_result(a: &mut App, r: BrowserResult) {
             settings_save(&a.settings);
             reload(a);
         }
-        // A picture's Use as template or Use as photo (#146): the copy job runs. Files stays as it is (the app's tick
-        // says when the copy ends); the picture pick goes back to the Templates sheet under it, whose From a file...
-        // tile waits for the copy and then shows the new template
-        BrowserResult::Copying(_) => {
+        // A picture's Use as template or Use as photo (#146), a font's Add to fonts (#161): the copy job runs. Files
+        // stays as it is (the app's tick says when the copy ends); the picture pick goes back to the Templates sheet
+        // under it, whose From a file... tile waits for the copy and then shows the new template; the font pick goes
+        // back to the Font sheet, whose Add a font... row waits the same way and then lists the new file
+        BrowserResult::Copying(to) => {
             if lib(a).files.mode == BrowseMode::Pick {
-                tplsheet_copy_asked(&mut lib(a).ts);
+                if to == crate::bgwork_copy::CopyTo::Fonts {
+                    lib(a).font_copying = true;
+                } else {
+                    tplsheet_copy_asked(&mut lib(a).ts);
+                }
                 files_close(a, false);
             }
         }
@@ -8881,8 +8972,13 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         let v: Vec<&str> = s.font_own_rows.iter().filter_map(|(i, _)| s.fonts.get(*i)).map(|f| f.rel.as_str()).collect();
         csnprintf!(out, cap, "%s", &v.join("|"));
     } else if key == "font.page" {
+        // (the Add a font... row is the list's last item, where the sheet has it)
         let per = s.font_per_page.max(1);
-        csnprintf!(out, cap, "%d/%d", (s.font_first / per + 1) as i32, s.fonts.len().div_ceil(per).max(1) as i32);
+        let items = s.fonts.len() + font_add_offered(s) as usize;
+        csnprintf!(out, cap, "%d/%d", (s.font_first / per + 1) as i32, items.div_ceil(per).max(1) as i32);
+    } else if key == "font.copying" {
+        // "1" while the Font sheet's Add a font... row waits for a copy; "" while the sheet is not up.
+        csnprintf!(out, cap, "%s", if s.modal != Modal::Font { "" } else if s.font_copying { "1" } else { "0" });
     } else if key == "font.sample" {
         // How the sample card was drawn: "family", "own" (by the owner's font itself) or "preview" (by the
         // picture the check made); "" while the sheet is not up.
@@ -9065,6 +9161,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_LINK => "about.link.", H_LINK_PAGE => if hit.arg < 0 { "about.link.prev" } else { "about.link.next" },
                 H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
                 H_FONT_OWN => "font.file:", H_FONT_PAGE => if hit.arg < 0 { "font.prev" } else { "font.next" },
+                H_FONT_ADD => "font.add",
                 H_SET_CAT => "settings.cat.",
                 H_SET_CAT_PAGE => if hit.arg < 0 { "settings.cat.prev" } else { "settings.cat.next" },
                 H_SET_ROWS_PAGE => if hit.arg < 0 { "settings.row.prev" } else { "settings.row.next" },
@@ -10156,6 +10253,107 @@ mod tests {
         }
         assert!(black > 0);
         canvas_free(&mut c);
+    }
+
+    // Settings > Font's Add a font... (2.2, issue #161): the last item of Your fonts, after every font (under the
+    // folder's text while it is empty), on the page that holds it, and alone on the next page when the last page
+    // of fonts is full. A tap opens the font pick over the sheet, the Kindle's own fonts folder first. A copy asked
+    // there brings the sheet back with the row waiting (greyed, no tap) until the copy job is no longer queued or
+    // running; the folder is then read again (not under a pen or finger down on the sheet: after its lift) and the
+    // row takes taps again. A copy that ends while the sheet is in front is the sheet's to show, not a toast's, and
+    // not while the pick is over it. Over a notebook's page (Settings opened from the editor) the sheet has no such
+    // row, and its pages are counted without it.
+    #[test]
+    fn the_font_sheets_add_a_font_row() {
+        use crate::bgwork_copy::CopyTo;
+        let root = std::env::temp_dir().join(format!("grimoire-font-add-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("fonts")).unwrap();
+        std::env::set_var("GRIMOIRE_STORAGE", &root);
+        assert_eq!(store_init(root.join("grimoire").to_str().unwrap()), 0);
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        lib(&mut a).modal = Modal::Settings;
+        act(&mut a, &Hit { id: H_SET_FONT, ..Default::default() });
+        assert_eq!(lib(&mut a).modal, Modal::Font);
+        let add = |a: &App| a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_FONT_ADD).map(|h| h.r);
+        let fill = |a: &mut App, n: usize| {
+            let s = lib(a);
+            s.fonts = (0..n).map(|i| crate::userfonts::userfont_missing(&format!("F{i:02}.ttf"))).collect();
+            s.font_first = 0;
+            redraw(a, RefreshMode::Ui);
+        };
+        // no fonts: the row under the folder's text, one page
+        let r = add(&a).expect("the row");
+        assert_eq!(probe(&mut a, "font.rows"), "0");
+        assert_eq!(probe(&mut a, "font.page"), "1/1");
+        assert_eq!(probe(&mut a, "ui_has.font.add"), "1");
+        assert_eq!(probe(&mut a, "font.copying"), "0");
+        let per = lib(&mut a).font_per_page;
+        assert!(per >= 2, "{per}");
+        // a page of fonts but one: the row right after the last of them
+        fill(&mut a, per - 1);
+        let last = lib(&mut a).font_own_rows.last().map(|(_, r)| *r).expect("the fonts' rows");
+        let r2 = add(&a).expect("the row after the fonts");
+        assert!(r2.x == last.x && r2.y == last.y + last.h + ui_px(16.0), "{r2:?} after {last:?}");
+        assert_eq!(probe(&mut a, "font.page"), "1/1");
+        // a full page: no row there, and the next page holds it alone
+        fill(&mut a, per);
+        assert!(add(&a).is_none());
+        assert_eq!(probe(&mut a, "font.page"), "1/2");
+        act(&mut a, &Hit { id: H_FONT_PAGE, arg: 1, ..Default::default() });
+        assert_eq!(probe(&mut a, "font.page"), "2/2");
+        assert_eq!(probe(&mut a, "font.shown"), "");
+        let r3 = add(&a).expect("the row alone on its page");
+        // (at the page's first place; with no fonts at all the folder's text has that place, and the row the next)
+        assert!(r3.x == r.x && r3.y == r.y - ui_px(130.0) - ui_px(16.0), "{r3:?}, and with no fonts {r:?}");
+        // the font pick over the sheet
+        fill(&mut a, 1);
+        act(&mut a, &Hit { id: H_FONT_ADD, ..Default::default() });
+        assert!(files_shown(&a));
+        let h = a.h;
+        let mut out = String::new();
+        assert!(lib(&mut a).files.probe(h, "mode", &mut out) && out == "pick");
+        out.clear();
+        assert!(lib(&mut a).files.probe(h, "order", &mut out) && out == "Kindle fonts|All storage|Show Files in Library", "{out}");
+        assert_eq!(lib(&mut a).modal, Modal::Font, "the sheet stays under it");
+        assert_eq!(library_sheet_folder(&a), None, "a copy ending under the pick is told by a toast");
+        // a copy asked: the sheet again, the row waiting
+        files_result(&mut a, BrowserResult::Copying(CopyTo::Fonts));
+        assert!(!files_shown(&a));
+        assert_eq!(lib(&mut a).modal, Modal::Font);
+        assert_eq!(probe(&mut a, "font.copying"), "1");
+        assert!(add(&a).is_none(), "no tap while it waits");
+        assert_eq!(library_sheet_folder(&a), Some(CopyTo::Fonts));
+        // no copy queued or running (none was: the test asked none of the job), but a pen or finger down on a row:
+        // the folder is not read yet (it would number the rows anew under the press), the lift comes first
+        lib(&mut a).pressed = Some(Hit { id: H_FONT_OWN, ..Default::default() });
+        font_sheet_tick(&mut a, now_ms());
+        assert_eq!(probe(&mut a, "font.copying"), "1", "not read under a contact");
+        // lifted: the folder is read again
+        lib(&mut a).pressed = None;
+        font_sheet_tick(&mut a, now_ms());
+        assert_eq!(probe(&mut a, "font.copying"), "0");
+        assert_eq!(probe(&mut a, "font.rows"), "0", "grimoire/fonts read again: empty");
+        assert!(add(&a).is_some());
+        // over a notebook's page: no row, and the pages are the fonts' alone
+        lib(&mut a).settings_return_editor = true;
+        fill(&mut a, per);
+        assert!(add(&a).is_none());
+        assert_eq!(probe(&mut a, "font.page"), "1/1");
+        // and a copy into the folder that ends is the sheet's to show there too (it reads the folder again), not a
+        // toast's; with the editor in front and no Settings over it, there is no sheet
+        a.scr = ScreenId::Editor;
+        assert_eq!(library_sheet_folder(&a), Some(CopyTo::Fonts), "the Font sheet over a notebook's page");
+        lib(&mut a).settings_return_editor = false;
+        assert_eq!(library_sheet_folder(&a), None, "the editor, no Settings over it");
+        a.scr = ScreenId::Library;
+        font_sheet_closed(&mut a);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        std::env::remove_var("GRIMOIRE_STORAGE");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
