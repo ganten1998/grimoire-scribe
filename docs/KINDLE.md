@@ -947,6 +947,11 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
+- **"Couldn't open page" (or "Couldn't open notebook") and the page file is there** (2.1.1): the file did
+  not open or did not read to its end (an I/O error, or no memory for it). grimoire.log says `store: <path>
+  is there but does not read; not opened`. The file is left as it is: it is not renamed as a damaged page, and
+  no blank page is written over it. If it keeps happening for the same page, copy the file off the Kindle before
+  trying to repair it.
 - **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
   settings, notebooks, pages, pictures, import folders, clipboard, shortcut files and PDF cache only when the
   entry at the name is a plain file, and the small text files only up to a size (docs/FORMAT.md, Files, names

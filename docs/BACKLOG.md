@@ -1682,8 +1682,7 @@ items of Document links. Left:
 
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
-- A page file that is there but does not read fails to open rather than opening blank; with it, a size
-  limit on page files.
+- A size limit on page files.
 - `mkdir_p` stays as it is (an existing entry counts as the folder): the data root, a platform's folders
   and the tests' folders may sit behind a link.
 - If no other lane has taken them by the merge: the marks in `pdfimport.rs` read with their own limits,

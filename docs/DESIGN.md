@@ -589,6 +589,7 @@ that would write a sidecar that does not read (a page's name, a link) is refused
 over), and the open never waits. Folders on the way to a file may be links (the data root, `notebooks/`, a
 platform's folders, a test's folder): only the last name is held to this. The small text files are read up to
 a limit (`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB;
+<<<<<<< Updated upstream
 an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes and names.part
 406,000, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
 picture and a header; and, by the same bound in its own reader, a compaction list 64 KiB). A read that fails
@@ -596,6 +597,16 @@ midway leaves any of them unread rather than cut short, so a settings.ini or not
 error is never parsed as a shorter file and saved back so; page files and pictures have none of `read_file`'s
 own. A settings.ini that is there but was not read is moved to `settings.ini.unread` before the next save.
 An entry at a page's name that is no plain file is set
+=======
+an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes, names.part
+406,000 and webs.part 4,194,304, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
+picture and a header; and, by the same bound in its own reader, a compaction list 64 KiB). A read that fails
+midway leaves any of them unread rather than cut short, so a settings.ini or notebook.ini cut short by a read
+error is never parsed as a shorter file and saved back so. Page files and pictures have no size limit of their
+own, and a read that fails partway leaves them unread too: a page file that is there but does not read is not
+opened (the editor says so) and is left as it is. A settings.ini that is there but was not read is moved to
+`settings.ini.unread` before the next save. An entry at a page's name that is no plain file is set
+>>>>>>> Stashed changes
 aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are read with
 `util::read_system_file`, which follows links. The scans of `import/`, `templates/` and `photos/` take only
 real folders and plain files. Temporary files named after the process (`<name>.<pid>`, the mirror's
@@ -616,7 +627,8 @@ stops reading once one size has more than half the pages); with no readable page
 The next save writes it, and the Library's listing writes it once for a notebook whose size it had
 to find. The editor reads pages with `store_load_page` at that size and exports with
 `store_read_page`: a page file of another size has its points scaled to it (`scale_page`, logged
-once per run), and a missing page is blank paper of it. The Custom music sheet counts systems for
+once per run), a missing page is blank paper of it, and one that is there but does not read is not opened (the
+file stays as it is). The Custom music sheet counts systems for
 the page it is for (`musicbuild_open_page` carries that page's size, and `music_max_systems` takes
 its height). Calibrations follow the panel the same way: at startup `app_init` passes each through
 `calib_to_panel` (calib_fit.c). It takes the record (`pen.panel`, `touch.panel`; none

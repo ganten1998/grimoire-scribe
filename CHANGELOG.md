@@ -53,7 +53,12 @@
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A small text file whose read fails
   partway through counts as one that was not read, so a cut-short `settings.ini` or `notebook.ini` is never
+<<<<<<< Updated upstream
   parsed as a shorter file and written back so. A `settings.ini` it cannot read is kept as
+=======
+  parsed as a shorter file and written back so; a page file that reads only in part does not open as a shorter
+  page (it is not opened, and is left as it is). A `settings.ini` it cannot read is kept as
+>>>>>>> Stashed changes
   `settings.ini.unread` rather than written over. A picture or folder in `templates/`, `photos/` or `import/`
   that is a link is no longer taken: copy the file in.
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of

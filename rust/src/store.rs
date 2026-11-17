@@ -3109,7 +3109,9 @@ fn scale_page(p: &mut Page, w: i32, h: i32) {
 
 /// The page at w x h, the notebook's page size (store_notebook_page_size): a page file of another
 /// size, one an older version scaled to its own screen, has its points scaled back. Missing page
-/// file -> empty page of nb->paper. A damaged file is set aside (p<id>.qpg.damaged-<time>). A page
+/// file -> empty page of nb->paper. A page file that is there but does not read (an open or read
+/// error) is not opened: -1, and the file is left as it is. A damaged file is set aside
+/// (p<id>.qpg.damaged-<time>). A page
 /// from a newer version comes back read-only (Page.readonly) and is never set aside. A page that
 /// bg/pages.ini lists with an image paper but that reads as Blank (an older version saved it so)
 /// gets its image paper back, and is written so again (each such page counted, below). Every page
@@ -3186,24 +3188,34 @@ fn load_page_with(
                 with(|s| s.g_restored_pages += 1);
             }
         }
-    } else if std::fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
-        // An entry at the page's name that is no plain file (a folder, a link) is not read, and is set aside
-        // as a damaged page is, the entry itself: left there, the blank page shown in its place could not be
-        // saved over a folder, and would be saved in place of a link with nothing said. (A plain file that did
-        // not read stays where it is, as before.)
-        let mut aside = String::new();
-        csnprintf!(&mut aside, 760, "%s.damaged-%lld", &path, wall_time());
-        let rc = std::fs::rename(&path, &aside);
-        qlog!(
-            "store: %s is no plain file, %s; starting blank",
-            &path,
-            if rc.is_ok() {
-                "set aside"
-            } else {
-                "could not set aside"
+    } else {
+        match std::fs::symlink_metadata(&path) {
+            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => {} // (no page file: a blank page, as before)
+            Ok(m) if !m.is_file() => {
+                // An entry at the page's name that is no plain file (a folder, a link) is not read, and is set
+                // aside as a damaged page is, the entry itself: left there, the blank page shown in its place
+                // could not be saved over a folder, and would be saved in place of a link with nothing said.
+                let mut aside = String::new();
+                csnprintf!(&mut aside, 760, "%s.damaged-%lld", &path, wall_time());
+                let rc = std::fs::rename(&path, &aside);
+                qlog!(
+                    "store: %s is no plain file, %s; starting blank",
+                    &path,
+                    if rc.is_ok() {
+                        "set aside"
+                    } else {
+                        "could not set aside"
+                    }
+                );
+                with(|s| s.g_corrupt_pages += 1);
             }
-        );
-        with(|s| s.g_corrupt_pages += 1);
+            _ => {
+                // A plain file that did not open or read whole is not blank paper: the page is not opened, and
+                // the file stays as it is (never set aside, and never overwritten by a blank page).
+                qlog!("store: %s is there but does not read; not opened", &path);
+                return -1;
+            }
+        }
     }
     let mut p = match p {
         Some(p) => p,
@@ -5862,6 +5874,34 @@ mod tests {
         // (read again: a settings.ini of this build's, with nothing to keep aside)
         assert_eq!(settings_load(&mut s), 0);
         assert_eq!(settings_save(&s), 0);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // A page file that is there but does not read is not opened as a blank page: the open fails, and the file
+    // stays where it is. (Root reads it anyway: this has nothing to show then.)
+    #[test]
+    fn a_page_file_that_does_not_read_does_not_open_blank() {
+        use std::os::unix::fs::PermissionsExt;
+        let r = plain_root("page-unread");
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("A", "", PAPER_BLANK, &mut nb), 0);
+        let path = page_path(&nb, nb.page_ids[0]);
+        let (mut w, mut h) = (0, 0);
+        store_notebook_page_size(&nb, &mut w, &mut h);
+        let mut p = None;
+        assert_eq!(store_load_page(&nb, 0, w, h, &mut p), 0);
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::File::open(&path).is_err() {
+            p = None;
+            assert_eq!(store_load_page(&nb, 0, w, h, &mut p), -1, "not blank paper");
+            assert!(p.is_none());
+            assert!(std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()), "left as it is");
+        }
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+        p = None;
+        assert_eq!(store_load_page(&nb, 0, w, h, &mut p), 0, "readable again");
+        assert!(p.is_some());
         let _ = std::fs::remove_dir_all(&r);
     }
 

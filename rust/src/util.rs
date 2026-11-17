@@ -804,22 +804,27 @@ pub fn open_read_nofollow(path: &str) -> std::io::Result<(std::fs::File, std::fs
 }
 
 /// A whole file of the data folder, or None: read_file for files with no limit of their own (pages, pictures,
+<<<<<<< Updated upstream
 /// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). (The C returns
 /// what it read when a read fails midway, as fread does; read_file does too, for now: whether a page file
 /// should is docs/BACKLOG.md's question. read_file_max does not.)
+=======
+/// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). A read that
+/// fails after the open (EINTR is retried) is None, never the part read: a page file that reads only in part
+/// does not open as a shorter page. (read_system_file keeps what it read, as the C's fread does.)
+>>>>>>> Stashed changes
 pub fn read_file(path: &str) -> Option<Vec<u8>> {
-    use std::io::Read;
-    let (mut f, _) = open_read_nofollow(path).ok()?;
+    let (f, _) = open_read_nofollow(path).ok()?;
+    read_file_from(f)
+}
+
+/// read_file's read of `f`: the tests' reader can fail partway.
+fn read_file_from(mut f: impl std::io::Read) -> Option<Vec<u8>> {
     let mut buf = Vec::new();
-    // (Straight into the buffer, sized from the file's length and grown as needed: a page file is
-    // megabytes, read in a handful of calls rather than one per 4 KB with a copy each. EINTR is
-    // retried. No memory for it is the C's NULL; after another error buf keeps what was read, as
-    // the C's fread leaves it.)
-    if let Err(e) = f.read_to_end(&mut buf) {
-        if e.kind() == std::io::ErrorKind::OutOfMemory {
-            return None;
-        }
-    }
+    // (Straight into the buffer, grown as needed: a page file is megabytes, read in a handful of calls
+    // rather than one per 4 KB with a copy each. EINTR is retried. Any error, no memory included, is not
+    // read: the part read is never handed back as the file.)
+    f.read_to_end(&mut buf).ok()?;
     Some(buf)
 }
 
@@ -851,7 +856,8 @@ fn read_file_max_from(f: impl std::io::Read, len: u64, cap: usize) -> Option<Vec
 }
 
 /// A whole file that is not the data folder's (the system's own: /proc, /sys, the Kindle's locale file; a
-/// developer's input to the simulator): read as before, links followed.
+/// developer's input to the simulator): links followed. A read that fails midway keeps what it read, as the C's
+/// fread does (read_file does not: a page file is read whole or not at all).
 pub fn read_system_file(path: &str) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut f = std::fs::File::open(path).ok()?;
@@ -1241,6 +1247,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+<<<<<<< Updated upstream
     // A read that fails partway is not read: none of what was read is handed back as the file.
     #[test]
     fn read_file_max_takes_nothing_from_a_read_that_fails_partway() {
@@ -1257,6 +1264,32 @@ mod tests {
                 Ok(n)
             }
         }
+=======
+    // A reader that gives its bytes, then fails as a file with an I/O error would.
+    struct FailsAfter(&'static [u8]);
+    impl std::io::Read for FailsAfter {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.0.is_empty() {
+                return Err(std::io::Error::from_raw_os_error(libc::EIO));
+            }
+            let n = self.0.len().min(buf.len());
+            buf[..n].copy_from_slice(&self.0[..n]);
+            self.0 = &self.0[n..];
+            Ok(n)
+        }
+    }
+
+    // A read that fails partway is not read: none of what was read is handed back as the file.
+    #[test]
+    fn read_file_takes_nothing_from_a_read_that_fails_partway() {
+        assert_eq!(read_file_from(FailsAfter(b"QPG1")), None);
+        assert_eq!(read_file_from(FailsAfter(b"")), None);
+        assert_eq!(read_file_from(std::io::Cursor::new(b"QPG1")).as_deref(), Some(&b"QPG1"[..]));
+    }
+
+    #[test]
+    fn read_file_max_takes_nothing_from_a_read_that_fails_partway() {
+>>>>>>> Stashed changes
         // (the bytes before the error would parse as a shorter file)
         assert_eq!(read_file_max_from(FailsAfter(b"invert=1\n"), 9, 64), None);
         assert_eq!(read_file_max_from(FailsAfter(b""), 0, 64), None);
