@@ -3188,7 +3188,7 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   of it goes). A page the worker cannot draw is marked alone (`<hash>-p<nnnn>.bad`), and so is a page whose worker
   ends or stalls twice on it (a fresh worker tries it once more; a stall right after the Kindle slept is tried again
   with no strike, as in an import); `DEAD_PAGES_MAX` (2) pages marked so make the whole PDF no template. No worker, no
-  room, a write that failed: nothing is marked.
+  room, the writer out of memory for a page's pixels (no strike either), a write that failed: nothing is marked.
 - **A file changed while its pages are made.** The job checks before it keeps the count and before it keeps each page
   that the open file is unchanged and still the plain file at the PDF's name (device, inode, size and time to the
   nanosecond), and its cache entries are keyed by the file it opened. A PDF written over, or another file put at its

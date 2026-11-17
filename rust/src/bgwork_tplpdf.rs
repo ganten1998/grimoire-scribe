@@ -23,8 +23,8 @@
 //!   worker lies, one that ends or stalls its worker twice while it is opened, and one with no page that draws, is
 //!   marked bad as a whole, as a picture is. A page the worker cannot draw is marked alone, and so is one whose
 //!   worker ends or stalls twice on it; DEAD_PAGES_MAX such pages mark the whole PDF. No worker to be had (a sandbox
-//!   step failed, none starts), no room, a file that changes while its pages are made: nothing is marked, and the
-//!   next look tries again.
+//!   step failed, none starts), no room, the writer out of memory for a page, a file that changes while its pages are
+//!   made: nothing is marked, and the next look tries again.
 //!
 //! grimoire.log never names the file here: page numbers, counts, sizes and reasons.
 
@@ -568,12 +568,11 @@ impl Run<'_> {
                     }
                 }
                 PageOutcome::NoMemory => {
+                    // (the writer could not hold the page's pixels, a size of its own: not the file's doing, and
+                    // another time it may, so no strike and no mark, as for a picture's preview)
                     self.sess = None;
-                    strikes += 1;
-                    qlog!("templates: page %d of a PDF left the writer without memory for its pixels (strike %d)", k as i32, strikes as i32);
-                    if strikes >= TRIES {
-                        return Ok(PageEnd::Marked(DIED));
-                    }
+                    qlog!("templates: page %d of a PDF left the writer without memory for its pixels; no strike", k as i32);
+                    return Err(Stop::Later("out of memory".into()));
                 }
                 PageOutcome::Failed(e) => {
                     self.sess = None;

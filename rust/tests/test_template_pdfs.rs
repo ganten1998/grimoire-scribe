@@ -350,6 +350,21 @@ fn a_page_that_fails_is_marked_alone() {
     clean_env();
 }
 
+// The writer without memory for a page's pixels (here a page size no memory holds): not the file's doing, so no strike
+// and no mark (two pages so would otherwise refuse the whole PDF for good); the slice stops, and a later look, with the
+// memory there, draws the pages.
+fn the_writer_out_of_memory_marks_nothing() {
+    clean_env();
+    folder(&[("Two.pdf", pdffix::planner(2))]);
+    let h = hash("Two.pdf");
+    store_set_device(DPI, 1 << 30, 1 << 30);
+    let (rc, log) = with_log("nomem", || job("Two.pdf"));
+    store_set_device(DPI, PW, PH);
+    check!(rc == -1 && log.contains("page 1 of a PDF left the writer without memory") && !log.contains("(strike"));
+    check!(cache_names() == [format!("{h}.pages")]);
+    check!(job_to_end("Two.pdf").0 == 0 && scan().iter().filter(|t| t.ready).count() == 2);
+}
+
 // A PDF swapped while its pages are made (another file renamed onto its name after page 1), or written over in place:
 // no page of the file after the change is kept, what was made of the old one goes, nothing is marked, and the next look
 // makes the pages of the file as it is now.
@@ -600,6 +615,7 @@ fn test_template_pdfs() {
     run!(the_page_cap_and_the_size);
     run!(refused_pdfs_are_marked);
     run!(a_page_that_fails_is_marked_alone);
+    run!(the_writer_out_of_memory_marks_nothing);
     run!(a_pdf_changed_while_its_pages_are_made);
     run!(no_room_makes_nothing);
     run!(a_template_pdf_is_never_imported);
