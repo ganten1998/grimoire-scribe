@@ -329,6 +329,9 @@ The smallest coherent reading was taken for each call; each can change without a
   (taken). The title is the host (a long one shows its end); the address is always shown whole, in Terminess in
   every look (any 200 bytes take at most 5 lines), title and address in a face that tells `l`, `1`, `I`, `O` and
   `0` apart. No new string: Done and "Scan with a phone's camera" are the catalog's.
+- **Where links meet** (taken): the user's own links, then the document's page links (each with its finger's
+  grown touch area), then a web link; a web link never takes the clock's corner. A whole-page web link (a
+  `/Rect` over the page is all it takes) never hides a tab or a link of the user's.
 - **Limits**: 4,000 a notebook (3,600 kept by an import's water level), 256 a page, as the document links' rule
   (taken). Refused addresses are counted in the import's log line; web links left out for room count in "Some links
   were left out.".

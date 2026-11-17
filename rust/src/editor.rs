@@ -6948,29 +6948,16 @@ fn web_link_under(a: &App, x: f32, y: f32) -> Option<(WebLink, bool)> {
     weblinks_at(&s.wl, page, s.nb.page_ids[s.index as usize], px, py, NAV_LINK_MIN_MM * a.dpi / 25.4)
 }
 
-// Whether a document link holds (x, y) on screen in its exact area (not only through the finger's growth).
-fn doc_link_exact(a: &App, d: &DocLink, x: f32, y: f32) -> bool {
-    let s = ed_ref(a);
-    let (mut px, mut py) = (0.0, 0.0);
-    to_page(s, x, y, &mut px, &mut py);
-    crate::doclinks::holds(d.area(), px, py)
-}
-
-// A finger's tap at (x, y): a link there goes to its page, or opens the Index. The user's links first, then a
-// document link (a planner's tab), then a web link (2.2: its card), which a document link that reaches the point
-// only through the finger's growth gives way to when the web link's own area holds it.
+// A finger's tap at (x, y): a link there goes to its page, or opens the Index. The user's links first (their
+// growth to a finger's 7 mm too), then a document link (a planner's tab, its growth too), then a web link (2.2: its
+// card): Grimoire's own links to pages win over a web link's area wherever they reach.
 fn link_follow(a: &mut App, x: f32, y: f32) {
     let mut l = NavLink::default();
     if !link_under(a, x, y, &mut l) {
-        let doc = doc_link_under(a, x, y);
-        let web = web_link_under(a, x, y);
-        match (doc, web) {
-            (Some(d), Some((w, true))) if !doc_link_exact(a, &d, x, y) => card_show_web(a, &w),
-            (Some(d), _) => {
-                follow_target(a, &format!("p{}", d.target));
-            }
-            (None, Some((w, _))) => card_show_web(a, &w),
-            (None, None) => {}
+        if let Some(d) = doc_link_under(a, x, y) {
+            follow_target(a, &format!("p{}", d.target));
+        } else if let Some((w, _)) = web_link_under(a, x, y) {
+            card_show_web(a, &w);
         }
         return;
     }
@@ -9954,9 +9941,10 @@ fn phase2_surface_at(s: &EditorState, x: i32, y: i32) -> bool {
 /// Whether the editor has a control at (x, y) for a finger on the page: the panel, or a link there. (A sheet, a
 /// menu or the Pages view that is up takes every tap: the clock and battery is not shown then, and asks no
 /// more.) The clock and battery corner leaves a tap on a control to it, but for the user's own link in its
-/// corner, which is not a control there: the corner's tap is the clock's, over such a link too. A document
-/// link (a planner's tab: D7a, taps follow document links) is the other way round: a tab under the corner
-/// takes the tap, and the corner's toggle works where none lies (the shortcut and Settings toggle it too).
+/// corner, which is not a control there: the corner's tap is the clock's, over such a link too, and over a web
+/// link (2.2: a whole-page one would otherwise take the corner). A document link (a planner's tab: D7a, taps
+/// follow document links) is the other way round: a tab under the corner takes the tap, and the corner's toggle
+/// works where none lies (the shortcut and Settings toggle it too).
 pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
     if crate::library::library_settings_active(a) {return true;}
     let s = ed_ref(a);
@@ -9967,7 +9955,7 @@ pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
         return true;
     }
     if status_hit(a, x, y) {
-        return doc_link_under(a, x, y).is_some() || web_link_under(a, x, y).is_some();
+        return doc_link_under(a, x, y).is_some();
     }
     let mut l = NavLink::default();
     link_under(a, x, y, &mut l) || doc_link_under(a, x, y).is_some() || web_link_under(a, x, y).is_some()

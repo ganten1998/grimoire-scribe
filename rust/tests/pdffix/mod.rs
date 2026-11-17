@@ -642,6 +642,25 @@ pub fn weblinks_wide() -> Vec<u8> {
     make_linked(&pages, &links, &Extra::default())
 }
 
+/// Three pages of 465 x 620 points (one point is 4 px on the Scribe's page; 2.2, issue #174). Page 1: a small tab
+/// (10 x 10 points, smaller than a finger: its touch area grows) to page 3, and a web link over the whole page drawn
+/// after it. Page 2: the same tab and no web link. The scenario taps where they overlap.
+pub fn weblinks_overlap() -> Vec<u8> {
+    let content = |k: usize| {
+        let mut c = String::new();
+        c.push_str("0 G 2 w 20 20 425 580 re S\n");
+        c.push_str(&format!("BT /F1 18 Tf 40 580 Td (Overlap {k}) Tj ET\n"));
+        if k < 3 {
+            c.push_str(&gray_rect(0.5, 20.0, 400.0, 10.0, 10.0)); // the small tab
+        }
+        c
+    };
+    let pages: Vec<PageSpec> = (1..=3).map(|k| PageSpec::new(465.0, 620.0, &content(k))).collect();
+    let tab = || Lnk::new([20.0, 400.0, 30.0, 410.0], Act::Page(3));
+    let links = vec![vec![tab(), Lnk::new([0.0, 0.0, 465.0, 620.0], Act::Uri("https://whole.example/"))], vec![tab()], vec![]];
+    make_linked(&pages, &links, &Extra::default())
+}
+
 fn planner_content_small(k: usize) -> String {
     let mut c = String::new();
     c.push_str("0 G 2 w 20 20 425 580 re S\n");
@@ -665,5 +684,6 @@ pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
         ("tabs/Tabs Planner.pdf", tabs()),
         ("weblinks/Links.pdf", weblinks()),
         ("weblinks_wide/Wide.pdf", weblinks_wide()),
+        ("weblinks_overlap/Overlap.pdf", weblinks_overlap()),
     ]
 }

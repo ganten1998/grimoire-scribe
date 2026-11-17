@@ -402,7 +402,7 @@ pub fn weblinks_boxes(wl: &WebLinks, p: &Page, pid: u32) -> Vec<Rect> {
 /// The web link a tap at (x, y) on page p (page pid) opens, as doclinks_at picks a document link: first the link
 /// whose exact area holds the point, the smallest; failing that, the one that reaches it only through the growth
 /// to min_px (a finger's 7 mm), the smallest of those; of equal boxes the later one. With it, whether its exact
-/// area holds the point (a document link that reaches the point only through its growth gives way to it).
+/// area holds the point. (The editor asks only where no link of the user's and no document link reaches.)
 pub fn weblinks_at(wl: &WebLinks, p: &Page, pid: u32, x: f32, y: f32, min_px: f32) -> Option<(WebLink, bool)> {
     let mine = weblinks_of(wl, pid);
     for pass in 0..2 {

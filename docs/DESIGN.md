@@ -1501,9 +1501,12 @@ code made from it, and nothing else.
   within 2 px; 256 a page; then `weblinks_water`, 90% of `WEBLINKS_MAX`, 4,000, the densest pages first); a fill's
   commit (`fill_weblinks`) adds the web links of the pages it adds only, the notebook's own never trimmed. Those left
   for room count in the end's "Some links were left out.".
-- **The editor**: `EditorState.wl`, read at open and pruned as `dl` is. A finger's tap with no link of the user's
-  under it tries a document link, then a web link (`weblinks_at`: exact area first, then the 7 mm growth); a
-  document link reached only through its growth gives way to a web link whose own area holds the point. The tap
+- **The editor**: `EditorState.wl`, read at open and pruned as `dl` is. What a finger's tap opens where links
+  meet (`link_follow`): the user's own links first, their touch area grown to a finger's 7 mm too; then the
+  document's page links (a planner's tabs), a small tab's grown finger margin too; then a web link (`weblinks_at`:
+  exact area first, then the 7 mm growth). Grimoire's own links to pages win over a web link's area wherever they
+  reach, so a whole-page web link never hides a tab. The clock's corner is the clock's over a web link, as over a
+  user's link (`editor_control_at`; a tab under the corner still takes the tap). The tap
   opens the long-press card in a form of its own (`linkcard_set_web`, `LinkCard.web`): the heavy border around the
   link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`, in Terminess
   bold; a host too long for the card shows "..." and its end, where its own name is), the address as stored and
@@ -1523,8 +1526,9 @@ code made from it, and nothing else.
   a page past 256); `test_pdf_fill.rs` (a fill, and a fill into a notebook with no `weblinks.ini`); `test_qr.rs`
   (`ui_qr_matches`, every address's code); `test_linkcard.rs` (the whole address and the host's end in every look
   the l10n check runs); scenarios `z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill` and
-  `z_weblinks_4_wide` (the longest address of wide letters in Literata), whose `editor.link_card.qr` checks the code
-  on the screen module for module against the address's.
+  `z_weblinks_4_wide` (the longest address of wide letters in Literata) and `z_weblinks_5_overlap` (what wins
+  where a web link meets a tab, a link of the user's and the clock's corner), whose `editor.link_card.qr` checks
+  the code on the screen module for module against the address's.
 
 ## The notebook PDF, incremental and streamed (2.1.0-beta.2, lane L9)
 

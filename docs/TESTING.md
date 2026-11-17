@@ -3321,8 +3321,8 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
 
 Not run on a Scribe yet. Automated: `weblinks.rs`'s unit tests, `test_weblinks.rs`, `test_pdflinks_import.rs` (the
 web links' tests), `test_pdf_fill.rs` (the two web links fills), `test_qr.rs`, `test_linkcard.rs`, and the scenarios
-`z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill` and `z_weblinks_4_wide` (docs/DESIGN.md, Web links as a QR
-card). The codes
+`z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill`, `z_weblinks_4_wide` and `z_weblinks_5_overlap`
+(docs/DESIGN.md, Web links as a QR card). The codes
 of `z_weblinks_1_card`'s two shots were read back with `tools/qrdecode.swift` (macOS Vision) as their addresses.
 What only the Scribe and a phone can tell: that the code scans from arm's length, on e-ink, under the room's light.
 The test PDF is `tests/fixtures/pdf/weblinks/Links.pdf` (three pages: a web link on page 1, an address on two lines
