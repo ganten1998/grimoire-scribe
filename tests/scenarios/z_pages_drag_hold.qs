@@ -1,4 +1,5 @@
 # rust-only
+# env: GRIMOIRE_SIM_CLOCK=script
 # generate: tests/drag_pages_fixture.py
 # The drag's own hold (2.0.0-beta.2, the owner's Scribe feedback of 2026-11-04: "Make the delay for reordering
 # smaller, so that it can safely be activated before the long-pressed management dialong. They are too
@@ -15,6 +16,11 @@
 # are the flick's 413 ms and the slow contact's 1.2 s, by `frame` offsets and not by a `wait` inside the contact:
 # the frame after a wait is stamped when the wait really ended, so the flick's `wait 300` that ended 400 ms late,
 # and some more on a runner whose timers wake late, lifted it past the 800 ms a flick has, issue #184)
+# (the script's clock, GRIMOIRE_SIM_CLOCK=script: the card's timer and a pen line read the app's clock, which a
+# wait moves by exactly its length. The pen's hold is a `pen down` and a `wait 350`, as pen lines have no frame
+# clock: by the real clock, with that wait ending 400 ms late, the pen was held 750 ms and the card opened before
+# it moved, which the drag then took down, issue #184. The frames of a contact run ahead of the app's clock, so the
+# drag's wait past the card's 600 ms is 700 ms from the down: a `wait 400` there ended at 400 ms by either clock.)
 # (the clock corner held still: its minute's refresh would land among the counted ones; and the launch repaints
 # the whole screen 1.2 s and 3.5 s after it starts: past both before counting)
 wait 3600
@@ -42,8 +48,8 @@ frame
 expect editor.pages.context is 0
 expect editor.pages.drag is 2 before 3
 expect display.presents is fast 1230 214 12 674
-# Still dragging past the card's 600 ms: no card, nothing drawn
-wait 400
+# Still dragging past the card's 600 ms (700 ms after the down): no card, nothing drawn
+wait 700
 expect editor.pages.context is 0
 expect editor.pages.drag is 2 before 3
 expect display.presents is
@@ -92,7 +98,7 @@ expect editor.page_ids is 1,2,3,4,5,6,7,8,9,10,11,12
 fpath 400 1300 1200 1280 200
 wait 200
 expect editor.pages.screen is 1
-# The same slowly (lifted after 1.2 s, on page 6's tile, after a real wait past the card's 600 ms while it is down):
+# The same slowly (lifted after 1.2 s, on page 6's tile, after a wait past the card's 600 ms while it is down):
 # nothing at all, no drag, no card, no tick
 finger 1 down 930 551
 frame 100
@@ -186,11 +192,12 @@ expect editor.page_ids is 4,6,1,2,3,5,7,8,9,10,11,12
 tap panel pages.undo-move
 wait 200
 expect editor.page_ids is 1,2,3,4,5,6,7,8,9,10,11,12
-# A pen held 350 ms drags too: page 9 to before page 8, no card
+# A pen held 350 ms drags too: page 9 to before page 8, no card (none up before it moves)
 tap panel pages.multi
 expect editor.ticked is 0
 pen down 1542 1947
 wait 350
+expect editor.pages.context is 0
 pen move 1400 1947
 expect editor.pages.context is 0
 pen move 800 1947
