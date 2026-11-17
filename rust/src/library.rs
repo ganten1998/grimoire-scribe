@@ -6693,6 +6693,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                         app_toast(a, tr("Couldn't rename folder. Check name and destination."), 3500);
                     } else {
                         folder_follow(a, it.folder.as_str());
+                        home_follow(a, it.folder.as_str(), dest.as_str());
                     }
                 }
             }
@@ -6732,6 +6733,7 @@ fn move_folder(a: &mut App, it: &Item, parent: &str) -> bool {
         return false;
     }
     folder_follow(a, &old);
+    home_follow(a, &old, dest.as_str());
     false
 }
 
@@ -6752,17 +6754,17 @@ fn merge_asked(a: &mut App, old: &str, dest: &str) -> bool {
 fn merge_answer(a: &mut App, both: bool) {
     let s = lib(a);
     let (old, dest) = (s.merge_old.as_str().to_string(), s.merge_dest.as_str().to_string());
-    let rc = if both {
-        match store_folder_unique(&dest) {
-            Some(path) => store_rename_folder(&old, &path),
-            None => -1,
-        }
-    } else {
-        store_merge_folder(&old, &dest)
+    // (where the folder is afterwards: beside the one that is there under its new name, or in it)
+    let to = if both { store_folder_unique(&dest) } else { Some(dest.clone()) };
+    let rc = match &to {
+        Some(path) if both => store_rename_folder(&old, path),
+        Some(_) => store_merge_folder(&old, &dest),
+        None => -1,
     };
     lib(a).modal = Modal::None;
     if rc == 0 {
         folder_follow(a, &old);
+        home_follow(a, &old, to.as_deref().unwrap_or(&dest));
     } else {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Merge into it or Keep both
         // could not be done; nothing was changed.
@@ -6786,6 +6788,20 @@ fn folder_follow(a: &mut App, old: &str) {
     let mirror_dir = app_mirror_dir();
     for f in gone {
         export_mirror_prune_folder(&f, &mirror_dir);
+    }
+}
+
+/// After the folder old was renamed, moved or merged, and is `new` now: a home that was that folder, or a folder
+/// inside it, is that folder still, under its new path (2.2, issue #160), so Grimoire opens there as before. A
+/// path home cannot keep leaves home as it was: it is found gone the next time Grimoire goes there.
+fn home_follow(a: &mut App, old: &str, new: &str) {
+    let Home::Library(f) = home_of(a) else { return };
+    if !store_folder_contains(old, &f) {
+        return;
+    }
+    let moved = Home::Library(format!("{new}{}", &f[old.len()..]));
+    if Home::parse(moved.value().as_bytes()) == Some(moved.clone()) {
+        home_save(a, moved);
     }
 }
 
@@ -10415,6 +10431,58 @@ mod tests {
         assert!(files_shown(&a) && files_place_now(&mut a) == "documents/Planners", "after the notebook: home");
         std::env::remove_var("GRIMOIRE_HOST");
         std::env::remove_var("GRIMOIRE_BOOK");
+        home_done(a, root);
+    }
+
+    // A rename, a move or a merge of the Library folder that is home, or of a folder it is in, takes home along, so
+    // Grimoire opens there as before; a folder whose name only begins the same is another folder.
+    #[test]
+    fn a_rename_move_or_merge_of_the_library_folder_takes_home_along() {
+        let (mut a, root) = home_app("folderrename");
+        reload(&mut a);
+        // (the Rename folder keyboard's Done)
+        let rename = |a: &mut App, folder: &str, to: &str| {
+            let s = lib(a);
+            s.target = s.items.iter().position(|it| it.is_folder && it.folder.as_str() == folder).unwrap() as i32;
+            s.kbp = KbPurpose::RenameFolder;
+            s.kb_parent = Modal::None;
+            keyboard_open(&mut s.kb, "", to.as_bytes());
+            s.modal = Modal::Kb;
+            kb_finished(a, true);
+        };
+        home_save(&mut a, Home::Library("School".into()));
+        rename(&mut a, "School", "Uni");
+        assert_eq!(lib(&mut a).folders, ["Uni", "Uni/2026"]);
+        assert_eq!(a.settings.home.as_str(), "notebooks/Uni");
+        assert_eq!(home_line(&root).as_deref(), Some("notebooks/Uni"));
+        // a folder home is in, renamed; and one whose name only begins the same, which is not it
+        home_save(&mut a, Home::Library("Uni/2026".into()));
+        assert_eq!(store_add_folder("Uni2"), 0);
+        reload(&mut a);
+        rename(&mut a, "Uni2", "Other");
+        assert_eq!(a.settings.home.as_str(), "notebooks/Uni/2026");
+        rename(&mut a, "Uni", "School");
+        assert_eq!(a.settings.home.as_str(), "notebooks/School/2026");
+        // moved into another folder
+        let it = *lib(&mut a).items.iter().find(|it| it.is_folder && it.folder.as_str() == "School").unwrap();
+        assert!(!move_folder(&mut a, &it, "Other"));
+        reload(&mut a);
+        assert_eq!(lib(&mut a).folders, ["Other", "Other/School", "Other/School/2026"]);
+        assert_eq!(a.settings.home.as_str(), "notebooks/Other/School/2026");
+        // merged into a folder that is there, and kept beside one
+        assert_eq!(store_add_folder("School"), 0);
+        assert!(merge_asked(&mut a, "Other/School", "School"));
+        merge_answer(&mut a, false);
+        assert_eq!(a.settings.home.as_str(), "notebooks/School/2026");
+        assert_eq!(store_add_folder("Other/School"), 0);
+        assert!(merge_asked(&mut a, "School", "Other/School"));
+        merge_answer(&mut a, true);
+        assert_eq!(a.settings.home.as_str(), "notebooks/Other/School 2/2026");
+        assert_eq!(home_line(&root).as_deref(), Some("notebooks/Other/School 2/2026"));
+        // home goes there
+        assert!(library_shortcut(&mut a, SHORTCUT_HOME));
+        assert_eq!(lib(&mut a).cur_folder.as_str(), "Other/School 2/2026");
+        assert!(!a.toast_visible);
         home_done(a, root);
     }
 
