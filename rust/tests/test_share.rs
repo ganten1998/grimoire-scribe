@@ -495,6 +495,43 @@ fn share_x_and_esc_close_share_while_it_asks() {
     std::env::remove_var("GRIMOIRE_SIM_ADDRS");
 }
 
+// An Import tap says what happened: in the moment the question ends without it (here the browser hung up, which the
+// tap's own poll finds) "Not imported.", and a rename that fails for another reason than a full storage the log's
+// sentence (here import/ is a link, which the rename never follows).
+fn an_import_tap_says_what_happened() {
+    let mut a = share_app();
+    let root = store_root();
+    let s = send_pdf(&mut a, "Gone.pdf");
+    a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
+    a.toast.set("");
+    let (ix, iy) = grimoire::share::share_control_point(&a, "ask.import").unwrap();
+    drop(s);
+    std::thread::sleep(Duration::from_millis(20));
+    let t = now_ms();
+    touch(&mut a, true, ix, iy, t);
+    touch(&mut a, false, ix, iy, t + 80);
+    check!(probe(&mut a, "share.ask").is_empty() && a.toast.as_str() == "Not imported.");
+    check!(!std::path::Path::new(&format!("{root}/import/Gone.pdf")).exists());
+    // import/ a link: the rename refuses it, and the toast does not blame the storage
+    let import = format!("{root}/import");
+    let _ = std::fs::create_dir_all(&import);
+    check!(std::fs::rename(&import, format!("{root}/import.real")).is_ok());
+    check!(std::os::unix::fs::symlink(format!("{root}/import.real"), &import).is_ok());
+    let mut s = send_pdf(&mut a, "Linked.pdf");
+    a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
+    let t = now_ms();
+    touch(&mut a, true, ix, iy, t);
+    touch(&mut a, false, ix, iy, t + 80);
+    check!(a.toast.as_str() == "Couldn't import PDF (see grimoire.log).");
+    check!(answer(&mut a, &mut s).ends_with("could not keep it\n"));
+    check!(!std::path::Path::new(&format!("{root}/import.real/Linked.pdf")).exists());
+    check!(!std::path::Path::new(&grimoire::upload::part_path()).exists());
+    check!(std::fs::remove_file(&import).is_ok() && std::fs::rename(format!("{root}/import.real"), &import).is_ok());
+    share_leave(&mut a);
+    share_free(&mut a);
+    std::env::remove_var("GRIMOIRE_SIM_ADDRS");
+}
+
 #[test]
 fn test_share() {
     let root = format!("{}/share-{}", tl_tmp(), std::process::id());
@@ -511,6 +548,7 @@ fn test_share() {
     run!(the_question_asks_and_only_a_tap_after_it_was_shown_answers);
     run!(a_question_that_ends_is_taken_away_before_another_is_drawn);
     run!(share_x_and_esc_close_share_while_it_asks);
+    run!(an_import_tap_says_what_happened);
     std::env::remove_var("GRIMOIRE_UPLOAD_QUIET_MS");
     let _ = std::fs::remove_dir_all(&root);
     done();

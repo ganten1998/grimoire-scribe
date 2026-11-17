@@ -943,7 +943,9 @@ fn ask_sync(a: &mut App) {
 }
 
 /// The user's answer to the question shown: Import (the PDF into grimoire/import, where the Library's import takes
-/// it) or Cancel (it goes). The screen under the sheet is drawn again, and Import's toast says where it went.
+/// it) or Cancel (it goes). The screen under the sheet is drawn again, and Import's toast says what happened: where
+/// it went, why it could not go (a full storage, or the log's reason), or that it was not imported, when the question
+/// ended in the same moment without this answer (the browser gone, its time up).
 fn ask_answer(a: &mut App, import: bool) {
     let Some(k) = s(a).ask.take() else { return };
     let r = httpd_upload_answer(k.serial, import);
@@ -951,7 +953,9 @@ fn ask_answer(a: &mut App, import: bool) {
     app_invalidate(a, k.rect, RefreshMode::Ui);
     match r {
         Some(Ok(_)) => app_toast(a, &cformat!(tr("Copied to %s."), "grimoire/import"), 3000),
-        Some(Err(_)) => app_toast(a, tr("Couldn't import PDF. Is the storage full?"), 4000),
+        Some(Err(libc::ENOSPC)) => app_toast(a, tr("Couldn't import PDF. Is the storage full?"), 4000),
+        Some(Err(_)) => app_toast(a, &cformat!(tr("Couldn't import PDF (see %s)."), "grimoire.log"), 4000),
+        None if import => app_toast(a, tr("Not imported."), 3000),
         None => {}
     }
 }

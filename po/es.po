@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 10:33-0600\n"
+"POT-Creation-Date: 2026-11-17 11:00-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -811,7 +811,7 @@ msgstr "No se pudo importar el PDF. ¿Está lleno el almacenamiento?"
 #. TRANSLATORS: a toast: the PDF could not become a notebook; %s is the log file that says why.
 #. The PDF stays where it was.
 #. TRANSLATORS: a row of the Import place: this PDF could not become a notebook; %s is the log that says why.
-#: rust/src/app.rs rust/src/browser.rs rust/src/library.rs
+#: rust/src/app.rs rust/src/browser.rs rust/src/library.rs rust/src/share.rs
 #, c-format
 msgid "Couldn't import PDF (see %s)."
 msgstr "No se pudo importar el PDF (detalles en %s)."

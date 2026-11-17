@@ -3228,14 +3228,15 @@ only controls; it answers only a tap that comes down after its frame was shown (
 Delete questions) and lifts on the row it came down on. **Share's X, outside the sheet, is its Cancel and closes
 Share**, at once (a refusal waits for nothing, so a question that comes again after every answer cannot keep Share
 open), and so is Esc, which closes Share as it does without a question; a turn draws it at its new place and asks
-again. Import:
-`Part::commit` renames the file into `grimoire/import` under the name, or " 2", " 3"... before `.pdf` where taken,
-**never over a file** (fsview's `rename_noreplace`, the folder reached with O_NOFOLLOW), says "Copied to
+again. Import: `Part::commit` renames the file into `grimoire/import` under the name, or " 2", " 3"... before `.pdf`
+where taken, **never over a file** (fsview's `rename_noreplace`, the folder reached with O_NOFOLLOW), says "Copied to
 grimoire/import.", ends the browser's reply with `imported`, and asks the Library's scan to look as soon as the
-Library is in front (`pdfimport::rescan_soon`); a rename that fails says "Couldn't import PDF. Is the storage full?"
-and keeps nothing. Cancel keeps nothing and ends the reply with `declined on the Kindle`. **A question that ends
-without an answer here, for whatever reason (no answer in two minutes, a second PDF sent, the browser gone), is taken
-away first, with the toast "Not imported.", and only then can another be drawn** (`ask_sync`): a question is never
+Library is in front (`pdfimport::rescan_soon`); a rename that fails keeps nothing and says why: "Couldn't import PDF.
+Is the storage full?" when the storage is full, else "Couldn't import PDF (see grimoire.log)." (the log has the
+reason). An Import tap in the moment the question ends without it (the browser gone, its time up) says "Not
+imported.". Cancel keeps nothing and ends the reply with `declined on the Kindle`. **A question that ends without an
+answer here, for whatever reason (no answer in two minutes, a second PDF sent, the browser gone), is taken away
+first, with the toast "Not imported.", and only then can another be drawn** (`ask_sync`): a question is never
 replaced in place, even by one that reads the same.
 
 **After the yes** the file is a PDF in `grimoire/import` like one copied over USB: the scan takes it once it holds
