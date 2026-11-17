@@ -393,6 +393,14 @@ pub fn tplsheet_open_photos(s: &mut TplSheet, a: &mut App, nb: &NotebookInfo, cu
     open_folder(s, a, Some(nb), current, None, true);
 }
 
+/// The page's part of a template PDF's page tile name (#172, bgwork_tplpdf.rs): a space and its number as the Pages
+/// view writes a book's page (" p. 3").
+pub fn pdf_page_suffix(page: u32) -> String {
+    // TRANSLATORS: (also) after the name of a PDF in grimoire/templates, under a tile of the Templates sheet: which
+    // of the PDF's pages the tile is ("Planner p. 3"). %d is the page's number.
+    format!(" {}", cformat!(tr("p. %d"), page as i32))
+}
+
 // A template's name under its tile, on one line no wider than the tile: centred, or cut short as
 // names are (the fit check does not hear of a name, which is the owner's). A PDF's page (#172) keeps its number in
 // view: the file's name is cut short before it.
@@ -404,7 +412,7 @@ fn tile_name(c: &mut Canvas, tr: Rect, name: &str, page: u32, selected: bool) {
     if w < lr.w {
         lr = Rect { x: lr.x + (lr.w - w) / 2, y: lr.y, w: w + 1, h: lr.h };
     } else if page > 0 {
-        let suffix = crate::bgwork_tplpdf::page_suffix(page);
+        let suffix = pdf_page_suffix(page);
         let sw = font_measure(f, px, &suffix);
         if let Some(base) = name.strip_suffix(suffix.as_str()).filter(|_| sw < lr.w / 2) {
             font_draw_left_name(c, f, px, Rect { w: lr.w - sw, ..lr }, base, 0);

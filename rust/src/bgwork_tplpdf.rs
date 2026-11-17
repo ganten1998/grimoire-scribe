@@ -152,17 +152,9 @@ pub fn page_stem(path: &str) -> Option<&str> {
     ok.then(|| &path[..path.len() - 4])
 }
 
-/// The page's part of a PDF page's tile name: a space and its number as the Pages view writes a book's page
-/// (" p. 3").
-pub fn page_suffix(page: u32) -> String {
-    // TRANSLATORS: (also) after the name of a PDF in grimoire/templates, under a tile of the Templates sheet: which
-    // of the PDF's pages the tile is ("Planner p. 3"). %d is the page's number.
-    format!(" {}", cformat!(tr("p. %d"), page as i32))
-}
-
 /// A PDF page's tile name: the file's name (cut short at a character so the page's part fits) and the page's part.
 pub fn page_name(base: &str, page: u32) -> String {
-    let suffix = page_suffix(page);
+    let suffix = crate::tplsheet::pdf_page_suffix(page);
     let room = (STORE_NAME_LEN - 1).saturating_sub(suffix.len());
     format!("{}{suffix}", cut_at_bytes(base, room))
 }
