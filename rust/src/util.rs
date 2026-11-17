@@ -804,21 +804,9 @@ pub fn open_read_nofollow(path: &str) -> std::io::Result<(std::fs::File, std::fs
 }
 
 /// A whole file of the data folder, or None: read_file for files with no limit of their own (pages, pictures,
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-/// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). (The C returns
-/// what it read when a read fails midway, as fread does; read_file does too, for now: whether a page file
-/// should is docs/BACKLOG.md's question. read_file_max does not.)
-=======
 /// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). A read that
 /// fails after the open (EINTR is retried) is None, never the part read: a page file that reads only in part
 /// does not open as a shorter page. (read_system_file keeps what it read, as the C's fread does.)
->>>>>>> Stashed changes
-=======
-/// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). A read that
-/// fails after the open (EINTR is retried) is None, never the part read: a page file that reads only in part
-/// does not open as a shorter page. (read_system_file keeps what it read, as the C's fread does.)
->>>>>>> Stashed changes
 pub fn read_file(path: &str) -> Option<Vec<u8>> {
     let (f, _) = open_read_nofollow(path).ok()?;
     read_file_from(f)
@@ -1253,27 +1241,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-    // A read that fails partway is not read: none of what was read is handed back as the file.
-    #[test]
-    fn read_file_max_takes_nothing_from_a_read_that_fails_partway() {
-        use std::io::Read;
-        struct FailsAfter(&'static [u8]);
-        impl Read for FailsAfter {
-            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-                if self.0.is_empty() {
-                    return Err(std::io::Error::from_raw_os_error(libc::EIO));
-                }
-                let n = self.0.len().min(buf.len());
-                buf[..n].copy_from_slice(&self.0[..n]);
-                self.0 = &self.0[n..];
-                Ok(n)
-            }
-        }
-=======
-=======
->>>>>>> Stashed changes
     // A reader that gives its bytes, then fails as a file with an I/O error would.
     struct FailsAfter(&'static [u8]);
     impl std::io::Read for FailsAfter {
@@ -1298,10 +1265,6 @@ mod tests {
 
     #[test]
     fn read_file_max_takes_nothing_from_a_read_that_fails_partway() {
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
         // (the bytes before the error would parse as a shorter file)
         assert_eq!(read_file_max_from(FailsAfter(b"invert=1\n"), 9, 64), None);
         assert_eq!(read_file_max_from(FailsAfter(b""), 0, 64), None);
