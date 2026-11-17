@@ -734,6 +734,9 @@ pub struct State {
     /// the page ids the UI's commit gave the pages: (book page, page id), kept so a commit taken up again writes
     /// the same files, and adds its links and names to those pages only
     pub ids: Vec<(u32, u32)>,
+    /// darker lines (2.2, issue #173): the gamma every gray page of this import is drawn at, decided by its first
+    /// slice and kept here so every slice draws at it (`gamma=`, a line only when it is not Off)
+    pub gamma: Gamma,
 }
 
 /// A fill's pages are being made (the writer's slices).
@@ -786,8 +789,9 @@ impl State {
             let ids = self.ids.iter().map(|(p, id)| format!("{p}:{id}")).collect::<Vec<_>>().join(",");
             format!("fill={}\ntodo={}\npage_w={}\npage_h={}\nsig={:x}\nstage={}\nids={ids}\n", clean_field(&self.fill), join(&self.todo, false), self.page_w, self.page_h, self.sig, self.stage)
         };
+        let gamma = if self.gamma == Gamma::Off { String::new() } else { format!("gamma={}\n", self.gamma.name()) };
         format!(
-            "# Grimoire: a PDF import in progress (docs/FORMAT.md)\nsrc={}\nsize={}\nmtime={}\nkey={}\npages={}\nnext={}\npics={}\nblank={}\nstrikes={}\ncpu_ms={}\npick={}\nname={}\nfolder={}\nbytes={}\nopen={}\nstops={}\n{fill}",
+            "# Grimoire: a PDF import in progress (docs/FORMAT.md)\nsrc={}\nsize={}\nmtime={}\nkey={}\npages={}\nnext={}\npics={}\nblank={}\nstrikes={}\ncpu_ms={}\npick={}\nname={}\nfolder={}\nbytes={}\nopen={}\nstops={}\n{gamma}{fill}",
             self.src,
             self.size,
             self.mtime,
@@ -864,6 +868,8 @@ impl State {
                 "bytes" => s.bytes = v.parse().ok()?,
                 "open" => s.open = v == "1",
                 "stops" => s.stops = v.parse().ok()?,
+                // (only the three known values: anything else is no gamma)
+                "gamma" => s.gamma = Gamma::parse(v.as_bytes()),
                 "fill" => {
                     let mut d = String::new();
                     if v.is_empty() || v.len() >= STORE_ID_LEN || store_notebook_dir(v, &mut d, 700) != 0 {
@@ -2982,7 +2988,11 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
             }
             let outcome = sess.as_mut().map(|s| s.render(page, pw, ph, bands));
             let why = match outcome {
-                Some(PageOutcome::Page(p)) => break p,
+                Some(PageOutcome::Page(mut p)) => {
+                    // darker lines: a gray page through the import's gamma; a colour page as it came (issue #173)
+                    darken(&mut p, state.gamma);
+                    break p;
+                }
                 Some(PageOutcome::Died(Death::TimeoutAfterWake)) if !woke_again.contains(&page) => {
                     sess = None;
                     woke_again.push(page);
@@ -4161,6 +4171,26 @@ mod tests {
         assert_eq!(back.blank, vec![2]);
         assert_eq!(back.strikes_of(2), 2);
         assert_eq!(back.strikes_of(9), 0);
+    }
+
+    // Darker lines (2.2, issue #173): the import's gamma rides in its state, a line only when it is not Off, so a
+    // state at Off is the text it was before; a value the state does not know is no gamma.
+    #[test]
+    fn state_keeps_the_imports_gamma() {
+        let off = sample_state();
+        assert!(!off.text().contains("gamma"), "{}", off.text());
+        for g in [Gamma::Medium, Gamma::Strong] {
+            let s = State { gamma: g, ..sample_state() };
+            assert!(s.text().contains(&format!("\ngamma={}\n", g.name())));
+            assert_eq!(State::parse(s.text().as_bytes()), Some(s.clone()));
+            let fill = State { fill: "20261115-120000-ab12".into(), todo: vec![2, 4, 5], page_w: 600, page_h: 800, ..s };
+            assert_eq!(State::parse(fill.text().as_bytes()).map(|b| b.gamma), Some(g));
+        }
+        let t = State { gamma: Gamma::Strong, ..sample_state() }.text();
+        for bad in ["gamma=2", "gamma=4.0", "gamma=", "gamma=2.0 "] {
+            let back = State::parse(t.replace("gamma=2.0", bad).as_bytes()).expect("the state reads");
+            assert_eq!(back.gamma, Gamma::Off, "{bad}");
+        }
     }
 
     #[test]
