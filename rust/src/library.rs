@@ -5909,6 +5909,11 @@ fn draw_modal(a: &mut App) {
                 menu_row(IconKind::Close,tr("Cancel"),H_CANCEL,0,ButtonStyle::Plain,
                 ),
             ];
+            // (no Set as home for a folder whose path settings.ini could not keep as it is: a control character a
+            // hand-written notebook.ini gave its name, 2.2)
+            let home = Home::Library(it.folder.as_str().to_string());
+            let keeps = Home::parse(home.value().as_bytes()) == Some(home);
+            let rows: Vec<MenuRow> = rows.into_iter().filter(|r| keeps || r.id != H_FMORE_HOME || r.arg != 0).collect();
             let title = name_label(it.folder.as_str());
             draw_menu(a, &title, &rows);
         }
@@ -10401,6 +10406,18 @@ mod tests {
         assert!(library_shortcut(&mut a, SHORTCUT_HOME));
         assert!(lib(&mut a).cur_folder.is_empty() && a.toast_visible && a.toast.as_str() == "Home folder not found.");
         assert!(a.settings.home.is_empty() && home_line(&root).is_none());
+        // a folder whose path settings.ini could not keep as it is (a tab in its name, as a hand-written folders.ini
+        // can give it): its menu has no Set as home; another folder's has
+        for (name, offered) in [("Ta\tb", false), ("Plain", true)] {
+            assert_eq!(store_add_folder(name), 0);
+            reload(&mut a);
+            let i = lib(&mut a).items.iter().position(|it| it.is_folder && it.folder.as_str() == name).unwrap();
+            act(&mut a, &Hit { id: H_CARD_MORE, arg: i as i32, ..Default::default() });
+            assert_eq!(lib(&mut a).modal, Modal::FolderMore);
+            assert_eq!(lib(&mut a).hits.h.iter().any(|h| h.id == H_FMORE_HOME), offered, "{name:?}");
+            assert!(lib(&mut a).hits.h.iter().any(|h| h.id == H_FMORE_RENAME));
+            close_modal(&mut a);
+        }
         home_done(a, root);
     }
 
