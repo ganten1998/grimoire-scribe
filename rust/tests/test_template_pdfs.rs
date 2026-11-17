@@ -614,6 +614,30 @@ fn the_pages_wait_behind_other_jobs() {
     clean_env();
 }
 
+// Grimoire ending (bg_detach_rest): a template PDF's job still queued (here behind a picture's job that runs) is
+// dropped, not handed to the detached child that finishes the rest: the next look queues it again, and it goes on from
+// the pages made.
+fn the_pdf_jobs_queued_at_exit_are_dropped() {
+    clean_env();
+    folder(&[("A.pdf", pdffix::planner(2))]);
+    let path = format!("{}/A.pdf", tpl());
+    std::env::set_var("GRIMOIRE_BG_DELAY_MS", "1500");
+    let (queued, log) = with_log("detach", || {
+        bg_queue(BgKind::Template, Some("no-such-notebook"), Some("/nonexistent.png"), DPI, true);
+        bg_queue(BgKind::Template, Some(""), Some(&path), DPI, false);
+        let queued = bg_job_pending(BgKind::Template, "", &path);
+        bg_detach_rest();
+        queued
+    });
+    std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
+    check!(queued && log.contains("bg: 1 template PDF job(s) left for the next look (Grimoire ends)"));
+    check!(!log.contains("left to a detached child") && !bg_job_pending(BgKind::Template, "", &path));
+    settle();
+    sleep_ms(500);
+    check!(cache_names().is_empty());
+    clean_env();
+}
+
 // The Templates sheet over a folder with a PDF: one waiting tile for it; once its job has counted the pages the folder
 // is read again and its pages take its place, but never under a contact: after the lift. Their previews fill in.
 fn the_sheet_reads_the_folder_again_once_the_pages_are_counted() {
@@ -770,6 +794,7 @@ fn test_template_pdfs() {
     run!(pictures_alone_are_as_they_were);
     run!(a_picture_beside_a_pdf);
     run!(the_pages_wait_behind_other_jobs);
+    run!(the_pdf_jobs_queued_at_exit_are_dropped);
     run!(the_sheet_reads_the_folder_again_once_the_pages_are_counted);
     run!(a_pdfs_unusable_tiles_stay_crossed_out);
     run!(the_page_in_view_stays_when_a_pdf_is_counted);
