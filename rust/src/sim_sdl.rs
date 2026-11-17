@@ -1594,7 +1594,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
         && !libindex_probe(&key, &mut got, GOT_CAP)
-        && !upload_probe(&key, &mut got, GOT_CAP)
+        && !upload_probe(a.as_deref(), &key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {
         err(&bformat("expect failed (line %d): unknown key \"%s\"\n", &[B::D(line), B::S(&key)]));
@@ -1732,8 +1732,14 @@ enum Step {
     Upload(String, String),
 }
 
-/// What each `upload` line's browser was answered, in order: "<status> <text>", or None while it waits.
-static UPLOADS: std::sync::Mutex<Vec<Option<String>>> = std::sync::Mutex::new(Vec::new());
+/// What each `upload` line's browser had, in order: its answer, "<status> <last line>", None while it waits; and the
+/// send's code from its reply's first line, once it came (a send the Kindle asked about).
+#[derive(Clone, Default)]
+struct Sent {
+    reply: Option<String>,
+    code: Option<String>,
+}
+static UPLOADS: std::sync::Mutex<Vec<Sent>> = std::sync::Mutex::new(Vec::new());
 
 /// A browser on the Wi-Fi sending `file` (its whole path) to the share server on `port`, in a thread of its own (the main loop serves
 /// it meanwhile): it loads the Share page for its token, then sends the file's bytes as web/upload.js does, its name
@@ -1742,29 +1748,44 @@ static UPLOADS: std::sync::Mutex<Vec<Option<String>>> = std::sync::Mutex::new(Ve
 fn sim_upload(port: i32, mode: String, file: String) {
     let slot = {
         let mut u = UPLOADS.lock().unwrap_or_else(|e| e.into_inner());
-        u.push(None);
+        u.push(Sent::default());
         u.len() - 1
     };
     std::thread::spawn(move || {
-        let r = sim_upload_run(port as u16, &mode, &file).unwrap_or_else(|e| format!("error {e}"));
-        UPLOADS.lock().unwrap_or_else(|e| e.into_inner())[slot] = Some(r);
+        let r = sim_upload_run(port as u16, &mode, &file, slot).unwrap_or_else(|e| format!("error {e}"));
+        UPLOADS.lock().unwrap_or_else(|e| e.into_inner())[slot].reply = Some(r);
     });
 }
 
-fn sim_http(port: u16, head: &str, body: &[u8]) -> Result<Vec<u8>, String> {
+/// One request and everything its answer holds, to the close; `seen` is given what has come after each read.
+fn sim_http(port: u16, head: &str, body: &[u8], mut seen: impl FnMut(&[u8])) -> Result<Vec<u8>, String> {
     use std::io::Read;
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
     let _ = s.set_read_timeout(Some(Duration::from_secs(180)));
     s.write_all(head.as_bytes()).map_err(|e| e.to_string())?;
     let _ = s.write_all(body); // (a refusal may close the connection before the body is all sent)
     let mut out = Vec::new();
-    let _ = s.read_to_end(&mut out);
+    let mut b = [0u8; 4096];
+    while let Ok(n) = s.read(&mut b) {
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&b[..n]);
+        seen(&out);
+    }
     Ok(out)
 }
 
-fn sim_upload_run(port: u16, mode: &str, file: &str) -> Result<String, String> {
+/// The send's code in what has come of an answer: the four digits of its body's first line, `code NNNN`.
+fn sim_code(out: &[u8]) -> Option<String> {
+    let at = out.windows(4).position(|w| w == b"\r\n\r\n")? + 4;
+    let line = out[at..].strip_prefix(b"code ")?;
+    (line.len() >= 5 && line[..4].iter().all(u8::is_ascii_digit) && line[4] == b'\n').then(|| String::from_utf8_lossy(&line[..4]).into_owned())
+}
+
+fn sim_upload_run(port: u16, mode: &str, file: &str, slot: usize) -> Result<String, String> {
     let body = std::fs::read(file).map_err(|e| e.to_string())?;
-    let page = sim_http(port, &format!("GET / HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n"), b"")?;
+    let page = sim_http(port, &format!("GET / HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n"), b"", |_| {})?;
     let page = String::from_utf8_lossy(&page);
     const AT: &str = "window.GRIMOIRE_UPLOAD={\"token\":\"";
     let token: String = page.find(AT).map(|i| page[i + AT.len()..].chars().take_while(|c| c.is_ascii_hexdigit()).collect()).unwrap_or_default();
@@ -1782,23 +1803,43 @@ fn sim_upload_run(port: u16, mode: &str, file: &str) -> Result<String, String> {
         "POST /upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: {origin}\r\nContent-Type: application/pdf\r\nContent-Length: {}\r\n{token}X-Grimoire-Name: {name}\r\n\r\n",
         body.len()
     );
-    let r = sim_http(port, &head, &body)?;
+    let r = sim_http(port, &head, &body, |out| {
+        if let Some(code) = sim_code(out) {
+            UPLOADS.lock().unwrap_or_else(|e| e.into_inner())[slot].code.get_or_insert(code);
+        }
+    })?;
     let r = String::from_utf8_lossy(&r);
-    let code = r.split(' ').nth(1).unwrap_or("0");
+    let status = r.split(' ').nth(1).unwrap_or("0");
+    // (a send the Kindle asked about says its code first and its answer last: the answer is the last line)
     let text = r.split_once("\r\n\r\n").map_or("", |x| x.1).trim_end();
-    Ok(format!("{code} {text}"))
+    Ok(format!("{status} {}", text.rsplit('\n').next().unwrap_or("")))
 }
 
-/// "upload.reply.N": the answer the Nth `upload` line's browser had, "" while it waits; "upload.count": how many.
-fn upload_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
+/// "upload.reply.N": the answer the Nth `upload` line's browser had, "" while it waits; "upload.count": how many;
+/// "upload.samecode.N": "1" when the code the Nth browser was given is the one under the question the Kindle shows,
+/// "0" when it is another, "" while either has none.
+fn upload_probe(a: Option<&App>, key: &[u8], out: &mut String, cap: usize) -> bool {
     let u = UPLOADS.lock().unwrap_or_else(|e| e.into_inner());
     if key == b"upload.count" {
         csnprintf!(out, cap, "%d", u.len() as i32);
         return true;
     }
-    let Some(n) = key.strip_prefix(b"upload.reply.").and_then(|n| std::str::from_utf8(n).ok()?.parse::<usize>().ok()) else { return false };
-    let v = n.checked_sub(1).and_then(|i| u.get(i)).and_then(|r| r.clone()).unwrap_or_default();
-    csnprintf!(out, cap, "%s", &v);
+    let nth = |prefix: &[u8]| key.strip_prefix(prefix).and_then(|n| std::str::from_utf8(n).ok()?.parse::<usize>().ok()).and_then(|n| n.checked_sub(1)).map(|i| u.get(i).cloned().unwrap_or_default());
+    if let Some(sent) = nth(b"upload.samecode.") {
+        let mut shown = String::new();
+        if let Some(a) = a {
+            crate::share::share_probe(a, "code", &mut shown, 64);
+        }
+        let shown: String = shown.chars().filter(char::is_ascii_digit).collect();
+        let v = match sent.code {
+            Some(code) if !shown.is_empty() => if code == shown { "1" } else { "0" },
+            _ => "",
+        };
+        csnprintf!(out, cap, "%s", v);
+        return true;
+    }
+    let Some(sent) = nth(b"upload.reply.") else { return false };
+    csnprintf!(out, cap, "%s", &sent.reply.unwrap_or_default());
     true
 }
 

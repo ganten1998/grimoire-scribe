@@ -1,5 +1,7 @@
 // Send a PDF to the Kindle from the Share page (issue #175). The file goes as the body of one POST, its name in a
-// header beside the page's token; the Kindle asks before it keeps anything, and its answer is this request's reply.
+// header beside the page's token; the Kindle asks before it keeps anything. A send it asks about is answered 200:
+// first a line with the send's code, which this page shows while the Kindle shows it under its question, then a
+// last line with the answer. Any other status is a refusal before the Kindle asked.
 // The browser sends the file as it is: no byte of it passes through this script.
 (function () {
     'use strict';
@@ -20,7 +22,9 @@
     status.className = 'meta';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    host.append(button, input, status);
+    const code = document.createElement('p');
+    code.style.cssText = 'font-size:2.5em;font-weight:bold;letter-spacing:.1em;margin:.2em 0';
+    host.append(button, input, status, code);
     let busy = false;
     button.addEventListener('click', function () {
         if (!busy) input.click();
@@ -28,11 +32,20 @@
     function sending(done, total) {
         status.textContent = w.sending.replace('{percent}', Math.min(100, Math.floor(done * 100 / Math.max(1, total))) + '%');
     }
-    function finish(code) {
+    // The send's code, once its line has come.
+    function coded(x) {
+        const m = /^code (\d{4})\n/.exec(x.responseText || '');
+        if (m) code.textContent = w.code.replace('%s', m[1]);
+    }
+    // The answer: a refusal's status, or the last line of a send the Kindle asked about. The code goes with the send.
+    function finish(c, text) {
         busy = false;
         button.disabled = false;
-        status.textContent = code === 200 ? w.sent : code === 413 ? w.big : code === 409 ? w.busy :
-            code === 401 || code === 403 ? w.reload : code === 507 ? w.full : code === 503 ? w.wait : w.no;
+        code.textContent = '';
+        const said = c === 200 ? text.trim().split('\n').pop() : '';
+        status.textContent = said === 'imported' ? w.sent : said === 'another PDF was sent' || c === 409 ? w.busy :
+            said === 'no room' || c === 507 ? w.full : c === 413 ? w.big : c === 401 || c === 403 ? w.reload :
+            c === 503 ? w.wait : w.no;
     }
     input.addEventListener('change', function () {
         const file = input.files && input.files[0];
@@ -44,6 +57,7 @@
         }
         busy = true;
         button.disabled = true;
+        code.textContent = '';
         sending(0, 1);
         const x = new XMLHttpRequest();
         x.open('POST', '/upload');
@@ -56,11 +70,14 @@
         x.upload.onload = function () {
             status.textContent = w.confirm;
         };
+        x.onprogress = x.onreadystatechange = function () {
+            coded(x);
+        };
         x.onload = function () {
-            finish(x.status);
+            finish(x.status, x.responseText || '');
         };
         x.onerror = x.onabort = x.ontimeout = function () {
-            finish(0);
+            finish(0, '');
         };
         x.send(file);
     });

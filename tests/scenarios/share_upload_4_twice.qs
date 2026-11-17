@@ -15,7 +15,7 @@ upload send send/2027 Planner.pdf
 waitfor share.ask is Import "2027 Planner.pdf" (4 KB)?
 upload send send/2027 Planner.pdf
 waitfor upload.reply.2 is 409 another PDF is being sent
-waitfor upload.reply.1 is 409 another PDF was sent
+waitfor upload.reply.1 is 200 another PDF was sent
 waitfor share.ask is
 expect share.upload is none
 expect toast is Not imported.

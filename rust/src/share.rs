@@ -63,14 +63,17 @@ pub struct ShareState {
     ask: Option<Ask>,
 }
 
-/// "Import "name" (size)?" over the Share screen, the Library's question sheet with Import and Cancel: the server's
-/// number for it, what it shows, where it was drawn and its rows. A contact answers it only once it has been shown
-/// (app_ask, app_asked_seen), and only a tap that comes down and lifts on one row.
+/// "Import "name" (size)?" over the Share screen, the Library's question sheet with the send's code under its title,
+/// then Import and Cancel: the server's number for it, what it shows, where it was drawn and its rows. A contact
+/// answers it only once it has been shown (app_ask, app_asked_seen), and only a tap that comes down and lifts on one
+/// row.
 #[derive(Default)]
 struct Ask {
     serial: u32,
     name: String,
     size: u64,
+    /// the send's code, which the page that sent it shows too (never logged or stored; gone with the question)
+    code: String,
     rect: Rect,
     hits: HitList,
     /// the contact under way came down before the question was shown, or off its rows: its lift answers nothing
@@ -873,25 +876,35 @@ fn ask_title(name: &str, size: u64, w: i32) -> String {
     t
 }
 
-/// The question over the screen, when one is asked: the Library's question sheet (its title, a Primary row and a
-/// plain one), drawn as Files draws its Delete question. Drawn for the first time or at a new place (the screen
-/// turned), it has not been shown yet (app_ask): every draw of it is invalidated with the screen's.
+/// The send's code as the question shows it, big under its title ("Code 4821").
+fn code_line(code: &str) -> String {
+    // TRANSLATORS: the Kindle's question for a PDF sent from the Share page, big under its title: the send's code
+    // (%s: four digits, "4821"), which the page that sent it shows too, so the user can see it is that PDF.
+    cformat!(tr("Code %s"), code)
+}
+
+/// The question over the screen, when one is asked: the Library's question sheet (its title, the send's code in big
+/// type, a Primary row and a plain one), drawn as Files draws its Delete question. Drawn for the first time or at a
+/// new place (the screen turned), it has not been shown yet (app_ask): every draw of it is invalidated with the
+/// screen's.
 fn draw_ask(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
     let Some(k) = s(a).ask.as_ref() else { return };
-    let (name, size, was) = (k.name.clone(), k.size, k.rect);
-    let (rh, gap) = (ui_px(140.0), ui_px(20.0));
+    let (name, size, code, was) = (k.name.clone(), k.size, code_line(&k.code), k.rect);
+    let (rh, gap, ch) = (ui_px(140.0), ui_px(20.0), ui_px(150.0));
     let rows = [(H_ASK_IMPORT, IconKind::Pdf, tr("Import")), (H_ASK_CANCEL, IconKind::Close, tr("Cancel"))];
-    let rect = crate::library::sheet_rect(aw, ah, ui_px(120.0) + ui_px(72.0) + rows.len() as i32 * (rh + gap));
+    let rect = crate::library::sheet_rect(aw, ah, ui_px(120.0) + ui_px(72.0) + ch + rows.len() as i32 * (rh + gap));
     if rect != was {
         app_ask(a);
     }
     let title = ask_title(&name, size, rect.w - ui_px(160.0));
     let c = &mut a.screen;
     let inner = ui_sheet(c, rect, &title);
+    // (half again the title's size: read from arm's length on the Kindle, as the page shows it big)
+    font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.5, Rect::new(inner.x, inner.y, inner.w, ch - gap), &code, 0);
     let mut hits = HitList::default();
     for (i, (id, icon, label)) in rows.iter().enumerate() {
-        let r = Rect::new(inner.x, inner.y + i as i32 * (rh + gap), inner.w, rh);
+        let r = Rect::new(inner.x, inner.y + ch + i as i32 * (rh + gap), inner.w, rh);
         ui_frame(c, r, ui_px(16.0), 255, true, 0);
         ui_frame(c, r, ui_px(16.0), 0, false, if *id == H_ASK_IMPORT { ui_px(6.0) } else { ui_px(3.0) });
         ui_icon(c, *icon, Rect::new(r.x + ui_px(20.0), r.y + ui_px(15.0), rh - ui_px(30.0), rh - ui_px(30.0)), 0);
@@ -919,8 +932,8 @@ fn ask_sync(a: &mut App) {
             app_invalidate(a, old, RefreshMode::Ui);
             app_toast(a, tr("Not imported."), 3000);
         }
-        (Some((serial, name, size)), None) => {
-            s(a).ask = Some(Ask { serial, name, size, ..Ask::default() });
+        (Some((serial, name, size, code)), None) => {
+            s(a).ask = Some(Ask { serial, name, size, code, ..Ask::default() });
             draw(a);
             let r = s(a).ask.as_ref().map_or(RECT_EMPTY, |k| k.rect);
             app_invalidate(a, r, RefreshMode::Ui);
@@ -1367,11 +1380,16 @@ pub fn share_wifi_open(a: &App) -> bool {
 }
 
 /// The headless runner's checks (app_probe's "share." keys): "ask", the question's title as drawn ("" with none);
-/// "upload", where the server's upload is (none, receiving or asking).
+/// "code", the send's code under it as drawn ("Code 4821", "" with none); "upload", where the server's upload is
+/// (none, receiving or asking).
 pub fn share_probe(a: &App, key: &str, out: &mut String, cap: usize) -> i32 {
     match key {
         "ask" => {
             let t = a.share.as_ref().and_then(|st| st.ask.as_ref()).map_or(String::new(), |k| ask_title(&k.name, k.size, k.rect.w - ui_px(160.0)));
+            csnprintf!(out, cap, "%s", &t);
+        }
+        "code" => {
+            let t = a.share.as_ref().and_then(|st| st.ask.as_ref()).map_or(String::new(), |k| code_line(&k.code));
             csnprintf!(out, cap, "%s", &t);
         }
         "upload" => {

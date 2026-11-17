@@ -19,7 +19,7 @@ waitfor share.ask is Import "2027 Planner.pdf" (4 KB)?
 shot 01-question
 wait 500
 tap share ask.cancel
-waitfor upload.reply.1 is 410 declined on the Kindle
+waitfor upload.reply.1 is 200 declined on the Kindle
 expect share.ask is
 expect share.upload is none
 expect toast is
@@ -32,7 +32,7 @@ upload send send/2027 Planner.pdf
 waitfor share.ask is Import "2027 Planner.pdf" (4 KB)?
 wait 500
 key 1 0
-waitfor upload.reply.2 is 410 declined on the Kindle
+waitfor upload.reply.2 is 200 declined on the Kindle
 expect screen is share
 expect share.ask is
 # turned: drawn at its new place, still asked, answered there
@@ -42,11 +42,12 @@ waitfor share.ask is Import "2027 Planner.pdf" (4 KB)?
 rotate 1
 wait 600
 expect share.ask is Import "2027 Planner.pdf" (4 KB)?
+expect upload.samecode.3 is 1
 expect share.upload is asking
 shot 03-turned
 wait 500
 tap share ask.cancel
-waitfor upload.reply.3 is 410 declined on the Kindle
+waitfor upload.reply.3 is 200 declined on the Kindle
 rotate 0
 wait 1100
 # sleep ends the question, and the browser is told; the wake shows Share without it
@@ -54,7 +55,7 @@ upload send send/2027 Planner.pdf
 waitfor share.ask is Import "2027 Planner.pdf" (4 KB)?
 sleep
 wait 300
-waitfor upload.reply.4 is 410 the Kindle is asleep
+waitfor upload.reply.4 is 200 the Kindle is asleep
 expect storage.exists.grimoire/.cache/share-upload.part is 0
 wake
 wait 600

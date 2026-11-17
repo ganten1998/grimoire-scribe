@@ -1,10 +1,10 @@
-// The Share page's Send a PDF box (web/upload.js, issue #175) without a browser: what it sends, and what it says for
-// each answer the server gives.
+// The Share page's Send a PDF box (web/upload.js, issue #175) without a browser: what it sends, the send's code it
+// shows while the Kindle asks, and what it says for each answer the server gives.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('web/upload.js', 'utf8');
-const words = {send: 'send', sending: 'sending {percent}', confirm: 'confirm', sent: 'sent', no: 'no', busy: 'busy',
+const words = {send: 'send', sending: 'sending {percent}', confirm: 'confirm', code: 'code %s', sent: 'sent', no: 'no', busy: 'busy',
     reload: 'reload', wait: 'wait', big: 'big', full: 'full'};
 
 function setup({supported = true, box = true} = {}) {
@@ -18,7 +18,7 @@ function setup({supported = true, box = true} = {}) {
     }
     const host = new Element('div');
     class XMLHttpRequest {
-        constructor() { this.headers = {}; this.upload = {}; sent.push(this); }
+        constructor() { this.headers = {}; this.upload = {}; this.responseText = ''; sent.push(this); }
         open(method, url) { this.method = method; this.url = url; }
         setRequestHeader(k, v) { this.headers[k] = v; }
         send(body) { this.body = body; }
@@ -27,14 +27,14 @@ function setup({supported = true, box = true} = {}) {
     if (supported) window.XMLHttpRequest = XMLHttpRequest;
     vm.runInNewContext(source, {window, document: {getElementById: () => box ? host : null, createElement: t => new Element(t)},
         XMLHttpRequest, encodeURIComponent, Math});
-    const [button, input, status] = host.children;
+    const [button, input, status, code] = host.children;
     function pick(file) {
         input.files = [file];
         input.value = 'C:\\fakepath\\' + file.name;
         input.onchange();
         return sent[sent.length - 1];
     }
-    return {host, button, input, status, sent, pick};
+    return {host, button, input, status, code, sent, pick};
 }
 
 const s = setup();
@@ -71,14 +71,38 @@ x.upload.onprogress({lengthComputable: true, loaded: 420, total: 1000});
 assert.equal(s.status.textContent, 'sending 42%');
 x.upload.onload();
 assert.equal(s.status.textContent, 'confirm');
+// the send's code, once its whole line has come, big under it while the Kindle asks
+assert.equal(s.code.textContent, '');
+x.responseText = 'code 48';
+x.onprogress();
+assert.equal(s.code.textContent, '', 'half a line is no code');
+x.responseText = 'code 4821\n';
+x.onreadystatechange();
+assert.equal(s.code.textContent, 'code 4821');
+x.responseText += 'imported\n';
 x.status = 200;
 x.onload();
 assert.equal(s.status.textContent, 'sent');
+assert.equal(s.code.textContent, '', 'the code goes with the send');
 assert.equal(s.button.disabled, false);
-// every other answer, in the page's words
-for (const [code, said] of [[410, 'no'], [408, 'no'], [415, 'no'], [500, 'no'], [409, 'busy'], [401, 'reload'],
+// every other answer of a send the Kindle asked about (its last line), in the page's words
+for (const [line, said] of [['declined on the Kindle', 'no'], ['no answer on the Kindle', 'no'], ['share is closed', 'no'],
+    ['the Kindle is asleep', 'no'], ['another PDF was sent', 'busy'], ['no room', 'full'], ['could not keep it', 'no']]) {
+    const y = s.pick({name: 'a.pdf', size: 10});
+    y.responseText = 'code 0042\n';
+    y.onprogress();
+    assert.equal(s.code.textContent, 'code 0042');
+    y.responseText += line + '\n';
+    y.status = 200;
+    y.onload();
+    assert.equal(s.status.textContent, said, line);
+    assert.equal(s.code.textContent, '');
+}
+// and every refusal before it asked (a status of its own), in the page's words
+for (const [code, said] of [[408, 'no'], [415, 'no'], [500, 'no'], [409, 'busy'], [401, 'reload'],
     [403, 'reload'], [413, 'big'], [507, 'full'], [503, 'wait'], [400, 'no']]) {
     const y = s.pick({name: 'a.pdf', size: 10});
+    y.responseText = 'some words\n';
     y.status = code;
     y.onload();
     assert.equal(s.status.textContent, said, String(code));
@@ -90,4 +114,4 @@ assert.equal(s.button.disabled, false);
 // no box without the page's words, or where the browser has no XMLHttpRequest
 assert.equal(setup({supported: false}).host.children.length, 0);
 assert.equal(setup({box: false}).host.children.length, 0);
-console.log('Upload UI: the picker, one POST of the file with its name and token, progress, every answer passed');
+console.log('Upload UI: the picker, one POST of the file with its name and token, progress, the code, every answer passed');

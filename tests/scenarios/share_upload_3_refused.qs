@@ -35,5 +35,5 @@ upload send send/2027 Planner.pdf
 waitfor share.ask is Import "2027 Planner.pdf" (4 KB)?
 wait 500
 tap share ask.cancel
-waitfor upload.reply.6 is 410 declined on the Kindle
+waitfor upload.reply.6 is 200 declined on the Kindle
 quit

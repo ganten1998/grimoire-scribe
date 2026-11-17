@@ -23,8 +23,10 @@ use testlib::*;
 
 static ROOT: OnceLock<String> = OnceLock::new();
 static PORT: OnceLock<i32> = OnceLock::new();
-/// Every token a page carried in this run (the log is checked for none of them at the end).
+/// Every token a page carried in this run, and every send's code (the log and the files are checked for none of them
+/// at the end).
 static TOKENS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static CODES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 fn port() -> i32 {
     *PORT.get().unwrap()
@@ -84,6 +86,16 @@ impl Reply {
     fn text(&self) -> String {
         String::from_utf8_lossy(&self.body).into_owned()
     }
+    /// The send's code: the first line of the reply to a send the Kindle asked about, `code NNNN`.
+    fn code(&self) -> Option<String> {
+        let t = self.text();
+        let c = t.strip_prefix("code ")?.split('\n').next()?.to_string();
+        (c.len() == 4 && c.bytes().all(|d| d.is_ascii_digit()) && t.len() > 9).then_some(c)
+    }
+    /// What it says last: a refusal's one line, or the answer under a send's code.
+    fn said(&self) -> String {
+        self.text().trim_end().rsplit('\n').next().unwrap_or("").to_string()
+    }
 }
 fn split(all: Vec<u8>) -> Reply {
     let at = all.windows(4).position(|w| w == b"\r\n\r\n").map_or(all.len(), |i| i + 4);
@@ -91,8 +103,13 @@ fn split(all: Vec<u8>) -> Reply {
 }
 
 /// The server's answer on s, everything up to its close, polling the server between reads.
-fn reply(mut s: TcpStream) -> Reply {
-    let mut out = Vec::new();
+fn reply(s: TcpStream) -> Reply {
+    reply_after(s, Vec::new())
+}
+
+/// The same, after `got` (what early() read of it).
+fn reply_after(mut s: TcpStream, got: Vec<u8>) -> Reply {
+    let mut out = got;
     let mut buf = vec![0u8; 1 << 16];
     let until = Instant::now() + Duration::from_secs(60);
     loop {
@@ -106,6 +123,29 @@ fn reply(mut s: TcpStream) -> Reply {
         assert!(Instant::now() < until, "the server never finished its answer");
     }
     split(out)
+}
+
+/// A send's answer as "<status> <what it says last>": "200 imported", "409 another PDF is being sent".
+fn outcome(s: TcpStream) -> String {
+    let r = reply(s);
+    format!("{} {}", r.status().split(' ').nth(1).unwrap_or(""), r.said())
+}
+
+/// What has come on s while the Kindle asks, once the reply's head and the send's code are in (at most 10 s).
+fn early(s: &mut TcpStream) -> Vec<u8> {
+    let mut got = Vec::new();
+    let mut b = [0u8; 4096];
+    let until = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < until && split(got.clone()).code().is_none() {
+        httpd_poll();
+        match s.read(&mut b) {
+            Ok(0) => break,
+            Ok(n) => got.extend_from_slice(&b[..n]),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(1)),
+            Err(_) => break,
+        }
+    }
+    got
 }
 
 /// The answer to a request refused: this end says it has sent all it will (as a browser that read an early answer
@@ -182,9 +222,13 @@ fn upload(head: &str, body: &[u8]) -> TcpStream {
 }
 
 /// The question the Kindle asks, once the body is in.
-fn question() -> Option<(u32, String, u64)> {
+fn question() -> Option<(u32, String, u64, String)> {
     poll_until(|| httpd_upload_question().is_some());
-    httpd_upload_question()
+    let q = httpd_upload_question();
+    if let Some(q) = &q {
+        CODES.lock().unwrap().push(q.3.clone());
+    }
+    q
 }
 
 fn part_there() -> bool {
@@ -213,7 +257,7 @@ fn the_page_offers_to_send_with_a_token_of_its_own() {
     let tok = page_token();
     check!(tok.len() == 32 && tok.bytes().all(|c| c.is_ascii_hexdigit()));
     check!(t.contains(&format!("\",\"max\":{UPLOAD_MAX},\"words\":{{\"send\":\"Send a PDF to the Kindle\",\"sending\":\"Sending PDF: {{percent}}\"")));
-    check!(t.contains("\"confirm\":\"Confirm on the Kindle.\",\"sent\":\"Copied to grimoire/import.\",\"no\":\"Not imported.\""));
+    check!(t.contains("\"confirm\":\"Confirm on the Kindle.\",\"code\":\"Code %s\",\"sent\":\"Copied to grimoire/import.\",\"no\":\"Not imported.\""));
     check!(t.contains("\"reload\":\"Open Share on the Kindle, then reload this page.\",\"wait\":\"Wait 5 seconds, then send again.\""));
     check!(t.contains("\"big\":\"PDF too big: over 64 MB.\",\"full\":\"Couldn't import PDF. Is the storage full?\"}};</script><script>"));
     check!(t.contains("x.open('POST', '/upload');") && t.contains("x.setRequestHeader('X-Grimoire-Token', cfg.token);"));
@@ -239,17 +283,29 @@ fn a_pdf_waits_for_the_kindle_and_import_keeps_it() {
     let body = pdf(300_000); // more than one read, and more than one poll's
     let mut s = upload(&head(Some(&tok), Some("2027%20Planner.pdf"), body.len(), ""), &body);
     let q = question();
-    check!(q.as_ref().is_some_and(|(_, n, z)| n == "2027 Planner.pdf" && *z == body.len() as u64));
+    check!(q.as_ref().is_some_and(|(_, n, z, _)| n == "2027 Planner.pdf" && *z == body.len() as u64));
     check!(httpd_upload_state() == UploadState::Asking);
-    // before the answer: the bytes in the temporary file only, nothing in import/, no answer to the browser
+    // before the answer: the bytes in the temporary file only, nothing in import/; the browser has the reply's head
+    // and the send's code, the Kindle's, and no answer yet
     check!(std::fs::read(part_path()).ok().as_deref() == Some(&body[..]));
     check!(import_names().is_empty());
+    let code = q.as_ref().map_or(String::new(), |q| q.3.clone());
+    let got = early(&mut s);
+    let head_now = split(got.clone());
+    check!(head_now.status() == "HTTP/1.0 200 OK" && head_now.text() == format!("code {code}\n"));
+    check!(head_now.head.contains("Content-Type: text/plain; charset=utf-8\r\n") && !head_now.head.contains("Content-Length"));
     check!(quiet(&mut s, 300));
+    // the code is in this send's reply alone: not in the page, the list, or another browser's answer
+    let other = refused_reply(upload(&head(None, Some("a.pdf"), body.len(), ""), &body));
+    check!(other.status() == "HTTP/1.0 401 Unauthorized" && httpd_upload_question().is_some_and(|q| q.3 == code));
+    for t in [get("/").text(), get("/api/list.json").text(), other.text()] {
+        check!(!t.contains(&format!("code {code}")) && !t.contains(&format!("Code {code}")));
+    }
     let serial = q.map_or(0, |q| q.0);
     check!(httpd_upload_answer(serial, true) == Some(Ok("2027 Planner.pdf".to_string())));
     check!(std::fs::read(format!("{}/import/2027 Planner.pdf", root())).ok().as_deref() == Some(&body[..]));
-    let r = reply(s);
-    check!(r.status() == "HTTP/1.0 200 OK" && r.text() == "imported\n");
+    let r = reply_after(s, got);
+    check!(r.status() == "HTTP/1.0 200 OK" && r.text() == format!("code {code}\nimported\n"));
     check!(nothing_kept(&["2027 Planner.pdf"]));
     // an answer to a question gone is none
     check!(httpd_upload_answer(serial, true).is_none() && httpd_upload_answer(serial, false).is_none());
@@ -258,7 +314,7 @@ fn a_pdf_waits_for_the_kindle_and_import_keeps_it() {
     let s = upload(&head(Some(&tok), Some("2027%20Planner.pdf"), other.len(), ""), &other);
     let q = question().map_or(0, |q| q.0);
     check!(httpd_upload_answer(q, true) == Some(Ok("2027 Planner 2.pdf".to_string())));
-    check!(reply(s).status() == "HTTP/1.0 200 OK");
+    check!(outcome(s) == "200 imported");
     check!(std::fs::read(format!("{}/import/2027 Planner.pdf", root())).ok().as_deref() == Some(&body[..]));
     check!(std::fs::read(format!("{}/import/2027 Planner 2.pdf", root())).ok().as_deref() == Some(&other[..]));
     check!(nothing_kept(&["2027 Planner 2.pdf", "2027 Planner.pdf"]));
@@ -266,10 +322,11 @@ fn a_pdf_waits_for_the_kindle_and_import_keeps_it() {
     let tiny = pdf(64);
     let s = upload(&head(Some(&tok), Some("tiny.pdf"), tiny.len(), ""), &tiny);
     let q = question();
-    check!(q.as_ref().is_some_and(|(_, n, z)| n == "tiny.pdf" && *z == 64));
+    check!(q.as_ref().is_some_and(|(_, n, z, _)| n == "tiny.pdf" && *z == 64));
+    let code = q.as_ref().map_or(String::new(), |q| q.3.clone());
     check!(httpd_upload_answer(q.map_or(0, |q| q.0), false).is_none());
     let r = reply(s);
-    check!(r.status() == "HTTP/1.0 410 Gone" && r.text() == "declined on the Kindle\n");
+    check!(r.status() == "HTTP/1.0 200 OK" && r.text() == format!("code {code}\ndeclined on the Kindle\n"));
 }
 
 fn cancel_keeps_nothing() {
@@ -280,8 +337,7 @@ fn cancel_keeps_nothing() {
     let q = question();
     check!(part_there());
     check!(httpd_upload_answer(q.map_or(0, |q| q.0), false).is_none());
-    let r = reply(s);
-    check!(r.status() == "HTTP/1.0 410 Gone" && r.text() == "declined on the Kindle\n");
+    check!(outcome(s) == "200 declined on the Kindle");
     let names: Vec<&str> = before.iter().map(|s| s.as_str()).collect();
     check!(nothing_kept(&names));
 }
@@ -322,7 +378,7 @@ fn every_refusal_keeps_nothing() {
     let q = question();
     check!(q.is_some());
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
-    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    check!(outcome(s) == "200 declined on the Kindle");
     // the body: a length, never chunked, a PDF's first bytes, no more than the import takes
     check!(refused(head(Some(&tok), Some("a.pdf"), n, "").replace(&format!("Content-Length: {n}\r\n"), ""), &body, "HTTP/1.0 411 Length Required", "length required\n"));
     check!(refused(head(Some(&tok), Some("a.pdf"), n, "").replace(&format!("Content-Length: {n}"), "Content-Length: 2kb"), &body, "HTTP/1.0 411 Length Required", "length required\n"));
@@ -346,7 +402,7 @@ fn every_refusal_keeps_nothing() {
     let q = question();
     check!(q.as_ref().is_some_and(|q| q.1 == "split.pdf") && std::fs::read(part_path()).ok().as_deref() == Some(&body[..]));
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
-    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    check!(outcome(s) == "200 declined on the Kindle");
     // a head too big for the server
     let mut flood = head(Some(&tok), Some("a.pdf"), n, "").trim_end_matches("\r\n").to_string();
     flood.push_str("\r\nX-Pad: ");
@@ -392,7 +448,7 @@ fn a_name_is_shown_and_never_a_path() {
         let q = question();
         check!(q.as_ref().is_some_and(|q| q.1 == shown));
         httpd_upload_answer(q.map_or(0, |q| q.0), false);
-        check!(reply(s).status() == "HTTP/1.0 410 Gone");
+        check!(outcome(s) == "200 declined on the Kindle");
     }
     // a very long name (over what a header here holds, and over 255 bytes) and none at all
     for h in [head(Some(&tok), Some(&"a".repeat(1100)), body.len(), ""), head(Some(&tok), Some(&format!("{}.pdf", "b".repeat(300))), body.len(), ""), head(Some(&tok), None, body.len(), "")] {
@@ -400,14 +456,14 @@ fn a_name_is_shown_and_never_a_path() {
         let q = question();
         check!(q.as_ref().is_some_and(|q| q.1 == UPLOAD_FALLBACK));
         httpd_upload_answer(q.map_or(0, |q| q.0), false);
-        check!(reply(s).status() == "HTTP/1.0 410 Gone");
+        check!(outcome(s) == "200 declined on the Kindle");
     }
     // kept, a name that broke the rules is the fallback in import/, and nothing went anywhere else
     let before = import_names();
     let s = upload(&head(Some(&tok), Some("..%2F..%2Fsettings.ini"), body.len(), ""), &body);
     let q = question();
     check!(httpd_upload_answer(q.map_or(0, |q| q.0), true) == Some(Ok(UPLOAD_FALLBACK.to_string())));
-    check!(reply(s).status() == "HTTP/1.0 200 OK");
+    check!(outcome(s) == "200 imported");
     let mut after = before.clone();
     after.push(UPLOAD_FALLBACK.to_string());
     after.sort();
@@ -430,7 +486,7 @@ fn two_at_once_keep_neither() {
     let r2 = refused_reply(second);
     check!(r2.status() == "HTTP/1.0 409 Conflict" && r2.text() == "another PDF is being sent\n");
     let r1 = reply(first);
-    check!(r1.status() == "HTTP/1.0 409 Conflict" && r1.text() == "another PDF was sent\n");
+    check!(r1.status() == "HTTP/1.0 200 OK" && r1.code().is_some() && r1.said() == "another PDF was sent");
     check!(nothing_kept(&names));
     // the second while the first's body still comes
     let mut first = upload(&head(Some(&tok), Some("first.pdf"), body.len(), ""), &body[..4000]);
@@ -446,7 +502,7 @@ fn two_at_once_keep_neither() {
     check!(refused_reply(upload(&head(None, Some("second.pdf"), body.len(), ""), &body)).status() == "HTTP/1.0 401 Unauthorized");
     check!(httpd_upload_question() == q);
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
-    check!(reply(first).status() == "HTTP/1.0 410 Gone");
+    check!(outcome(first) == "200 declined on the Kindle");
     check!(nothing_kept(&names));
 }
 
@@ -477,8 +533,7 @@ fn leaving_share_keeps_nothing_and_the_token_goes_with_it() {
     let s = upload(&head(Some(&tok), Some("left.pdf"), body.len(), ""), &body);
     check!(question().is_some());
     httpd_release(HTTPD_SHARE);
-    let r = reply(s);
-    check!(r.status() == "HTTP/1.0 410 Gone" && r.text() == "share is closed\n");
+    check!(outcome(s) == "200 share is closed");
     check!(nothing_kept(&names));
     // with Share closed nothing is taken
     let r = refused_reply(upload(&head(Some(&tok), Some("closed.pdf"), body.len(), ""), &body));
@@ -504,16 +559,14 @@ fn leaving_share_keeps_nothing_and_the_token_goes_with_it() {
     // the server stopping (Grimoire leaving) ends it too
     httpd_stop();
     check!(nothing_kept(&names));
-    let r = reply(s);
-    check!(r.status() == "HTTP/1.0 410 Gone" || r.head.is_empty());
+    check!(outcome(s) == "200 share is closed");
     check!(httpd_acquire(HTTPD_SHARE, port(), 300.0, true) == 0);
     // sleep (the Share screen's) ends it the same way
     let s = upload(&head(Some(&page_token()), Some("asleep.pdf"), body.len(), ""), &body);
     check!(question().is_some());
     httpd_upload_discard(UploadEnd::Asleep);
     check!(nothing_kept(&names));
-    let r = reply(s);
-    check!(r.status() == "HTTP/1.0 410 Gone" && r.text() == "the Kindle is asleep\n");
+    check!(outcome(s) == "200 the Kindle is asleep");
 }
 
 fn a_leftover_of_a_crash_goes_at_the_start() {
@@ -533,7 +586,7 @@ fn a_leftover_of_a_crash_goes_at_the_start() {
     check!(std::fs::symlink_metadata(part_path()).is_ok_and(|m| m.file_type().is_file()));
     check!(std::fs::read(&target).ok().as_deref() == Some(&b"%PDF-mine"[..]));
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
-    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    check!(outcome(s) == "200 declined on the Kindle");
     check!(std::fs::read(&target).ok().as_deref() == Some(&b"%PDF-mine"[..]));
     let _ = std::fs::remove_file(&target);
 }
@@ -575,9 +628,10 @@ fn slow_bodies_and_unanswered_questions_end() {
     std::env::set_var("GRIMOIRE_UPLOAD_ASK_MS", "300");
     let mut s = upload(&head(Some(&tok), Some("unanswered.pdf"), body.len(), ""), &body);
     check!(question().is_some());
+    let got = early(&mut s);
     check!(quiet(&mut s, 150));
-    let r = reply(s);
-    check!(r.status() == "HTTP/1.0 408 Request Timeout" && r.text() == "no answer on the Kindle\n");
+    let r = reply_after(s, got);
+    check!(r.status() == "HTTP/1.0 200 OK" && r.code().is_some() && r.said() == "no answer on the Kindle");
     check!(nothing_kept(&names));
     std::env::remove_var("GRIMOIRE_UPLOAD_ASK_MS");
 }
@@ -598,7 +652,7 @@ fn no_room_is_refused() {
     let q = question();
     check!(q.is_some());
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
-    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    check!(outcome(s) == "200 declined on the Kindle");
     std::env::remove_var("GRIMOIRE_UPLOAD_FREE_BYTES");
 }
 
@@ -638,7 +692,7 @@ fn after_a_send_that_ends_without_import_the_next_waits() {
     // Cancel: the next waits, then is asked about
     let (q, s) = asked();
     check!(httpd_upload_answer(q.map_or(0, |q| q.0), false).is_none());
-    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    check!(outcome(s) == "200 declined on the Kindle");
     check!(waits());
     check!(waits());
     idle(700);
@@ -653,7 +707,7 @@ fn after_a_send_that_ends_without_import_the_next_waits() {
     std::env::set_var("GRIMOIRE_UPLOAD_ASK_MS", "100");
     let (q, s) = asked();
     check!(q.is_some());
-    check!(reply(s).status() == "HTTP/1.0 408 Request Timeout");
+    check!(outcome(s) == "200 no answer on the Kindle");
     std::env::remove_var("GRIMOIRE_UPLOAD_ASK_MS");
     check!(waits());
     idle(700);
@@ -667,7 +721,7 @@ fn after_a_send_that_ends_without_import_the_next_waits() {
     // (both written before the server is polled again)
     check!(other.write_all(&all).is_ok() && third.write_all(&all).is_ok());
     check!(refused_reply(other).status() == "HTTP/1.0 409 Conflict");
-    check!(reply(mine).status() == "HTTP/1.0 409 Conflict");
+    check!(outcome(mine) == "200 another PDF was sent");
     let r = refused_reply(third);
     check!(r.status() == "HTTP/1.0 503 Service Unavailable" && r.text() == "wait a few seconds\n");
     check!(nothing_kept(&names));
@@ -675,11 +729,11 @@ fn after_a_send_that_ends_without_import_the_next_waits() {
     // Import holds nothing back: the next is asked about at once
     let (q, s) = asked();
     check!(httpd_upload_answer(q.map_or(0, |q| q.0), true).is_some_and(|r| r.is_ok()));
-    check!(reply(s).status() == "HTTP/1.0 200 OK");
+    check!(outcome(s) == "200 imported");
     let (q, s) = asked();
     check!(q.is_some());
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
-    check!(reply(s).status() == "HTTP/1.0 410 Gone");
+    check!(outcome(s) == "200 declined on the Kindle");
     std::env::set_var("GRIMOIRE_UPLOAD_QUIET_MS", "0");
 }
 
@@ -758,6 +812,24 @@ fn test_share_upload() {
     }
     for tok in TOKENS.lock().unwrap().iter().filter(|t| !t.is_empty()) {
         check!(!t.contains(tok.as_str()));
+    }
+    // no send's code in what httpd logged (its lines past their time of day), nor in any file Grimoire wrote
+    let codes = CODES.lock().unwrap().clone();
+    check!(codes.len() > 20);
+    let whole = |hay: &[u8], code: &str| hay.windows(6).any(|w| !w[0].is_ascii_digit() && &w[1..5] == code.as_bytes() && !w[5].is_ascii_digit());
+    let httpd: Vec<&str> = t.lines().filter_map(|l| l.split_once(" httpd: ").map(|x| x.1)).collect();
+    check!(!httpd.is_empty());
+    let mut files = Vec::new();
+    let mut dirs = vec![root.clone()];
+    while let Some(d) = dirs.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() { dirs.push(p.to_string_lossy().into_owned()); } else if let Ok(b) = std::fs::read(&p) { files.push(b); }
+        }
+    }
+    for code in &codes {
+        check!(!httpd.iter().any(|l| whole(format!(" {l} ").as_bytes(), code)));
+        check!(!files.iter().any(|b| whole(&[b" ", &b[..], b" "].concat(), code)));
     }
     let _ = std::fs::remove_dir_all(format!("{}/upload-{}", tl_tmp(), std::process::id()));
     done();

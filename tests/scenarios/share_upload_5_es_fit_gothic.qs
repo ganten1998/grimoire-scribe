@@ -15,6 +15,8 @@ wait 300
 expect screen is share
 upload send send/2027 Planner.pdf
 waitfor share.ask is ¿Importar «2027 Planner.pdf» (4 KB)?
+waitfor upload.samecode.1 is 1
+expect share.code has Código
 shot 01-question
 rotate 1
 wait 600
@@ -29,7 +31,7 @@ rotate 0
 wait 600
 upload send send/2027 Planner.pdf
 waitfor share.ask is ¿Importar «2027 Planner.pdf» (4 KB)?
-waitfor upload.reply.2 is 408 no answer on the Kindle
+waitfor upload.reply.2 is 200 no answer on the Kindle
 waitfor share.ask is
 expect toast is No se importó.
 shot 04-unanswered

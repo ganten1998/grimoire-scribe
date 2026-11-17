@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 10:22-0600\n"
+"POT-Creation-Date: 2026-11-17 10:33-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -2546,6 +2546,15 @@ msgstr ""
 #. TRANSLATORS: the share index, once the PDF has gone: the Kindle now asks whether to import it.
 #: rust/src/httpd.rs
 msgid "Confirm on the Kindle."
+msgstr ""
+
+#. TRANSLATORS: the share index, big under Confirm on the Kindle.: the send's code (%s: four digits, "4821"),
+#. which the Kindle shows under its question, so the user can see the question is about this PDF.
+#. TRANSLATORS: the Kindle's question for a PDF sent from the Share page, big under its title: the send's code
+#. (%s: four digits, "4821"), which the page that sent it shows too, so the user can see it is that PDF.
+#: rust/src/httpd.rs rust/src/share.rs
+#, c-format
+msgid "Code %s"
 msgstr ""
 
 #. TRANSLATORS: the share index, after Cancel on the Kindle, no answer there for two minutes, or a PDF the Kindle

@@ -189,6 +189,32 @@ fn tick(a: &mut App) {
     std::thread::sleep(Duration::from_millis(1));
 }
 
+/// The send's code that the Kindle's question shows under its title ("Code 4821" as drawn), and the server's.
+fn shown_code(a: &mut App) -> String {
+    let drawn = probe(a, "share.code");
+    let server = httpd_upload_question().map(|q| q.3).unwrap_or_default();
+    check!(drawn == format!("Code {server}"));
+    server
+}
+
+/// How many dark pixels the screen has in the band between the question's title and its Import row, where the code
+/// is drawn (none without it: the sheet is white there).
+fn code_ink(a: &mut App) -> usize {
+    let Some((ix, iy)) = grimoire::share::share_control_point(a, "ask.import") else { return 0 };
+    let c = &a.screen;
+    let (top, bottom) = (iy as i32 - 70 - 150, iy as i32 - 70 - 20);
+    (top..bottom).flat_map(|y| (ix as i32 - 700..ix as i32 + 700).map(move |x| (x, y))).filter(|&(x, y)| c.px[(y * c.stride + x) as usize] < 128).count()
+}
+
+/// Whether a send's whole answer is its reply's head, its code, then `said`.
+fn said(answer: &str, code: &str, said: &str) -> bool {
+    let ok = answer.starts_with("HTTP/1.0 200 OK\r\n") && answer.ends_with(&format!("\r\n\r\ncode {code}\n{said}\n"));
+    if !ok {
+        eprintln!("    wanted code {code} and {said:?}, got {answer:?}");
+    }
+    ok
+}
+
 /// Everything the server answers on s, to its close, the screen ticking between reads.
 fn answer(a: &mut App, s: &mut TcpStream) -> String {
     let mut out = Vec::new();
@@ -263,6 +289,10 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     let mut s = send_pdf(&mut a, "2027%20Planner.pdf");
     check!(probe(&mut a, "share.ask") == "Import \"2027 Planner.pdf\" (1 KB)?");
     check!(probe(&mut a, "share.upload") == "asking");
+    // the send's code under the title, the one the browser's reply carries
+    let code = shown_code(&mut a);
+    check!(code.len() == 4 && code.bytes().all(|d| d.is_ascii_digit()));
+    check!(code_ink(&mut a) > 2000);
     // drawn, not shown yet: no contact answers it, wherever it lands (the second of two taps at one place)
     check!(a.asked == Asked::Drawn);
     let (ix, iy) = grimoire::share::share_control_point(&a, "ask.import").unwrap();
@@ -290,26 +320,30 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     check!(probe(&mut a, "share.ask").is_empty() && probe(&mut a, "share.upload") == "none");
     check!(a.toast.as_str() == "Copied to grimoire/import.");
     check!(std::fs::read(format!("{root}/import/2027 Planner.pdf")).is_ok_and(|b| b.starts_with(b"%PDF-1.4") && b.ends_with(b"%%EOF\n")));
-    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 200 OK"));
+    check!(said(&answer(&mut a, &mut s), &code, "imported"));
+    check!(probe(&mut a, "share.code").is_empty());
     check!(grimoire::share::share_control_point(&a, "done").is_some());
     // Cancel: nothing kept, no toast
     a.toast.set("");
     let mut s = send_pdf(&mut a, "Cancelled.pdf");
+    let code = shown_code(&mut a);
     a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
     let (cx, cy) = grimoire::share::share_control_point(&a, "ask.cancel").unwrap();
     let t = now_ms();
     touch(&mut a, true, cx, cy, t);
     touch(&mut a, false, cx, cy, t + 80);
     check!(probe(&mut a, "share.ask").is_empty() && a.toast.as_str().is_empty());
-    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 410 Gone"));
+    check!(said(&answer(&mut a, &mut s), &code, "declined on the Kindle"));
     check!(!std::path::Path::new(&format!("{root}/import/Cancelled.pdf")).exists());
     check!(!std::path::Path::new(&grimoire::upload::part_path()).exists());
     // Esc is Cancel
     let mut s = send_pdf(&mut a, "Esc.pdf");
+    let code = shown_code(&mut a);
     check!(grimoire::share::share_back(&mut a) && a.scr == ScreenId::Share);
-    check!(probe(&mut a, "share.ask").is_empty() && answer(&mut a, &mut s).starts_with("HTTP/1.0 410 Gone"));
+    check!(probe(&mut a, "share.ask").is_empty() && said(&answer(&mut a, &mut s), &code, "declined on the Kindle"));
     // a turn draws it at its new place: asked again, not shown there yet
     let mut s = send_pdf(&mut a, "Turned.pdf");
+    let code = shown_code(&mut a);
     a.asked = Asked::Shown(now_ms());
     a.w = 2480;
     a.h = 1860;
@@ -319,10 +353,11 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     share_enter(&mut a);
     a.relayout = false;
     check!(a.asked == Asked::Drawn && probe(&mut a, "share.ask") == "Import \"Turned.pdf\" (1 KB)?");
+    check!(shown_code(&mut a) == code && code_ink(&mut a) > 2000);
     // sleep ends it, and the wake shows the screen without it
     share_sleep(&mut a);
     check!(probe(&mut a, "share.ask").is_empty() && probe(&mut a, "share.upload") == "none");
-    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 410 Gone"));
+    check!(said(&answer(&mut a, &mut s), &code, "the Kindle is asleep"));
     a.relayout = true;
     share_enter(&mut a);
     a.relayout = false;
@@ -330,6 +365,7 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     // no answer for a while: it goes, and the toast says it was not imported
     std::env::set_var("GRIMOIRE_UPLOAD_ASK_MS", "200");
     let mut s = send_pdf(&mut a, "Unanswered.pdf");
+    let code = shown_code(&mut a);
     for _ in 0..2000 {
         tick(&mut a);
         if probe(&mut a, "share.ask").is_empty() {
@@ -338,7 +374,7 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     }
     std::env::remove_var("GRIMOIRE_UPLOAD_ASK_MS");
     check!(probe(&mut a, "share.ask").is_empty() && a.toast.as_str() == "Not imported.");
-    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 408 Request Timeout"));
+    check!(said(&answer(&mut a, &mut s), &code, "no answer on the Kindle"));
     // leaving Share ends it (and the server with it)
     let mut s = send_pdf(&mut a, "Left.pdf");
     share_leave(&mut a);
@@ -385,6 +421,7 @@ fn a_question_that_ends_is_taken_away_before_another_is_drawn() {
     let mut mine = send_pdf(&mut a, "Planner.pdf");
     check!(probe(&mut a, "share.ask") == "Import \"Planner.pdf\" (1 KB)?");
     let first = httpd_upload_question().map_or(0, |q| q.0);
+    let mine_code = shown_code(&mut a);
     a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
     a.toast.set("");
     // two more, both written before the screen's next tick: the first ends mine, the second comes right behind it
@@ -397,10 +434,12 @@ fn a_question_that_ends_is_taken_away_before_another_is_drawn() {
     // the next tick draws the server's new question, as a question of its own: not shown yet
     tick(&mut a);
     check!(probe(&mut a, "share.ask") == "Import \"Planner.pdf\" (1 KB)?" && a.asked == Asked::Drawn);
-    check!(answer(&mut a, &mut mine).contains("another PDF was sent"));
-    check!(answer(&mut a, &mut other).contains("another PDF is being sent"));
+    // under it the third's own code, which only the third's reply carries: mine had its own, and its end
+    let theirs_code = shown_code(&mut a);
+    check!(said(&answer(&mut a, &mut mine), &mine_code, "another PDF was sent"));
+    check!(answer(&mut a, &mut other).ends_with("\r\n\r\nanother PDF is being sent\n"));
     grimoire::share::share_back(&mut a);
-    let _ = answer(&mut a, &mut theirs);
+    check!(said(&answer(&mut a, &mut theirs), &theirs_code, "declined on the Kindle"));
     check!(!std::path::Path::new(&format!("{root}/import/Planner.pdf")).exists());
     share_leave(&mut a);
     share_free(&mut a);

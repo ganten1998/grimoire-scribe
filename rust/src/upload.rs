@@ -95,6 +95,23 @@ pub fn new_token() -> Option<String> {
     crate::util::random_fill(&mut b).then(|| b.iter().map(|x| format!("{x:02x}")).collect())
 }
 
+/// A new send code: four decimal digits of the system's randomness, each of the 10,000 as likely, None when it has
+/// none. Not a password: it ties the question on the Kindle to the page that sent the PDF. The server draws it, so no
+/// sender chooses it; it is given only in that send's own reply and shown only under that send's question.
+pub fn new_code() -> Option<String> {
+    loop {
+        let mut b = [0u8; 2];
+        if !crate::util::random_fill(&mut b) {
+            return None;
+        }
+        // (60,000 is 6 times 10,000: a value above it is drawn again, so that no code is likelier than another)
+        let v = u16::from_le_bytes(b);
+        if v < 60_000 {
+            return Some(format!("{:04}", v % 10_000));
+        }
+    }
+}
+
 /// Whether a request comes from the Share page as far as a browser says: an Origin header, when there is one, is
 /// `http://` and the Host header's very text (cases aside), and Sec-Fetch-Site, when there is one, is `same-origin`.
 /// A browser sends both with the page's script's POST; a page of another site cannot make either say so.
@@ -313,6 +330,18 @@ mod tests {
         assert_eq!(a.len(), 32);
         assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, new_token().unwrap());
+    }
+
+    #[test]
+    fn a_code_is_four_digits_of_chance() {
+        let codes: Vec<String> = (0..2000).map(|_| new_code().unwrap()).collect();
+        assert!(codes.iter().all(|c| c.len() == 4 && c.bytes().all(|d| d.is_ascii_digit())));
+        // (2000 draws of 10,000 values: about 1820 different ones; fewer than 1500 would mean they are not drawn evenly)
+        let mut seen = codes.clone();
+        seen.sort();
+        seen.dedup();
+        assert!(seen.len() > 1500, "{}", seen.len());
+        assert!(codes.iter().any(|c| c.starts_with('0')));
     }
 
     #[test]
