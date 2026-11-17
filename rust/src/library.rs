@@ -8279,12 +8279,9 @@ pub fn library_back(a: &mut App) -> bool {
         tap(a, H_RECORD_CANCEL);
         return true;
     }
-    // (the folder that is home, 2.2, issue #160, is as the top level is for Esc: nothing further up, and it asks)
-    let home = home_of(a);
     let (modal, in_folder, reset_asked) = {
         let s = lib(a);
-        let at_home = matches!(&home, Home::Library(f) if f == s.cur_folder.as_str());
-        (s.modal, !s.cur_folder.is_empty() && !at_home, s.gestures_reset_confirm)
+        (s.modal, !s.cur_folder.is_empty(), s.gestures_reset_confirm)
     };
     match modal {
         Modal::Kb => {
@@ -10245,9 +10242,10 @@ mod tests {
         home_done(a, root);
     }
 
-    // The `home` action goes to the home folder from the Library and from Files; at home Esc asks "Exit Grimoire?"
-    // as at the Library's top (a folder inside home goes up to it first), over Files too, where Enter and Esc answer
-    // it as they do over the Library. A home that is gone when the action goes there is Notebooks, said once.
+    // The `home` action goes to the home folder from the Library and from Files. At a home inside Files Esc asks
+    // "Exit Grimoire?" as at the Library's top (a folder inside home goes up to it first), over Files, where Enter and
+    // Esc answer it as they do over the Library; at a Library folder that is home Esc goes up, as its Back button
+    // does. A home that is gone when the action goes there is Notebooks, said once.
     #[test]
     fn the_home_action_goes_home_and_esc_asks_there() {
         let (mut a, root) = home_app("action");
@@ -10262,9 +10260,8 @@ mod tests {
         home_save(&mut a, Home::Library("School".into()));
         assert!(library_shortcut(&mut a, SHORTCUT_HOME));
         assert_eq!(lib(&mut a).cur_folder.as_str(), "School");
-        assert!(library_back(&mut a) && lib(&mut a).modal == Modal::Exit, "Esc at home asks");
-        close_modal(&mut a);
-        assert_eq!(lib(&mut a).cur_folder.as_str(), "School");
+        assert!(library_back(&mut a) && lib(&mut a).modal == Modal::None, "Esc at a Library home goes up, as Back does");
+        assert!(lib(&mut a).cur_folder.is_empty());
         lib(&mut a).cur_folder.set("School/2026");
         reload(&mut a);
         assert!(library_back(&mut a) && lib(&mut a).modal == Modal::None, "inside home: up");

@@ -60,10 +60,11 @@ the Covers view (issue #145; "Files: previews and the Covers view"); the home fo
 Waiting, each for its own issue:
 
 - **Home (issue #160): calls for the owner to confirm**, each the smallest reading of the plan: a Library folder
-  that is home keeps its Back button (the Library has no path bar to lead up) while Esc there asks "Exit
-  Grimoire?"; no Set folder as home on a file's card (the Go to sheet's row sets the folder shown); a home inside
-  Files opens Files even while its card is hidden; a home that is gone goes back to Notebooks at once, not kept for
-  a folder that may come back. Not tried on the Scribe: docs/TESTING.md, "2.2, Home (issue #160): device checks".
+  that is home keeps its Back button (the Library has no path bar to lead up), and Esc there goes up as that button
+  does ("Exit Grimoire?" is asked at a home inside Files, which has no Back button, and at the Library's top); no
+  Set folder as home on a file's card (the Go to sheet's row sets the folder shown); a home inside Files opens Files
+  even while its card is hidden; a home that is gone goes back to Notebooks at once, not kept for a folder that may
+  come back. Not tried on the Scribe: docs/TESTING.md, "2.2, Home (issue #160): device checks".
 - **Rename and Trash on screen** and **Restore** in the Trash place: built with issue #144 (above).
 - **After the previews (issue #145)**: the details a card can only have from the worker (a PDF's pages, a
   picture's size, a font's coverage) and a preview on a file's card; Covers as the default for Templates and Photos

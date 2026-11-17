@@ -3245,7 +3245,7 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
    there. Delete it from its card in Photos: the next start shows the toast, and Restore in Files > Trash puts it
    back (set it again to make it home).
 8. **A Library folder**: a folder's menu in the Library > Set as home; restart: the Library opens in it, with its
-   Back button; Esc asks "Exit Grimoire?". Rename it from its menu: the next start opens in it under its new name.
+   Back button; Esc goes up to the Library's top, as that button does. Rename it from its menu: the next start opens in it under its new name.
    Its menu > Reset home to Notebooks: the next start opens at the top.
 9. **USB while running** (Esc and H on a paired keyboard, with Settings > Shortcuts > Enable shortcuts on and
    `key.h=home` in shortcuts.ini): set `Home probe 2` as home again and have Files open at it; connect USB and, from

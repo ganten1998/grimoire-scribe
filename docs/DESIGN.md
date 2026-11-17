@@ -3013,9 +3013,10 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   Library's top while the folder still opens as a home (`files_back`; while the question is up its answers and its
   keys are its own, `files_in_front`, and
   Files neither draws nor ticks under it). The path bar still leads up, and a folder inside home has Back, which
-  leads to it. At a Library folder that is home Esc asks "Exit Grimoire?" too, and its Back button stays: with no
-  path bar in the Library it is the one way up. From a home inside Files the path bar's Files and the root's Back
-  lead to the Library; the Go to sheet's Home row, the `home` action and the next start lead back.
+  leads to it. A Library folder that is home keeps its Back button (with no path bar in the Library it is the one
+  way up), and Esc there does what that button does: it goes up, and "Exit Grimoire?" is asked at the Library's top
+  as always. From a home inside Files the path bar's Files and the root's Back lead to the Library; the Go to
+  sheet's Home row, the `home` action and the next start lead back.
 - **The `home` action** (109, no default key) goes home from the Library and from Files: out of Files (or a picker)
   for the Library's top or a Library folder; to the home folder inside Files, without leaving Files when it is up.
 - **A rename takes home along.** A rename of the home folder, or of a folder it is in, done in Grimoire puts home
