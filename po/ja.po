@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 23:07-0600\n"
+"POT-Creation-Date: 2026-11-17 07:33-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -3912,6 +3912,14 @@ msgstr "言語: %s"
 msgid "Pen button: %s"
 msgstr "ボタン: %s"
 
+#. TRANSLATORS: Settings' System category row that opens the darker lines choices, with the one in
+#. use ("Darker lines in imported PDFs: Medium"): how dark the gray pages of a PDF imported from now
+#. on are drawn. A PDF already imported stays as it is.
+#: rust/src/library.rs
+#, c-format
+msgid "Darker lines in imported PDFs: %s"
+msgstr ""
+
 #: rust/src/library.rs
 #, c-format
 msgid "Mirror PDFs to %s (USB)"
@@ -4243,6 +4251,12 @@ msgstr "サイドボタン"
 #, fuzzy
 msgid "Eraser"
 msgstr "消しゴム"
+
+#. TRANSLATORS: the title of the list of how dark the gray pages of a PDF imported from now on are drawn
+#. (Settings > System): Off, Medium, Strong.
+#: rust/src/library.rs
+msgid "Darker lines in imported PDFs"
+msgstr ""
 
 #: rust/src/library.rs
 msgid "Kindle"
@@ -5230,6 +5244,24 @@ msgstr "ストローク全体"
 
 #: rust/src/settingsmenu.rs
 msgid "Takes away only what it touches"
+msgstr ""
+
+#. TRANSLATORS: Settings' System category, the row that opens the darker lines choices, with the one in use
+#. ("Darker lines in imported PDFs: Off"), and its list's three choices: the gray pages of a PDF imported from
+#. now on are drawn as they are, a little darker, or darker still (faint lines read better on the Kindle).
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Off"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Medium"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Strong"
 msgstr ""
 
 #: rust/src/settingsmenu.rs

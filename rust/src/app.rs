@@ -2802,8 +2802,8 @@ pub fn app_keyboard_tick(a: &mut App, kb: &mut Keyboard, now: u32) -> KbResult {
 
 // The runner's annotate.* keys: "role", the open page's paper ("document" for a page KOReader sent
 // or an imported one, "template", "" for any other); "luma", the open page as the editor holds it
-// now, its mean (255: white, as a picture still being made draws); the rest are annotate_probe's,
-// for the page open in the editor.
+// now, its mean (255: white, as a picture still being made draws); "gamma", the darker lines the open
+// notebook was made at (2.2); the rest are annotate_probe's, for the page open in the editor.
 fn annotate_app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     let mut v = String::new();
     if key == "role" {
@@ -2826,6 +2826,18 @@ fn annotate_app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i
             Some(mean) => csnprintf!(out, cap, "%d", mean as i32),
             None => csnprintf!(out, cap, "%s", ""),
         };
+        return 0;
+    }
+    if key == "gamma" {
+        // darker lines (2.2): the gamma the open notebook's gray pages were drawn at, as its source.ini says it (1.0
+        // for no line); "" with no notebook open
+        out.clear();
+        if editor_probe(a, "notebook_id", &mut v, 64) == 0 && !v.is_empty() {
+            let mut m = AnnotateMap::default();
+            let g = if annotate_map_load(&v, &mut m) == 0 { crate::pdfimport::gamma_among(m.extra.as_bytes()) } else { crate::pdfwork::Gamma::Off };
+            annotate_map_free(&mut m);
+            csnprintf!(out, cap, "%s", g.name());
+        }
         return 0;
     }
     let page = if editor_probe(a, "page", &mut v, 32) == 0 { atoi(&v) } else { 0 };
