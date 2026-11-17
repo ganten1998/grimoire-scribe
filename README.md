@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>English</strong> | <a href="README-ja.md">日本語</a> | <em>More languages coming soon</em>
+  <strong>English</strong> | <a href="README-ja.md">日本語</a> | <a href="README-pl.md">Polski</a> | <em>More languages coming soon</em>
 </p>
 
 <h1 align="center">
@@ -89,7 +89,7 @@ The full manual lives in the wiki, in **English** and **日本語**:
 |---|---|
 | [Install](https://github.com/ganten1998/grimoire-scribe/wiki/Install) | Requirements, the release zip, KPM, updating and uninstalling |
 | [Using Grimoire](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire) | The Library, paper, pens, the toolbar, the Index, links, Live view, Wi-Fi, sleep and the passcode |
-| [Fonts and Language](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language) | English, Spanish and Japanese, the Classic fonts, and your own fonts |
+| [Fonts and Language](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language) | English, Spanish, Japanese and Polish, the Classic fonts, and your own fonts |
 | [Importing](https://github.com/ganten1998/grimoire-scribe/wiki/Importing) | Templates, pictures, PDFs and pages you already have |
 | [Getting Pages Off the Kindle](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting) | Wi-Fi Share, Effects, USB PDFs and SSH |
 | [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader) | Opening Grimoire from KOReader, annotating books, and the optional plugin |
@@ -98,7 +98,7 @@ The full manual lives in the wiki, in **English** and **日本語**:
 | [Privacy](https://github.com/ganten1998/grimoire-scribe/wiki/Privacy) | What stays on the Kindle, and what Share exposes |
 | [Contributing](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing) | Bugs, feature requests, pull requests, LLM use and the wiki |
 | [Building from Source](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source) | Toolchains, make targets and tests |
-| [Translating](https://github.com/ganten1998/grimoire-scribe/wiki/Translating) | Improving Spanish or Japanese, and adding a language |
+| [Translating](https://github.com/ganten1998/grimoire-scribe/wiki/Translating) | Improving the Spanish, Japanese and Polish translations, and adding a language |
 
 The wiki's source pages live in [`docs/wiki/`](docs/wiki).
 

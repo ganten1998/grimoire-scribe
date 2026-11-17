@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="README.md">English</a> | <strong>日本語</strong> | <em>その他の言語は近日公開</em>
+  <a href="README.md">English</a> | <strong>日本語</strong> | <a href="README-pl.md">Polski</a> | <em>その他の言語は近日公開</em>
 </p>
 
 <h1 align="center">
@@ -94,7 +94,7 @@ Ko-fi で開発を支援できます。
 |---|---|
 | [インストール](https://github.com/ganten1998/grimoire-scribe/wiki/Install-ja) | 必要なもの、リリース ZIP、KPM、更新とアンインストール |
 | [Grimoire の使い方](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire-ja) | ライブラリ、用紙、ペン、ツールバー、インデックス、リンク、ライブビュー、Wi-Fi、スリープ、パスコード |
-| [フォントと言語](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language-ja) | 英語・スペイン語・日本語、Classic のフォント、自分のフォント |
+| [フォントと言語](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language-ja) | 英語・スペイン語・日本語・ポーランド語、Classic のフォント、自分のフォント |
 | [取り込み](https://github.com/ganten1998/grimoire-scribe/wiki/Importing-ja) | テンプレート、写真、PDF、すでにあるページ |
 | [Kindle からページを取り出す](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting-ja) | Wi-Fi 共有、エフェクト、USB の PDF、SSH |
 | [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader-ja) | KOReader から Grimoire を開く、本への書き込み、任意のプラグイン |
@@ -103,7 +103,7 @@ Ko-fi で開発を支援できます。
 | [プライバシー](https://github.com/ganten1998/grimoire-scribe/wiki/Privacy-ja) | Kindle 内に留まるもの、共有が公開するもの |
 | [コントリビュート](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing-ja) | バグ、機能要望、プルリクエスト、LLM の使用、wiki |
 | [ソースからビルド](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source-ja) | ツールチェーン、make のターゲット、テスト |
-| [翻訳](https://github.com/ganten1998/grimoire-scribe/wiki/Translating-ja) | スペイン語・日本語の改善、言語の追加 |
+| [翻訳](https://github.com/ganten1998/grimoire-scribe/wiki/Translating-ja) | スペイン語・日本語・ポーランド語の改善、言語の追加 |
 
 wiki のソースページは [`docs/wiki/`](docs/wiki) にあります。
 
