@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Shortcuts-ja.md) | [Polski](../polish/Shortcuts-pl.md)
+**English** | [日本語](Shortcuts-ja) | [Polski](Shortcuts-pl)
 
 # Keyboard and Controller Shortcuts
 

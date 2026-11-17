@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Install-ja.md) | [Polski](../polish/Install-pl.md)
+**English** | [日本語](Install-ja) | [Polski](Install-pl)
 
 # Install
 

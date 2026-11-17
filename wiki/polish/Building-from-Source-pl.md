@@ -1,4 +1,4 @@
-[English](../english/Building-from-Source.md) | [日本語](../japanese/Building-from-Source-ja.md) | **Polski**
+[English](Building-from-Source) | [日本語](Building-from-Source-ja) | **Polski**
 
 # Budowanie ze źródeł
 

@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Translating-ja.md) | [Polski](../polish/Translating-pl.md)
+**English** | [日本語](Translating-ja) | [Polski](Translating-pl)
 
 # Translating Grimoire
 

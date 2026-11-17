@@ -1,4 +1,4 @@
-[English](../english/Contributing.md) | [日本語](../japanese/Contributing-ja.md) | **Polski**
+[English](Contributing) | [日本語](Contributing-ja) | **Polski**
 
 # Współtworzenie
 

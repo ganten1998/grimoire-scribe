@@ -1,4 +1,4 @@
-[English](../english/Using-Grimoire.md) | **日本語** | [Polski](../polish/Using-Grimoire-pl.md)
+[English](Using-Grimoire) | **日本語** | [Polski](Using-Grimoire-pl)
 
 # Grimoire の使い方
 

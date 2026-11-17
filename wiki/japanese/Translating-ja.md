@@ -1,4 +1,4 @@
-[English](../english/Translating.md) | **日本語** | [Polski](../polish/Translating-pl.md)
+[English](Translating) | **日本語** | [Polski](Translating-pl)
 
 # Grimoire の翻訳
 

@@ -1,4 +1,4 @@
-[English](../english/Shortcuts.md) | **日本語** | [Polski](../polish/Shortcuts-pl.md)
+[English](Shortcuts) | **日本語** | [Polski](Shortcuts-pl)
 
 # キーボードとコントローラーのショートカット
 
