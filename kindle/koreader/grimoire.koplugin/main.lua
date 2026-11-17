@@ -1183,17 +1183,31 @@ function Grimoire:openFile(file)
     -- The contrast and saturation the reader would draw its pages at, as KOReader loads them for a
     -- book (the book's own, else the default set for books, else KOReader's); a KOReader before
     -- 2024 takes its render mode where the saturation is now. (drawPage needs both: KOReader 2024
-    -- on fails on a page drawn without its saturation.)
+    -- on fails on a page drawn without its saturation.) A KOReader before 2023.10 kept the contrast
+    -- another way: a book's own as its "gamma" setting (its kopt_contrast then held 1/contrast), and
+    -- the default set for books as 1/contrast. KOReader moves them itself (a book's "gamma" when the
+    -- book is next opened, the default by its one-time move of 20230901, last_migration_date); until
+    -- then they are read here as it reads them: a book's "gamma" first, and a default not yet moved
+    -- turned back.
     local function kopt(name, default_key)
         local v = setting("kopt_" .. name)
-        if type(v) ~= "number" then v = G_reader_settings:readSetting("kopt_" .. name) end
+        if type(v) ~= "number" then
+            v = G_reader_settings:readSetting("kopt_" .. name)
+            if name == "contrast" and type(v) == "number" and v > 0
+                and (tonumber(G_reader_settings:readSetting("last_migration_date")) or 0) < 20230901 then
+                v = 1 / v
+            end
+        end
         if type(v) ~= "number" and type(G_defaults) == "table" then
             local read, d = pcall(G_defaults.readSetting, G_defaults, default_key)
             if read then v = d end
         end
         return type(v) == "number" and v or 1
     end
-    local gamma, last = kopt("contrast", "DKOPTREADER_CONFIG_CONTRAST"), kopt("saturation", "DKOPTREADER_CONFIG_SATURATION")
+    local old_gamma = setting("gamma")
+    local gamma = type(old_gamma) == "number" and old_gamma > 0 and old_gamma
+        or kopt("contrast", "DKOPTREADER_CONFIG_CONTRAST")
+    local last = kopt("saturation", "DKOPTREADER_CONFIG_SATURATION")
     local has_view, ReaderView = pcall(require, "apps/reader/modules/readerview")
     if has_view and type(ReaderView) == "table" and ReaderView.onSaturationUpdate == nil then
         last = tonumber(setting("render_mode")) or 0

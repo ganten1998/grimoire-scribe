@@ -107,7 +107,8 @@
 - **Darker lines in imported PDFs** (#173). Settings > System > Darker lines in imported PDFs (Off, Medium, Strong)
   draws the gray pages of a PDF imported from then on darker, for faint planners; pages in colour stay as they are,
   and a notebook's missing pages added later match the rest. KOReader's Open this book passes the reader's contrast
-  the same way when the reader draws the PDF darker.
+  the same way when the reader draws the PDF darker. On a KOReader before 2023.10, Open with from the file browser
+  now takes a book's contrast as that KOReader keeps it (it read the inverse before).
 
 ## 2.1.0 (2026-11-13)
 

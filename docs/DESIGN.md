@@ -3184,7 +3184,13 @@ KOReader plugin carry the reader's contrast.
   lines. KOReader's contrast is a gamma on the page, the one version 1 drew KOReader's pictures at; the plugin sends
   `1.5` for a contrast from 1.25 and `2.0` for one from 1.75, and no line for any other (KOReader's own 1, a lighter
   page, which Grimoire does not draw), so Grimoire's setting decides then, as it does for an older plugin. A request's
-  line wins over the setting, and a fill still draws at the notebook's own level. Version 1 is unchanged.
+  line wins over the setting, and a fill still draws at the notebook's own level. Version 1 is unchanged. From the
+  file browser (Open with) the plugin reads the contrast the reader would open the book with: the book's own, else
+  the default set for books, else KOReader's. A KOReader before 2023.10 kept a book's contrast as its `gamma`
+  setting (its `kopt_contrast` then held 1/contrast) and the default as 1/contrast, until it moves them itself (a
+  book's `gamma` when the book is next opened, the default by its one-time move of 20230901,
+  `last_migration_date`); the plugin reads them as KOReader does until then, a book's `gamma` first and a default
+  not yet moved turned back, so Open with draws (version 1) and asks (version 2) at the reader's contrast there too.
 - **Not darkened**: Files' previews of a PDF (they show the file), and the pages KOReader draws (Annotate this page,
   Open this book by version 1), which come at KOReader's own contrast.
 - **Logs**: `import: <id>: darker lines: its gray pages are drawn at gamma 1.5 (the import's)` (or `its notebook's`
