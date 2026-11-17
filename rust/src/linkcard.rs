@@ -264,7 +264,7 @@ pub fn linkcard_set_web(c: &mut LinkCard, pid: u32, seed: u32, address: &str) {
     c.boxes.clear();
     c.seeds.push(seed);
     c.web = address.to_string();
-    c.title = weblinks_host(address).to_string();
+    c.title = weblinks_host(address);
     c.rows[0] = CardRow::Close;
     c.enabled[0] = true;
     // TRANSLATORS: also the only row of a web link's card (the address and its QR code): closes the card (about

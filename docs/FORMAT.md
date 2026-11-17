@@ -1334,9 +1334,15 @@ The page id and the seed are as in a `link.` line of `links.ini` (the seed names
 and the other link files never meet it), the area as an `area.` line's (1 to 4 decimal digits each, 1 <= w,
 1 <= h, x + w and y + h at most 6000, page pixels at the notebook's page size), and the address is the rest of the
 line, exactly as stored and as shown (it may hold commas). An address is kept only when it starts with `http://` or
-`https://` (the scheme in either case) followed by a byte that is not `/`, `?` or `#`, holds only printable ASCII
-other than a space (bytes 0x21 to 0x7E: no control byte, no space, nothing outside ASCII) and is at most 200 bytes
-long (under the 213 that the largest QR code Grimoire draws, version 10 at level M, holds). The import trims spaces,
+`https://` (the scheme in either case), holds only printable ASCII other than a space and `\` (bytes 0x21 to 0x7E:
+no control byte, no space, nothing outside ASCII), is at most 200 bytes long (under the 213 that the largest QR code
+Grimoire draws, version 10 at level M, holds) and names a plain host: up to the first `/`, `?` or `#` it is `<host>`
+or `<host>:<port>`, with no `user@` part, the host of letters, digits, `-`, `_` and `.` only (no `%`, no `[`), a host
+whose last label is a number only as four numbers from 0 to 255 without leading zeros, and a port from 1 to 65535
+without a leading zero. These are the addresses whose host, as a browser reads them, is the host their text names
+(a browser reads `\` as `/`, the text before an `@` as a user, `%2E` as a dot and `0x7f.1` as `127.0.0.1`); the
+card's title shows that host as a browser writes it: in lower case, with its port unless it is the scheme's own
+(80 for http, 443 for https). The import trims spaces,
 tabs, line breaks and NULs from the ends of the PDF's string first; a `javascript:`, `file:`, `mailto:` or relative
 address, or any other the rules refuse, is left out and counted in the log, as every web link was before 2.2. The
 worker checks the address, the writer checks it again before it is stored, and the reader checks it again. Within

@@ -671,8 +671,8 @@ fn leak(s: String) -> &'static str {
 }
 
 // A URI action's address is kept when the rules take it (weblinks_address_ok: http or https, printable ASCII without a
-// space, at most 200 bytes, its ends trimmed of spaces and NULs first), as a W record a quad (its box: no polygon);
-// any other is left out and counted (F's first count), and a hidden one is not on the paper at all.
+// space or `\`, a plain host, at most 200 bytes, its ends trimmed of spaces and NULs first), as a W record a quad (its
+// box: no polygon); any other is left out and counted (F's first count), and a hidden one is not on the paper at all.
 #[test]
 fn a_pdfs_web_links_are_kept_by_the_rules_and_the_rest_counted() {
     let e = setup("web-rules");
@@ -695,6 +695,9 @@ fn a_pdfs_web_links_are_kept_by_the_rules_and_the_rest_counted() {
         Lnk::new(r(9), Act::Uri("http://a\\001b.example")), // a control byte, as an octal escape in the PDF string
         Lnk::new(r(10), Act::Uri("http://caf\\351.example")), // a byte outside ASCII
         Lnk::new(r(11), Act::Uri("/relative/path")),
+        // a `\` (a browser reads it as `/`: the host would be evil.example) and a `user@` part
+        Lnk::new([20.0, 200.0, 40.0, 220.0], Act::Uri("https://evil.example\\\\@trusted.example/")),
+        Lnk::new([60.0, 200.0, 80.0, 220.0], Act::Uri("https://trusted.example@evil.example/")),
         hidden,
         Lnk::new(r(13), Act::Page(2)),
         wrapped,
@@ -702,7 +705,7 @@ fn a_pdfs_web_links_are_kept_by_the_rules_and_the_rest_counted() {
     let c = e.walk(&make_linked(&plain_pages(2), &on(1, 2, links), &Extra::default()));
     let kept: Vec<&str> = c.webs.iter().map(|w| w.address.as_str()).collect();
     assert_eq!(kept, vec!["https://example.org/a", "HTTP://EXAMPLE.ORG/B", "http://example.net/c", at200, "https://example.org/two/quads", "https://example.org/two/quads"]);
-    assert_eq!(c.left.uri, 8, "the refused ones are counted, the hidden one is not");
+    assert_eq!(c.left.uri, 10, "the refused ones are counted, the hidden one is not");
     assert_eq!(pairs(&c), vec![(1, 2)], "the page link is a document link, as before");
     // each its place among the page's web links, and its area in page pixels as an L record's
     assert_eq!(c.webs.iter().map(|w| w.index).collect::<Vec<_>>(), (0..6).collect::<Vec<u32>>());

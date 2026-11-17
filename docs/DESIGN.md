@@ -1474,9 +1474,15 @@ code made from it, and nothing else.
   whole file (no tabs at all there). A planner or a book with a few hundred web links would have cost a 2.1.0 user
   every tab. In a file of their own the web links are simply absent in 2.1.0 and before, which never open it and
   never write over it; `doclinks.ini` is the same bytes as for the PDF without its web links.
-- **The rules** (`weblinks_address_ok`): `http://` or `https://` (the scheme in either case) and a host's first
-  byte, printable ASCII other than a space (0x21 to 0x7E), at most `WEBLINK_ADDRESS_MAX` (200) bytes, under the 213
-  bytes a version 10 code holds at level M, the largest `qr.rs` draws, so every address kept has its code. The worker
+- **The rules** (`weblinks_address_ok`, `weblinks_authority`): `http://` or `https://` (the scheme in either
+  case), printable ASCII other than a space and `\` (0x21 to 0x7E), at most `WEBLINK_ADDRESS_MAX` (200) bytes, under
+  the 213 bytes a version 10 code holds at level M, the largest `qr.rs` draws, so every address kept has its code,
+  and a plain host: `<host>` or `<host>:<port>`, no `user@` part, a host of letters, digits, `-`, `_` and `.`, a
+  numeric one only as four plain numbers, a port without a leading zero. What is refused is each form whose host a
+  browser reads otherwise than its text says (`\` as `/`, the text before an `@` as a user, `%2E` as a dot,
+  `0x7f.1` as `127.0.0.1`), so the card's title (`weblinks_host`) is always the host a phone opens, as the URL
+  standard writes it (`URL.host`: lower case, the port unless it is the scheme's own); a unit test holds the title
+  against a browser parser's answers. The worker
   trims the PDF string's ends (spaces, line breaks, NULs: `weblinks_address_from`) and checks; the writer checks the
   `W` record again (`parse_record`, `Collected::take`), and the reader checks the file's line again. A refused
   address stays a counted web link left out (`LeftOut.uri`).
@@ -1493,8 +1499,8 @@ code made from it, and nothing else.
   under it tries a document link, then a web link (`weblinks_at`: exact area first, then the 7 mm growth); a
   document link reached only through its growth gives way to a web link whose own area holds the point. The tap
   opens the long-press card in a form of its own (`linkcard_set_web`, `LinkCard.web`): the heavy border around the
-  link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`, after any
-  `user@`), the address as stored (up to six lines broken between its characters), "Scan with a phone's camera",
+  link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`), the
+  address as stored (up to six lines broken between its characters), "Scan with a phone's camera",
   the code in a 600 px box (a symbol of 37 to 65 modules: 9 to 16 px, 0.8 to 1.4 mm a module on the Scribe; its
   negative under Invert, as the Share screen's) and Done; a tap outside closes it too. A finger held on a web link
   arms Select, as on a document link. The eye draws their boxes with the document links' (`LinkBoxes.doc`). Copy

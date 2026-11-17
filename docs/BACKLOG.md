@@ -317,7 +317,10 @@ The smallest coherent reading was taken for each call; each can change without a
   2.1.0 would carry only up to 16 KiB of lines and past that refuse whole (no tabs at all there). What 2.1.0 and
   before do is in FORMAT.md, "Web links": the notebook opens as before, without the web links, and the file is never
   written there. A later version may still move them into `doclinks.ini` once no version before 2.2 matters.
-- **Which addresses**: http and https only, printable ASCII without a space, at most 200 bytes (taken). Not kept:
+- **Which addresses**: http and https only, printable ASCII without a space or `\`, a plain host, at most 200 bytes
+  (taken). A plain host has no `user@` part, no `%`, no brackets, and is a number only as four plain numbers: each
+  refused form is one whose host a browser reads otherwise than its text says, so the card's title is always the
+  host a phone opens. Not kept:
   `mailto:` (a phone would open it too: it could be added to the rules), `tel:`, internationalised addresses in raw
   UTF-8 (a PDF should write them as ASCII; percent-encoded ones are kept), and longer addresses (a larger code, up to
   version 20 and 666 bytes, would need qr.rs's QR_MAX_VERSION raised).

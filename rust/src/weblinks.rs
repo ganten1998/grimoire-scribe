@@ -1,5 +1,6 @@
 //! weblinks.ini: the web links a document brought (2.2, issue #174). A PDF's link annotation whose action is a
-//! URI with an address the rules take (weblinks_address_ok: http or https, printable ASCII, at most 200 bytes) is
+//! URI with an address the rules take (weblinks_address_ok: http or https, printable ASCII, a plain host, at most
+//! 200 bytes) is
 //! kept here, with its area on the page; a finger's tap on it shows a card with the address and its QR code, for
 //! a phone to open. Nothing on the Kindle opens, fetches or runs an address: the card shows the stored text and a
 //! code made from it.
@@ -39,11 +40,11 @@ pub const WEBLINK_ADDRESS_MAX: usize = 200;
 const HEADER: &str = "# Grimoire: web links a document brought (docs/FORMAT.md, weblinks.ini)\n";
 
 /// Whether an address may be kept as a web link (the worker sends only these, and the writer and the reader check
-/// again): `http://` or `https://` (the scheme in either case) followed by a byte that starts a host (not `/`, `?`
-/// or `#`); every byte printable ASCII other than a space (0x21 to 0x7E: no control byte, no space, nothing
-/// outside ASCII); at most WEBLINK_ADDRESS_MAX bytes in all.
+/// again): `http://` or `https://` (the scheme in either case); every byte printable ASCII other than a space and
+/// `\` (0x21 to 0x7E: no control byte, no space, nothing outside ASCII; a browser reads `\` as `/`); at most
+/// WEBLINK_ADDRESS_MAX bytes in all; and up to the first `/`, `?` or `#` a plain host (weblinks_authority).
 pub fn weblinks_address_ok(b: &[u8]) -> bool {
-    if b.len() > WEBLINK_ADDRESS_MAX || !b.iter().all(|&c| (0x21..=0x7e).contains(&c)) {
+    if b.len() > WEBLINK_ADDRESS_MAX || !b.iter().all(|&c| (0x21..=0x7e).contains(&c) && c != b'\\') {
         return false;
     }
     let rest = if b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://") {
@@ -53,7 +54,44 @@ pub fn weblinks_address_ok(b: &[u8]) -> bool {
     } else {
         return false;
     };
-    rest.first().is_some_and(|c| !matches!(c, b'/' | b'?' | b'#'))
+    let end = rest.iter().position(|c| matches!(c, b'/' | b'?' | b'#')).unwrap_or(rest.len());
+    weblinks_authority(&rest[..end]).is_some()
+}
+
+/// An address's authority (after `://`, up to the first `/`, `?` or `#`) when it is plain enough for the card's
+/// title to name exactly the host a browser opens: `<host>` or `<host>:<port>`. Refused (None): a `user@` part (the
+/// text before the `@` reads as a host and is not one); a host empty or of anything but letters, digits, `-`, `_`
+/// and `.` (no `%`, which a browser decodes, no `[`, no IPv6 literal); a host whose last label is a number (a
+/// browser reads it as an IPv4 address, in several forms) other than four numbers 0 to 255 without leading zeros;
+/// a port empty, past 65535, or with a leading zero.
+fn weblinks_authority(a: &[u8]) -> Option<(&[u8], Option<u32>)> {
+    let (host, port) = match a.iter().position(|&c| c == b':') {
+        Some(i) => (&a[..i], Some(&a[i + 1..])),
+        None => (a, None),
+    };
+    if host.is_empty() || !host.iter().all(|&c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.')) {
+        return None;
+    }
+    let num = |p: &[u8], max: u32| -> Option<u32> {
+        if p.is_empty() || p.len() > 5 || !p.iter().all(u8::is_ascii_digit) || (p.len() > 1 && p[0] == b'0') {
+            return None;
+        }
+        let v = p.iter().fold(0u32, |v, &c| v * 10 + (c - b'0') as u32);
+        (v <= max).then_some(v)
+    };
+    let port = match port {
+        None => None,
+        Some(p) => Some(num(p, 65535).filter(|&v| v > 0)?),
+    };
+    let last = host.strip_suffix(b".").unwrap_or(host).rsplit(|&c| c == b'.').next().unwrap_or(b"");
+    let hex = last.len() >= 2 && last[0] == b'0' && (last[1] | 0x20) == b'x' && last[2..].iter().all(u8::is_ascii_hexdigit);
+    if hex || (!last.is_empty() && last.iter().all(u8::is_ascii_digit)) {
+        let parts: Vec<&[u8]> = host.split(|&c| c == b'.').collect();
+        if parts.len() != 4 || !parts.iter().all(|p| p.len() <= 3 && num(p, 255).is_some()) {
+            return None;
+        }
+    }
+    Some((host, port))
 }
 
 /// A URI action's string as the worker takes it: its ends trimmed of spaces, tabs, line breaks and NULs (some
@@ -69,18 +107,28 @@ pub fn weblinks_address_from(raw: &[u8]) -> Option<String> {
     String::from_utf8(b.to_vec()).ok()
 }
 
-/// The host an address names, what the card's title shows: after `://`, up to the first `/`, `?` or `#`, after
-/// the last `@` (a `user@` part is not the host). The whole address when that leaves nothing.
-pub fn weblinks_host(a: &str) -> &str {
-    let Some(i) = a.find("://") else { return a };
-    let rest = &a[i + 3..];
-    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let auth = &rest[..end];
-    let h = auth.rsplit('@').next().unwrap_or(auth);
-    if h.is_empty() {
-        a
+/// The host an address names, what the card's title shows: for an address the rules take, the host a browser opens
+/// as the URL standard writes it (`URL.host`): the host in lower case, then `:` and the port unless it is the
+/// scheme's own (80 for http, 443 for https). The whole address for one the rules refuse.
+pub fn weblinks_host(a: &str) -> String {
+    let b = a.as_bytes();
+    let (rest, own) = if b.len() >= 8 && b[..8].eq_ignore_ascii_case(b"https://") {
+        (&b[8..], 443)
+    } else if b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://") {
+        (&b[7..], 80)
     } else {
-        h
+        return a.to_string();
+    };
+    let end = rest.iter().position(|c| matches!(c, b'/' | b'?' | b'#')).unwrap_or(rest.len());
+    match weblinks_authority(&rest[..end]) {
+        Some((host, port)) if weblinks_address_ok(b) => {
+            let mut s = String::from_utf8_lossy(host).to_ascii_lowercase();
+            if let Some(p) = port.filter(|&p| p != own) {
+                s.push_str(&format!(":{p}"));
+            }
+            s
+        }
+        _ => a.to_string(),
     }
 }
 
@@ -565,7 +613,7 @@ mod tests {
 
     #[test]
     fn only_http_and_https_addresses_of_printable_ascii_are_kept() {
-        for ok in ["http://example.org", "https://example.org/a?b=c#d", "HTTPS://Example.ORG", "http://u@h", "https://x"] {
+        for ok in ["http://example.org", "https://example.org/a?b=c#d", "HTTPS://Example.ORG", "https://x", "https://e.org/@user"] {
             assert!(weblinks_address_ok(ok.as_bytes()), "{ok}");
         }
         let long_ok = format!("https://e.org/{}", "a".repeat(WEBLINK_ADDRESS_MAX - 14));
@@ -609,13 +657,63 @@ mod tests {
         assert_eq!(weblinks_address_from(b"https://e.org/\x00x"), None);
     }
 
+    // The card's title is the host a phone's browser opens. The right-hand column is what a parser of the URL
+    // standard (a browser's: `new URL(a).host`) gives for each address, run offline; None where the rules refuse the
+    // address, each because that parser opens a host other than the text seems to name (a `\` read as `/`, a `user@`
+    // part, a percent-encoded host, a number read as an IPv4 address, a dropped dot) or opens nothing.
     #[test]
-    fn the_title_is_the_host() {
-        assert_eq!(weblinks_host("https://example.org/a/b?c"), "example.org");
-        assert_eq!(weblinks_host("http://user:pw@shop.example:8080/x"), "shop.example:8080");
-        assert_eq!(weblinks_host("https://google.com@evil.example/"), "evil.example");
-        assert_eq!(weblinks_host("https://h?q"), "h");
-        assert_eq!(weblinks_host("https://@/"), "https://@/");
+    fn the_title_is_the_host_a_browser_opens() {
+        let cases: &[(&str, Option<&str>)] = &[
+            ("https://example.org/a/b?c", Some("example.org")),
+            ("https://EXAMPLE.org/", Some("example.org")),
+            ("https://WWW.Example.ORG/I", Some("www.example.org")),
+            ("https://shop.example:8080/x", Some("shop.example:8080")),
+            ("https://example.org:443/", Some("example.org")),
+            ("http://example.org:80/", Some("example.org")),
+            ("https://example.org:80/", Some("example.org:80")),
+            ("https://xn--ggle-0nda.example/", Some("xn--ggle-0nda.example")),
+            ("https://XN--GGLE-0NDA.example/", Some("xn--ggle-0nda.example")),
+            ("https://example.org./", Some("example.org.")),
+            ("https://192.168.0.1/", Some("192.168.0.1")),
+            ("https://255.255.255.255:65535/", Some("255.255.255.255:65535")),
+            ("https://a_b.example/", Some("a_b.example")),
+            ("https://h?q", Some("h")),
+            ("https://example.org#x", Some("example.org")),
+            ("https://1e2/", Some("1e2")),
+            ("https://example.0xg/", Some("example.0xg")),
+            ("https://evil.example\\@trusted.example/", None), // the parser: evil.example
+            ("https://evil.example\\", None),
+            ("https://trusted.example@evil.example/", None), // evil.example
+            ("http://user:pw@shop.example:8080/x", None),     // shop.example:8080
+            ("https://evil.example;@trusted.example/", None), // trusted.example
+            ("https://evil.example%2F@trusted.example/", None),
+            ("https://trusted%2Eexample/", None), // trusted.example
+            ("https://[::1]/", None),
+            ("https://goo!gle.example/", None),
+            ("https://example.org:/", None),
+            ("https://example.org:0443/", None),  // example.org
+            ("https://example.org:0/", None),
+            ("https://example.org:99999/", None),  // fails
+            ("https://trusted.example:evil.example/", None), // fails
+            ("https://@/", None),
+            ("https://:80/", None),
+            ("https://user@/", None),
+            ("https://2130706433/", None), // 127.0.0.1
+            ("https://0x7f.1/", None),     // 127.0.0.1
+            ("https://01.2.3.4/", None),   // 1.2.3.4
+            ("https://1.2.3/", None),      // 1.2.0.3
+            ("https://9/", None),          // 0.0.0.9
+            ("https://192.168.0.1./", None), // 192.168.0.1
+            ("https://256.1.1.1/", None),  // fails
+            ("https://trusted.example.0x7f000001/", None), // fails
+            ("https://example.0x/", None), // fails
+        ];
+        for &(a, host) in cases {
+            assert_eq!(weblinks_address_ok(a.as_bytes()), host.is_some(), "{a}");
+            assert_eq!(weblinks_host(a), host.unwrap_or(a), "{a}");
+        }
+        // (a `\` anywhere is refused: no address has one raw)
+        assert!(!weblinks_address_ok(b"https://example.org/a\\b"));
     }
 
     #[test]

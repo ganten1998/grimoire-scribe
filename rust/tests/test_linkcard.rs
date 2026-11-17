@@ -108,12 +108,12 @@ fn the_card_is_as_tall_as_its_rows() {
 // line of address and for six (the most it shows).
 fn a_web_links_card_shows_its_address_and_done() {
     let mut c = LinkCard::default();
-    linkcard_set_web(&mut c, 10, 0x1234, "https://user@example.org:8080/a?b#c");
+    linkcard_set_web(&mut c, 10, 0x1234, "https://Example.org:8080/a?b#c");
     check!(c.open && c.page == -1 && c.seeds == vec![0x1234] && c.pid == 10);
     check!(c.title == "example.org:8080");
     check!(rows(&c) == "close");
     let mut out = String::new();
-    check!(linkcard_probe(&c, "web", &mut out, 256) && out == "https://user@example.org:8080/a?b#c");
+    check!(linkcard_probe(&c, "web", &mut out, 256) && out == "https://Example.org:8080/a?b#c");
     check!(linkcard_web_height(1) == 1018);
     check!(linkcard_web_height(6) == 1018 + 5 * 46);
     // the card of a link that is not a web link shows no address
