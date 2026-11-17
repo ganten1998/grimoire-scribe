@@ -291,6 +291,30 @@ fn the_page_cap_and_the_size() {
     clean_env();
 }
 
+// The tiles the folder's PDFs give have a cap in all (TEMPLATE_PDF_TILES_MAX, 200: four PDFs at the page cap), so a
+// folder of many long PDFs keeps the sheet's look quick: the PDFs in the order of their names, and one that would take
+// the sheet past the cap is left out whole, as one tile it cannot use, with no job queued for it.
+fn the_tiles_pdfs_give_have_a_cap() {
+    clean_env();
+    check!(TEMPLATE_PDF_TILES_MAX == 200);
+    let files: Vec<(String, Vec<u8>)> = (1..=5).map(|i| (format!("P{i}.pdf"), pdffix::planner(1))).collect();
+    let refs: Vec<(&str, Vec<u8>)> = files.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+    folder(&refs);
+    // each one's count planted at the page cap (its pages are not needed here, and no worker can start)
+    std::fs::create_dir_all(cache()).unwrap();
+    for (n, _) in &files {
+        std::fs::write(format!("{}/{}.pages", cache(), hash(n)), format!("{TEMPLATE_PDF_MAX_PAGES}\n")).unwrap();
+    }
+    std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire");
+    let (t, log) = with_log("tiles-cap", scan);
+    check!(t.len() == 201 && t[..200].iter().all(|t| t.page > 0 && !t.bad));
+    check!(t[200].page == 0 && t[200].bad && t[200].name.as_str() == "P5" && t[199].name.as_str() == "P4 p. 50");
+    check!(log.contains("1 PDF(s) left out: their pages would take the sheet past 200 tiles of PDF pages"));
+    check!(!bg_job_pending(BgKind::Template, "", &format!("{}/P5.pdf", tpl())));
+    settle();
+    clean_env();
+}
+
 // What the worker refuses is marked as a whole: a file that is no PDF, a PDF with a password. Nothing else is made.
 fn refused_pdfs_are_marked() {
     clean_env();
@@ -620,6 +644,7 @@ fn test_template_pdfs() {
     run!(a_page_is_used_as_a_picture_template_is);
     run!(the_pages_come_in_slices);
     run!(the_page_cap_and_the_size);
+    run!(the_tiles_pdfs_give_have_a_cap);
     run!(refused_pdfs_are_marked);
     run!(a_page_that_fails_is_marked_alone);
     run!(the_writer_out_of_memory_marks_nothing);

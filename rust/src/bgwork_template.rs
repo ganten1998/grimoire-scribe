@@ -542,6 +542,7 @@ fn scan_folder(which: &str, out: &mut Vec<Template>, dpi: f32) -> i32 {
     let mut t: Vec<Template> = Vec::new();
     let mut missing = false;
     let mut pdf_jobs: Vec<String> = Vec::new();
+    let (mut pdf_left, mut pdf_past) = (crate::bgwork_tplpdf::TEMPLATE_PDF_TILES_MAX, 0);
     let mut toolong = 0;
     for name in &names {
         if dir.len() + 1 + name.len() >= TEMPLATE_PATH_MAX {
@@ -559,9 +560,12 @@ fn scan_folder(which: &str, out: &mut Vec<Template>, dpi: f32) -> i32 {
             base.truncate(dot);
         }
         if pdfs && crate::bgwork_tplpdf::is_pdf_name(name) {
-            // a PDF: a tile a page, as its job made them (or one for the whole PDF until its pages are counted)
-            if crate::bgwork_tplpdf::scan_pdf(&dir, name, &path, &base, &mut t) {
-                pdf_jobs.push(path);
+            // a PDF: a tile a page, as its job made them (or one for the whole PDF until its pages are counted), up to
+            // the tiles the PDFs may give in all
+            match crate::bgwork_tplpdf::scan_pdf(&dir, name, &path, &base, &mut t, &mut pdf_left) {
+                Some(true) => pdf_jobs.push(path),
+                Some(false) => {}
+                None => pdf_past += 1,
             }
             continue;
         }
@@ -589,6 +593,9 @@ fn scan_folder(which: &str, out: &mut Vec<Template>, dpi: f32) -> i32 {
     }
     if toolong != 0 {
         qlog!("%s: %d file(s) with too long a name left out", which, toolong);
+    }
+    if pdf_past != 0 {
+        qlog!("templates: %d PDF(s) left out: their pages would take the sheet past %d tiles of PDF pages", pdf_past, crate::bgwork_tplpdf::TEMPLATE_PDF_TILES_MAX as i32);
     }
     if missing {
         bg_queue(BgKind::Template, Some(""), Some(&dir), dpi, false);

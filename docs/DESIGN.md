@@ -3182,6 +3182,11 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   memory), and the free-space floor before every page (room for a page before its worker is asked, and for its
   picture and preview before they are written). A PDF over the page limit is no template as a whole and is never cut
   to its first pages: its count is in the log, and the sheet leaves it out as it leaves out a picture it cannot use.
+  The sheet takes at most `TEMPLATE_PDF_TILES_MAX` (200) tiles of PDF pages in all, four PDFs at the page limit (each
+  tile is looked at when the sheet reads the folder, and every 1.5 s while one waits, so many long PDFs must not slow
+  it): the PDFs are taken in the order of their names, and one that would take the sheet past the cap (its page
+  count, or one tile while its pages are not counted) is left out whole, as one tile the sheet cannot use, with no
+  job queued for it; the log says how many.
 - **What a failure costs.** A PDF that is empty, over 16 MB (marked before any worker starts), that the worker
   refuses (no PDF Grimoire reads, a password, no page), whose worker lies, whose worker ends or stalls twice while it
   is opened, or none of whose pages draws, is marked bad as a whole, as a picture is (`<hash>.bad`, and what was made

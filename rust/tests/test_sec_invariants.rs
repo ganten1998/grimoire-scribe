@@ -807,6 +807,9 @@ fn pdfs_as_templates_are_told_as_they_are() {
     // the page limit, whole
     told_on(&mut fails, DESIGN, "is no template as a whole and is never cut to its first pages", TPLPDF, "if n > TEMPLATE_PDF_MAX_PAGES {");
     told_on(&mut fails, DESIGN, "over 16 MB (marked before any worker starts)", TPLPDF, "if size > TEMPLATE_MAX_BYTES as u64 {");
+    // the tiles PDFs give in all, and a PDF past them left out whole, with no job
+    beside(&mut fails, DESIGN, "`TEMPLATE_PDF_TILES_MAX`", &grimoire::bgwork_tplpdf::TEMPLATE_PDF_TILES_MAX.to_string());
+    told_on(&mut fails, DESIGN, "is left out whole, as one tile the sheet cannot use, with no job queued for it", TPLPDF, "if tiles > *left { out.push(whole(true)); return None; }");
     // written only in Grimoire's own folder, reached with no link; the floor before every page
     told_on(&mut fails, DESIGN, "into a cache folder reached with no link on the way", TPLPDF, "if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {");
     told_on(&mut fails, DESIGN, "the free-space floor before every page", TPLPDF, "Some(free) if !crate::fsview::fsview_room_for(free, need) =>");

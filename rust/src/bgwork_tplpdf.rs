@@ -45,6 +45,11 @@ pub const TEMPLATE_PDF_MAX_PAGES: u32 = 50;
 /// How many PDFs one look at the folder queues (each its own job; the queue holds 16).
 pub const TEMPLATE_PDF_QUEUE_MAX: usize = 8;
 
+/// The tiles the folder's PDFs give the sheet in all (four PDFs at the page cap): each is stat'ed at every look, and
+/// every 1.5 s while one waits, so a folder of many long PDFs must not make the sheet slow. The PDFs are taken in the
+/// order of their names; one that would take the sheet past this is left out whole (one tile it cannot use, no job).
+pub const TEMPLATE_PDF_TILES_MAX: usize = 200;
+
 /// A page whose worker ends or stalls this many times is marked, and so is a PDF whose worker does so while it is
 /// opened.
 const TRIES: u32 = 2;
@@ -166,10 +171,11 @@ pub fn page_name(base: &str, page: u32) -> String {
 
 /// The scan's part for a PDF of the templates folder (`dir`/`name`, at `path`; `base` its name without `.pdf`): its
 /// tiles into `out` as the cache has them (one tile a page once its pages are counted, each ready, bad or still to
-/// come; until then one tile for the whole PDF, still to come; one bad tile for a PDF that is no template). True when
-/// its job has work to do.
-pub fn scan_pdf(dir: &str, name: &str, path: &str, base: &str, out: &mut Vec<Template>) -> bool {
-    let Ok(st) = std::fs::metadata(path) else { return false };
+/// come; until then one tile for the whole PDF, still to come; one bad tile for a PDF that is no template). `left`:
+/// the tiles the PDFs may still give (TEMPLATE_PDF_TILES_MAX in all), taken from. Some(true) when its job has work to
+/// do; None when it would take the sheet past the cap: then one bad tile for the whole PDF, and no job.
+pub fn scan_pdf(dir: &str, name: &str, path: &str, base: &str, out: &mut Vec<Template>, left: &mut usize) -> Option<bool> {
+    let Ok(st) = std::fs::metadata(path) else { return Some(false) };
     let hash = hash_hex(crate::bgwork_template::preview_hash(name, st.len(), st.mtime()));
     let cache = format!("{dir}/.cache");
     let whole = |bad: bool| {
@@ -178,7 +184,17 @@ pub fn scan_pdf(dir: &str, name: &str, path: &str, base: &str, out: &mut Vec<Tem
         t.name.set_cut(base);
         t
     };
-    match pdf_state(&cache, &hash) {
+    let state = pdf_state(&cache, &hash);
+    let tiles = match state {
+        PdfPages::Known(n) => n as usize,
+        PdfPages::Bad | PdfPages::Unknown => 1,
+    };
+    if tiles > *left {
+        out.push(whole(true));
+        return None;
+    }
+    *left -= tiles;
+    Some(match state {
         PdfPages::Bad => {
             out.push(whole(true));
             false
@@ -206,7 +222,7 @@ pub fn scan_pdf(dir: &str, name: &str, path: &str, base: &str, out: &mut Vec<Tem
             }
             work
         }
-    }
+    })
 }
 
 /// Queues the jobs of the PDFs a look at the folder found work for (at most TEMPLATE_PDF_QUEUE_MAX, none queued or
