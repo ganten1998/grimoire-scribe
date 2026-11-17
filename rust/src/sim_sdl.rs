@@ -1594,6 +1594,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
         && !libindex_probe(&key, &mut got, GOT_CAP)
+        && !upload_probe(&key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {
         err(&bformat("expect failed (line %d): unknown key \"%s\"\n", &[B::D(line), B::S(&key)]));
@@ -1727,6 +1728,78 @@ enum Step {
     Share(FixedStr<96>,bool),
     LibraryContact(FixedStr<96>,InType),
     Strokes(FixedStr<512>,usize,u32,usize),
+    /// `upload MODE FILE`: a browser's send from the Share page (sim_upload), started where the App says the port
+    Upload(String, String),
+}
+
+/// What each `upload` line's browser was answered, in order: "<status> <text>", or None while it waits.
+static UPLOADS: std::sync::Mutex<Vec<Option<String>>> = std::sync::Mutex::new(Vec::new());
+
+/// A browser on the Wi-Fi sending `file` (its whole path) to the share server on `port`, in a thread of its own (the main loop serves
+/// it meanwhile): it loads the Share page for its token, then sends the file's bytes as web/upload.js does, its name
+/// percent-encoded, and waits for the answer (the Kindle's question's). The thread ends with its answer; the scripts
+/// wait for it (upload.reply.N) before anything forks.
+fn sim_upload(port: i32, mode: String, file: String) {
+    let slot = {
+        let mut u = UPLOADS.lock().unwrap_or_else(|e| e.into_inner());
+        u.push(None);
+        u.len() - 1
+    };
+    std::thread::spawn(move || {
+        let r = sim_upload_run(port as u16, &mode, &file).unwrap_or_else(|e| format!("error {e}"));
+        UPLOADS.lock().unwrap_or_else(|e| e.into_inner())[slot] = Some(r);
+    });
+}
+
+fn sim_http(port: u16, head: &str, body: &[u8]) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
+    let _ = s.set_read_timeout(Some(Duration::from_secs(180)));
+    s.write_all(head.as_bytes()).map_err(|e| e.to_string())?;
+    let _ = s.write_all(body); // (a refusal may close the connection before the body is all sent)
+    let mut out = Vec::new();
+    let _ = s.read_to_end(&mut out);
+    Ok(out)
+}
+
+fn sim_upload_run(port: u16, mode: &str, file: &str) -> Result<String, String> {
+    let body = std::fs::read(file).map_err(|e| e.to_string())?;
+    let page = sim_http(port, &format!("GET / HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n"), b"")?;
+    let page = String::from_utf8_lossy(&page);
+    const AT: &str = "window.GRIMOIRE_UPLOAD={\"token\":\"";
+    let token: String = page.find(AT).map(|i| page[i + AT.len()..].chars().take_while(|c| c.is_ascii_hexdigit()).collect()).unwrap_or_default();
+    let name: String = file.rsplit('/').next().unwrap_or(file).bytes().map(|c| {
+        // encodeURIComponent's
+        if c.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&c) { (c as char).to_string() } else { format!("%{c:02X}") }
+    }).collect();
+    let origin = if mode == "othersite" { "http://evil.example".to_string() } else { format!("http://127.0.0.1:{port}") };
+    let token = match mode {
+        "notoken" => String::new(),
+        "badtoken" => format!("X-Grimoire-Token: {}\r\n", "0".repeat(32)),
+        _ => format!("X-Grimoire-Token: {token}\r\n"),
+    };
+    let head = format!(
+        "POST /upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: {origin}\r\nContent-Type: application/pdf\r\nContent-Length: {}\r\n{token}X-Grimoire-Name: {name}\r\n\r\n",
+        body.len()
+    );
+    let r = sim_http(port, &head, &body)?;
+    let r = String::from_utf8_lossy(&r);
+    let code = r.split(' ').nth(1).unwrap_or("0");
+    let text = r.split_once("\r\n\r\n").map_or("", |x| x.1).trim_end();
+    Ok(format!("{code} {text}"))
+}
+
+/// "upload.reply.N": the answer the Nth `upload` line's browser had, "" while it waits; "upload.count": how many.
+fn upload_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
+    let u = UPLOADS.lock().unwrap_or_else(|e| e.into_inner());
+    if key == b"upload.count" {
+        csnprintf!(out, cap, "%d", u.len() as i32);
+        return true;
+    }
+    let Some(n) = key.strip_prefix(b"upload.reply.").and_then(|n| std::str::from_utf8(n).ok()?.parse::<usize>().ok()) else { return false };
+    let v = n.checked_sub(1).and_then(|i| u.get(i)).and_then(|r| r.clone()).unwrap_or_default();
+    csnprintf!(out, cap, "%s", &v);
+    true
 }
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
@@ -2377,6 +2450,18 @@ fn script_step_in(st: &mut State) -> Step {
             let ms = if k > 4 { v[4] as u32 } else { 80 };
             st.tg_tapn(v[0] as usize, v[1], v[2], sep, ms);
             return Step::Batch;
+        } else if a == b"upload" {
+            // `upload MODE FILE`: a browser on the Wi-Fi sends FILE (a path in the data root, the rest of the line)
+            // as the Share page's script does (MODE send), with no token (notoken), a wrong one (badtoken), or
+            // from another site's page (othersite). Its answer is upload.reply.N (N from 1, in order).
+            sc.space();
+            let file = String::from_utf8_lossy(sc.s[sc.i..].trim_ascii()).into_owned();
+            if !matches!(b, b"send" | b"notoken" | b"badtoken" | b"othersite") || file.is_empty() {
+                err(&bformat("script: bad upload line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            return Step::Upload(String::from_utf8_lossy(b).into_owned(), file);
         } else if a == b"quit" {
             let e = st.make_ev(InType::Quit, 0.0, 0.0, true);
             st.q_push(e);
@@ -2444,6 +2529,11 @@ fn script_step(mut a: Option<&mut App>) {
                 with(|st|match at{Some((x,y))=>st.touch_ev(t,x,y),None=>{
                     err(format!("expect failed (line {}): no library control {}\n",st.line_no,name.as_str()).as_bytes());st.expect_total+=1;st.expect_failed+=1;
                 }});break;
+            }
+            Step::Upload(mode, file) => {
+                let port = a.as_deref().map_or(8765, |a| a.settings.http_port);
+                // (the data root is this thread's to read: the browser's thread is given the whole path)
+                sim_upload(port, mode, format!("{}/{file}", store_root()));
             }
             Step::Share(name,pen)=>{
                 let at=a.as_deref().and_then(|a|crate::share::share_control_point(a,name.as_str()));
