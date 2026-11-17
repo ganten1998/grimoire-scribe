@@ -6,7 +6,8 @@
 # copy: tests/fixtures/pdf/planner grimoire/send
 # Send a PDF from the Share page (2.2, issue #175), cancelled: Cancel on the Kindle's question keeps nothing (no
 # temporary file, nothing in grimoire/import, no toast) and tells the browser; Esc on the next question is its
-# Cancel (the keys on); a question turned with the Kindle is drawn at its new place and still asks; sleep ends one, and
+# Cancel and closes Share, as Esc does without one (the keys on); a question turned with the Kindle is drawn at its new
+# place and still asks; sleep ends one, and
 # the Library has no notebook of any of them. After each send not imported the Kindle takes no other for a while
 # (shortened to 1 s here; share_upload_4_twice holds the 5 s), so each next send waits past it.
 # rust-only
@@ -26,13 +27,18 @@ expect toast is
 expect storage.exists.grimoire/.cache/share-upload.part is 0
 expect storage.names.grimoire/import is .lock|README.txt
 shot 02-cancelled
-# Esc is Cancel
+# Esc is Cancel, and Share closes
 wait 1100
 upload send send/2027 Planner.pdf
 waitfor share.ask is Import "2027 Planner.pdf" (4 KB)?
 wait 500
 key 1 0
 waitfor upload.reply.2 is 200 declined on the Kindle
+wait 300
+expect screen is library
+expect storage.exists.grimoire/.cache/share-upload.part is 0
+tap 1345 95
+wait 300
 expect screen is share
 expect share.ask is
 # turned: drawn at its new place, still asked, answered there

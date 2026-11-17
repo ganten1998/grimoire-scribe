@@ -2508,8 +2508,9 @@ fn client_drain(c: usize, now: u32) {
     }
 }
 
-/// The upload under way ended without the user's yes: its bytes go, and its connection is told why. When the server
-/// may not be polled again (Share left, sleep, stopping) the answer goes at once, as far as one send takes it.
+/// The upload under way ended without the user's yes: its bytes go, and its connection is told why, at once as far as
+/// one send takes it (the next polls send the rest). When the server may not be polled again (Share left, sleep,
+/// stopping) the connection closes then.
 fn upload_end(end: UploadEnd) {
     let (st, c) = with(|s| (s.upload.st, s.upload.client));
     if st == UploadState::None {
@@ -2531,11 +2532,11 @@ fn upload_end(end: UploadEnd) {
     } else {
         upload_reply(c, code, msg, true);
     }
-    if matches!(end, UploadEnd::ShareClosed | UploadEnd::Asleep | UploadEnd::Stopped) {
-        client_write(c, now_ms());
-        if with(|s| s.cl[c].st) != ClientState::Free {
-            client_close(c);
-        }
+    // (a short answer, written at once: out even when the server stops before its next poll, as when Share's X answers
+    // Cancel and closes Share)
+    client_write(c, now_ms());
+    if matches!(end, UploadEnd::ShareClosed | UploadEnd::Asleep | UploadEnd::Stopped) && with(|s| s.cl[c].st) != ClientState::Free {
+        client_close(c);
     }
 }
 

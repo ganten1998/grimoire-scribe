@@ -206,6 +206,15 @@ fn code_ink(a: &mut App) -> usize {
     (top..bottom).flat_map(|y| (ix as i32 - 700..ix as i32 + 700).map(move |x| (x, y))).filter(|&(x, y)| c.px[(y * c.stride + x) as usize] < 128).count()
 }
 
+/// Everything the server sent on s, to its close, without the screen ticking (the server has stopped).
+fn read_all(mut s: TcpStream) -> String {
+    s.set_nonblocking(false).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let mut out = Vec::new();
+    let _ = s.read_to_end(&mut out);
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Whether a send's whole answer is its reply's head, its code, then `said`.
 fn said(answer: &str, code: &str, said: &str) -> bool {
     let ok = answer.starts_with("HTTP/1.0 200 OK\r\n") && answer.ends_with(&format!("\r\n\r\ncode {code}\n{said}\n"));
@@ -301,8 +310,8 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     touch(&mut a, true, ix, iy, t);
     touch(&mut a, false, ix, iy, t + 50);
     check!(probe(&mut a, "share.upload") == "asking" && !probe(&mut a, "share.ask").is_empty());
-    // the screen's own controls are not there while it is up
-    check!(grimoire::share::share_control_point(&a, "done").is_none() && grimoire::share::share_control_point(&a, "live").is_none());
+    // of the screen's own controls only its X is there while it is up
+    check!(grimoire::share::share_control_point(&a, "done").is_some() && grimoire::share::share_control_point(&a, "live").is_none());
     // shown (app_flush notes when): a contact too soon after, one that lifts on the other row, one off the rows
     let at = now_ms();
     a.asked = Asked::Shown(at);
@@ -336,11 +345,6 @@ fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
     check!(said(&answer(&mut a, &mut s), &code, "declined on the Kindle"));
     check!(!std::path::Path::new(&format!("{root}/import/Cancelled.pdf")).exists());
     check!(!std::path::Path::new(&grimoire::upload::part_path()).exists());
-    // Esc is Cancel
-    let mut s = send_pdf(&mut a, "Esc.pdf");
-    let code = shown_code(&mut a);
-    check!(grimoire::share::share_back(&mut a) && a.scr == ScreenId::Share);
-    check!(probe(&mut a, "share.ask").is_empty() && said(&answer(&mut a, &mut s), &code, "declined on the Kindle"));
     // a turn draws it at its new place: asked again, not shown there yet
     let mut s = send_pdf(&mut a, "Turned.pdf");
     let code = shown_code(&mut a);
@@ -438,10 +442,55 @@ fn a_question_that_ends_is_taken_away_before_another_is_drawn() {
     let theirs_code = shown_code(&mut a);
     check!(said(&answer(&mut a, &mut mine), &mine_code, "another PDF was sent"));
     check!(answer(&mut a, &mut other).ends_with("\r\n\r\nanother PDF is being sent\n"));
-    grimoire::share::share_back(&mut a);
+    a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
+    let (cx, cy) = grimoire::share::share_control_point(&a, "ask.cancel").unwrap();
+    let t = now_ms();
+    touch(&mut a, true, cx, cy, t);
+    touch(&mut a, false, cx, cy, t + 80);
     check!(said(&answer(&mut a, &mut theirs), &theirs_code, "declined on the Kindle"));
     check!(!std::path::Path::new(&format!("{root}/import/Planner.pdf")).exists());
     share_leave(&mut a);
+    share_free(&mut a);
+    std::env::remove_var("GRIMOIRE_SIM_ADDRS");
+}
+
+// Share's X stays live while the question is up: it is the question's Cancel, then Share closes; Esc the same. A sender
+// who sends again after every answer cannot keep Share open: here each next question comes at once (the quiet time
+// made 0), and a tap on X whose contact came down before that question was shown still closes Share.
+fn share_x_and_esc_close_share_while_it_asks() {
+    let mut a = share_app();
+    library_init(&mut a); // (X and Esc go back to the Library)
+    let root = store_root();
+    let (xx, xy) = grimoire::share::share_control_point(&a, "done").unwrap();
+    let mut s = send_pdf(&mut a, "One.pdf");
+    let code = shown_code(&mut a);
+    a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
+    let (cx, cy) = grimoire::share::share_control_point(&a, "ask.cancel").unwrap();
+    let t = now_ms();
+    touch(&mut a, true, cx, cy, t);
+    touch(&mut a, false, cx, cy, t + 80);
+    check!(said(&answer(&mut a, &mut s), &code, "declined on the Kindle") && a.scr == ScreenId::Share);
+    // the next question at once, drawn and not shown yet; the X is still there, outside the sheet
+    let s = send_pdf(&mut a, "Two.pdf");
+    let code = shown_code(&mut a);
+    check!(a.asked == Asked::Drawn && grimoire::share::share_control_point(&a, "done") == Some((xx, xy)));
+    let t = now_ms();
+    touch(&mut a, true, xx, xy, t);
+    touch(&mut a, false, xx, xy, t + 80);
+    check!(a.scr == ScreenId::Library && !httpd_running());
+    check!(said(&read_all(s), &code, "declined on the Kindle"));
+    // Esc on a question: its Cancel, and Share closes as it does without one
+    a.scr = ScreenId::Share;
+    share_enter(&mut a);
+    check!(httpd_running());
+    let s = send_pdf(&mut a, "Esc.pdf");
+    let code = shown_code(&mut a);
+    check!(grimoire::share::share_back(&mut a) && a.scr == ScreenId::Library && !httpd_running());
+    check!(said(&read_all(s), &code, "declined on the Kindle"));
+    let names: Vec<String> = std::fs::read_dir(format!("{root}/import")).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".pdf")).collect()).unwrap_or_default();
+    check!(!names.iter().any(|n| n == "One.pdf" || n == "Two.pdf" || n == "Esc.pdf"));
+    check!(!std::path::Path::new(&grimoire::upload::part_path()).exists());
+    library_free(&mut a);
     share_free(&mut a);
     std::env::remove_var("GRIMOIRE_SIM_ADDRS");
 }
@@ -461,6 +510,7 @@ fn test_share() {
     std::env::set_var("GRIMOIRE_UPLOAD_QUIET_MS", "0");
     run!(the_question_asks_and_only_a_tap_after_it_was_shown_answers);
     run!(a_question_that_ends_is_taken_away_before_another_is_drawn);
+    run!(share_x_and_esc_close_share_while_it_asks);
     std::env::remove_var("GRIMOIRE_UPLOAD_QUIET_MS");
     let _ = std::fs::remove_dir_all(&root);
     done();

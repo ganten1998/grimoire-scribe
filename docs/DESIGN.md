@@ -3216,9 +3216,12 @@ U+200F, U+202A to U+202E, U+2060 to U+206F, U+FEFF), ending in `.pdf` in any cas
 
 **The question.** The Share screen draws the Library's question sheet over itself, as Files draws its Delete
 question: `Import "%s" (%s)?` with the name shortened with "..." to fit and the size as the file rows show sizes,
-`Code %s` under it in big type, a Primary Import row and Cancel. While it is up it is the screen's only control; it
-answers only a tap that comes down after its frame was shown (`app_ask`, `app_asked_seen`, as the Delete questions)
-and lifts on the row it came down on; Esc is Cancel; a turn draws it at its new place and asks again. Import:
+`Code %s` under it in big type, a Primary Import row and Cancel. While it is up, it and Share's X are the screen's
+only controls; it answers only a tap that comes down after its frame was shown (`app_ask`, `app_asked_seen`, as the
+Delete questions) and lifts on the row it came down on. **Share's X, outside the sheet, is its Cancel and closes
+Share**, at once (a refusal waits for nothing, so a question that comes again after every answer cannot keep Share
+open), and so is Esc, which closes Share as it does without a question; a turn draws it at its new place and asks
+again. Import:
 `Part::commit` renames the file into `grimoire/import` under the name, or " 2", " 3"... before `.pdf` where taken,
 **never over a file** (fsview's `rename_noreplace`, the folder reached with O_NOFOLLOW), says "Copied to
 grimoire/import.", ends the browser's reply with `imported`, and asks the Library's scan to look as soon as the

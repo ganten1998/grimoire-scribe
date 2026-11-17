@@ -957,11 +957,14 @@ fn ask_answer(a: &mut App, import: bool) {
 }
 
 /// A contact while the question is up: only a tap that came down after the question was shown and lifts on the row
-/// it came down on answers; anything else, on the sheet or off it, does nothing.
+/// it came down on answers; a lift on Share's X, outside the sheet, is the question's Cancel and closes Share;
+/// anything else, on the sheet or off it, does nothing.
 fn ask_event(a: &mut App, ev: &InEvent) {
     let ph = app_pointer_phase(ev);
     let seen = app_asked_seen(a, ev);
+    let on_x = hits_find(&s(a).hits, ev.x, ev.y).is_some_and(|h| h.id == H_DONE);
     let Some(k) = s(a).ask.as_mut() else { return };
+    let on_x = on_x && !rect_contains(k.rect, ev.x as i32, ev.y as i32);
     let at = hits_find(&k.hits, ev.x, ev.y).map(|h| h.id);
     if ph == 0 {
         k.swallow = !seen;
@@ -973,10 +976,27 @@ fn ask_event(a: &mut App, ev: &InEvent) {
     }
     let (swallow, down) = (k.swallow, k.down.take());
     k.swallow = false;
+    if on_x && down.is_none() {
+        // Share's X stays live: Cancel, then Share closes. A refusal, so it waits for nothing (a tap that came down as
+        // the question appeared counts): a question that comes again after every answer cannot keep Share open.
+        ask_answer(a, false);
+        let back = back_screen(a);
+        return app_switch(a, back);
+    }
     if swallow || at.is_none() || at != down {
         return;
     }
     ask_answer(a, at == Some(H_ASK_IMPORT));
+}
+
+/// Where Share's X and Esc go: the screen Share was opened from, or the Library.
+fn back_screen(a: &mut App) -> ScreenId {
+    let ret = s(a).ret;
+    if ret == ScreenId::Share {
+        ScreenId::Library
+    } else {
+        ret
+    }
 }
 
 fn start(a: &mut App) {
@@ -1174,7 +1194,7 @@ pub fn share_leave(a: &mut App) {
 pub fn share_event(a: &mut App, ev: &InEvent) {
     httpd_poll();
     if s(a).ask.is_some() {
-        // (the question is the screen's only control while it is up)
+        // (the question is the screen's only control while it is up, with Share's X)
         return ask_event(a, ev);
     }
     if app_pointer_phase(ev) != 2 {
@@ -1236,9 +1256,8 @@ pub fn share_back(a: &mut App) -> bool {
         return false;
     }
     if s(a).ask.is_some() {
-        // (Esc on the question is its Cancel)
+        // (Esc on the question is its Cancel, then what Esc does without one: Share closes, as its X does)
         ask_answer(a, false);
-        return true;
     }
     if s(a).wifi_open {
         s(a).wifi_open = false;
@@ -1346,8 +1365,8 @@ pub fn share_tick(a: &mut App, now: u32) {
 
 /// Test selectors resolve only visible controls, just like the screen's pointer handler.
 pub fn share_control_point(a: &App, name: &str) -> Option<(f32, f32)> {
-    // the question's rows (issue #175), while it is up; the screen's other controls answer nothing then
-    if let Some(k) = a.share.as_ref()?.ask.as_ref() {
+    // the question's rows (issue #175), while it is up; of the screen's other controls only its X answers then
+    if let Some(k) = a.share.as_ref()?.ask.as_ref().filter(|_| name != "done") {
         let id = match name {
             "ask.import" => H_ASK_IMPORT,
             "ask.cancel" => H_ASK_CANCEL,
