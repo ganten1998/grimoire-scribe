@@ -548,6 +548,26 @@ fn a_fill_brings_the_web_links_of_the_pages_it_adds() {
     assert_eq!(web_links(&id, &e.info(&id)), whole);
 }
 
+// A notebook an earlier version imported has no weblinks.ini: a fill gives web links to the pages it adds only, never
+// to the pages the notebook had (the rule of a fill's links: deleting the pages it added takes all it wrote).
+#[test]
+fn a_fill_into_a_notebook_without_web_links_gives_them_to_the_added_pages_only() {
+    let e = setup("web-fill-older");
+    let bytes = pdffix::weblinks();
+    let (id, ends) = import_all(&e.drop("Links.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 3, blank: 0 }, "{ends:?}");
+    std::fs::remove_file(format!("{}/notebooks/{id}/weblinks.ini", e.root)).unwrap();
+    drop_pages(&id, &[2]);
+    let (_, ends) = import_all(&e.drop("Links again.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 1));
+    let nb = e.info(&id);
+    let got = web_links(&id, &nb);
+    assert_eq!(got.iter().map(|l| l.0).collect::<Vec<_>>(), [2, 2], "{got:?}");
+    drop_pages(&id, &[2]);
+    assert!(web_links(&id, &e.info(&id)).is_empty());
+}
+
 // A notebook that has every page of the book: "PDF already imported.", and nothing of it is written.
 #[test]
 fn a_notebook_with_every_page_says_already() {

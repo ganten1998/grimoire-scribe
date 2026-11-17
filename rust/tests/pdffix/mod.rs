@@ -594,22 +594,22 @@ fn weblinks_content(k: usize) -> String {
     match k {
         1 => {
             c.push_str(&gray_rect(0.85, 40.0, 480.0, 260.0, 40.0));
-            c.push_str("BT /F1 14 Tf 50 495 Td (example.org/grimoire) Tj ET\n");
+            c.push_str("0 g BT /F1 14 Tf 50 495 Td (example.org/grimoire) Tj ET\n");
             c.push_str(&gray_rect(0.7, 380.0, 500.0, 80.0, 40.0)); // the tab
             c.push_str(&gray_rect(0.85, 40.0, 380.0, 260.0, 40.0));
-            c.push_str("BT /F1 14 Tf 50 395 Td (a script: refused) Tj ET\n");
+            c.push_str("0 g BT /F1 14 Tf 50 395 Td (a script: refused) Tj ET\n");
         }
         2 => {
             c.push_str(&gray_rect(0.85, 40.0, 400.0, 380.0, 40.0));
             c.push_str(&gray_rect(0.85, 40.0, 360.0, 160.0, 40.0));
-            c.push_str("BT /F1 14 Tf 50 415 Td (example.org/a/long/address/that/goes/on/) Tj ET\n");
-            c.push_str("BT /F1 14 Tf 50 375 Td (two/lines) Tj ET\n");
+            c.push_str("0 g BT /F1 14 Tf 50 415 Td (example.org/a/long/address/that/goes/on/) Tj ET\n");
+            c.push_str("0 g BT /F1 14 Tf 50 375 Td (two/lines) Tj ET\n");
             c.push_str(&gray_rect(0.85, 40.0, 200.0, 260.0, 40.0));
-            c.push_str("BT /F1 14 Tf 50 215 Td (mail: refused) Tj ET\n");
+            c.push_str("0 g BT /F1 14 Tf 50 215 Td (mail: refused) Tj ET\n");
         }
         _ => {
             c.push_str(&gray_rect(0.85, 40.0, 480.0, 260.0, 40.0));
-            c.push_str("BT /F1 14 Tf 50 495 Td (example.com/notes) Tj ET\n");
+            c.push_str("0 g BT /F1 14 Tf 50 495 Td (example.com/notes) Tj ET\n");
         }
     }
     c
