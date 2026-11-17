@@ -2776,7 +2776,8 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
   row, the pick from the Kindle's folder and from Documents, the wait, the check, a name taken, a refused file, no
   row over a notebook's page), `files_21_add_font_full` (a copy whose writes fail),
   `files_22_add_font_over_a_notebook` (the sheet over a notebook's page while a copy runs: it waits, lists the
-  font, no toast) and `files_5_cards`, and
+  font, no toast), `files_23_add_font_sheet_waits` (the sheet opened in the Library while Files' copy runs: it waits,
+  then lists the font) and `files_5_cards`, and
   `make l10n-check`'s `fonts-add` runs (the sheet, the pick and both cards in every language, in Classic) and
   `fonts-card` runs (Files' card in Gothic).
 
