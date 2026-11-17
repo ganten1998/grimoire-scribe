@@ -28,10 +28,11 @@
   Files, a picture's card offers Use as template and Use as photo. A copy that would leave less than 100 MB free is
   refused: "Couldn't copy file. Is the storage full?". A picture over 16 MB, which Grimoire could not use as a
   template or a photo, is not copied: "Too big (over 16 MB).".
-- **Fonts from a file.** Settings > Font ends with Add a font...: pick a `.ttf` or `.otf` file anywhere on the
-  Kindle, the Kindle's own fonts folder first (Kindle fonts), and it is copied into `grimoire/fonts`, where it is
-  checked as a font copied over USB is: its row says "Checking..." until it can be used, and nothing changes until
-  you tap it. In Files, a font's card offers Add to fonts. The Kindle's fonts folder is never changed.
+- **Fonts from a file.** In the Library, Settings > Font ends with Add a font...: pick a `.ttf` or `.otf` file
+  anywhere on the Kindle, the Kindle's own fonts folder first (Kindle fonts), and it is copied into
+  `grimoire/fonts`, where it is checked as a font copied over USB is: its row says "Checking..." until it can be
+  used, and nothing changes until you tap it. In Files, a font's card offers Add to fonts. The Kindle's fonts folder
+  is never changed.
 - **Files: Rename, Delete and Restore.** Inside Grimoire's own folders (Import, Templates, Photos, Fonts) a file's or
   folder's card renames it, saying which rule a name breaks and never replacing another file, or moves it to the trash
   after asking as the Library does for a notebook; what an import is working on says "Importing now." instead. A

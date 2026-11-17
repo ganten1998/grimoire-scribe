@@ -129,7 +129,7 @@ file copied over USB (docs/DESIGN.md, Add a font... and Add to fonts). Waiting:
 - **After a job's "File changed. Try again."** the pick, like Files, still lists the folder as it was read (the
   section above has the same for pictures).
 - **Not run on the Scribe**: docs/TESTING.md, "2.2, Add a font... (issue #161): device checks" (the Kindle's own
-  folder on a real firmware, a copy's time, a power cut during a copy).
+  folder on a real firmware, a copy's time, what a copy cut short leaves).
 
 ## After the release of 2.1.0 (2026-11-13): what waits
 
