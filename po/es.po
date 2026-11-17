@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 19:48-0600\n"
+"POT-Creation-Date: 2026-11-16 21:19-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1014,23 +1014,26 @@ msgstr "Canal de actualizaciones: %s"
 
 #. TRANSLATORS: (also) a toast (one line of about 1000 px at 44 px in bold): the picture picked for Use as
 #. template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
-#. so it is not copied; %d is 16.
+#. or the font file picked for Add to fonts or Settings > Font's Add a font... is bigger than Grimoire takes
+#. as a font, so it is not copied; %d is 16 for a picture, 24 for a font.
 #. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
 #: rust/src/bgwork_copy.rs rust/src/library.rs
 #, c-format
 msgid "Too big (over %d MB)."
 msgstr "Demasiado grande (más de %d MB)."
 
-#. TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
-#. picture changed, or went, between the moment it was picked and the copy.
+#. TRANSLATORS: (also) a toast when a copy of a picture into Grimoire's templates or photos, or of a font file
+#. into its fonts, was not made because the file changed, or went, between the moment it was picked and the
+#. copy.
 #. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
 #. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
 #: rust/src/bgwork_copy.rs rust/src/browser.rs
 msgid "File changed. Try again."
 msgstr "El archivo cambió. Inténtalo de nuevo."
 
-#. TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
-#. path, folders and name together, is longer than Grimoire can hand to the copy.
+#. TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos, or a font
+#. file into its fonts, because its path, folders and name together, is longer than Grimoire can hand to the
+#. copy, or its name is longer than that folder takes.
 #. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
 #. would be too long for Grimoire to hand to its import (one line).
 #: rust/src/bgwork_copy.rs rust/src/browser.rs

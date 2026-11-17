@@ -107,13 +107,16 @@ pub fn copy_refusal(why: CopyFail, to: CopyTo) -> String {
     match why {
         // TRANSLATORS: (also) a toast (one line of about 1000 px at 44 px in bold): the picture picked for Use as
         // template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
-        // so it is not copied; %d is 16.
+        // or the font file picked for Add to fonts or Settings > Font's Add a font... is bigger than Grimoire takes
+        // as a font, so it is not copied; %d is 16 for a picture, 24 for a font.
         CopyFail::TooBig => cformat!(tr("Too big (over %d MB)."), (to.max_bytes() >> 20) as i32),
-        // TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
-        // picture changed, or went, between the moment it was picked and the copy.
+        // TRANSLATORS: (also) a toast when a copy of a picture into Grimoire's templates or photos, or of a font file
+        // into its fonts, was not made because the file changed, or went, between the moment it was picked and the
+        // copy.
         CopyFail::Changed => tr("File changed. Try again.").to_string(),
-        // TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
-        // path, folders and name together, is longer than Grimoire can hand to the copy.
+        // TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos, or a font
+        // file into its fonts, because its path, folders and name together, is longer than Grimoire can hand to the
+        // copy, or its name is longer than that folder takes.
         CopyFail::TooLong => tr("Path too long.").to_string(),
         CopyFail::Other => copy_failed().to_string(),
     }
