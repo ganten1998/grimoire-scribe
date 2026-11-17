@@ -10287,8 +10287,15 @@ mod tests {
         assert!(library_shortcut(&mut a, SHORTCUT_BACK));
         assert!(lib(&mut a).modal == Modal::Exit && files_shown(&a) && !files_in_front(&a));
         assert!(lib(&mut a).hits.h.iter().any(|h| h.id == H_EXIT_YES), "its answers are the targets");
-        library_tick(&mut a, now_ms());
-        assert!(lib(&mut a).hits.h.iter().any(|h| h.id == H_EXIT_YES), "Files does not draw over it");
+        // (Files has work left that draws: the home folder was read again, and its rows' stats come on its ticks. Under
+        // the question none of it runs: nothing is drawn or asked to be refreshed, and the answers stay the targets)
+        lib(&mut a).files.relist(now_ms());
+        let changes = a.changes;
+        for _ in 0..5 {
+            library_tick(&mut a, now_ms());
+        }
+        assert_eq!(a.changes, changes, "Files does not draw over it");
+        assert!(lib(&mut a).hits.h.iter().any(|h| h.id == H_EXIT_YES));
         assert!(library_modal_key(&mut a, 1));
         assert!(lib(&mut a).modal == Modal::None && files_shown(&a) && files_place_now(&mut a) == "documents/Planners");
         // Enter is its Yes
