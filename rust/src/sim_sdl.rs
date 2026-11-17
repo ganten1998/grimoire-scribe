@@ -1081,7 +1081,14 @@ pub fn light_set_auto(on: bool) {
     if !with(|st| st.light_sensor) {
         return;
     }
-    with(|st| st.light_auto = i32::from(on));
+    with(|st| {
+        st.light_auto = i32::from(on);
+        if on {
+            // The simulated sensor's room: a level distinct from the startup one, so a script can
+            // see the Brightness slider follow auto brightness.
+            st.light_i = 18;
+        }
+    });
 }
 pub fn sys_powerd_state(out: &mut String, cap: usize) -> i32 {
     with(|st| {

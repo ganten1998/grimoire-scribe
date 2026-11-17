@@ -116,7 +116,8 @@ pub fn light_auto() -> i32 {
     }
 }
 /// Turn the Kindle's own auto brightness on or off. Nothing happens where light_auto is -1 (no
-/// sensor to follow).
+/// sensor to follow). On the Kindle the write is waited for, so a light_get right after it reads
+/// the level auto has picked.
 #[inline]
 pub fn light_set_auto(on: bool) {
     if light_auto() < 0 {

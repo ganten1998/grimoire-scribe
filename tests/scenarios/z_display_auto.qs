@@ -15,9 +15,12 @@ pentap panel display
 wait 300
 expect editor.modal is display
 expect light.auto is 0
+expect light.intensity is 12
 tap panel display.auto
 wait 300
 expect light.auto is 1
+# The Brightness slider follows the level the power service picked for the room.
+expect light.intensity is 18
 shot 01-auto-brightness-on
 tap panel display.auto
 wait 300

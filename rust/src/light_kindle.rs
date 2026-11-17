@@ -185,6 +185,14 @@ fn set_prop(prop: &str, v: i32) {
     run_bg(&cmd);
 }
 
+/// A property write waited for, for a setting whose result is read back at once (auto brightness:
+/// the level the power service picks fills the Brightness slider). Taps are rare, unlike the light
+/// sliders' steps, so this one may block.
+fn set_prop_wait(prop: &str, v: i32) {
+    let cmd = cformat!("lipc-set-prop -i com.lab126.powerd %s %d >/dev/null 2>&1", prop, clampi(v, 0, LIGHT_MAX));
+    let _ = run_line(&cmd, 1, 2000);
+}
+
 pub fn light_available() -> bool {
     // SAFETY: access reads the NUL-terminated paths.
     unsafe { libc::access(c"/usr/bin/lipc-set-prop".as_ptr(), libc::X_OK) == 0 || libc::access(c"/bin/lipc-set-prop".as_ptr(), libc::X_OK) == 0 }
@@ -243,7 +251,7 @@ pub fn light_set_auto(on: bool) {
     if with(|s| s.auto) < 0 {
         return; // no ambient-light sensor: nothing to follow
     }
-    set_prop("flAuto", if on { 1 } else { 0 });
+    set_prop_wait("flAuto", if on { 1 } else { 0 });
     with(|s| s.auto = i32::from(on));
 }
 

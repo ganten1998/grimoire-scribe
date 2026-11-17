@@ -497,9 +497,10 @@ drawing over Grimoire.
 The Display page's Brightness row is followed by **Auto brightness** on a Kindle with an
 ambient-light sensor (the Scribe's two sit in its wide bezel): ticked, it turns on the Kindle's own
 auto brightness (`com.lab126.powerd flAuto`) and the power service sets the front light from the
-room's light, as the stock reader does. The Brightness slider still works by hand; while auto is on,
-opening Display shows the level the Kindle has at that moment. A Kindle without a sensor has no such
-row (the simulator has one under `GRIMOIRE_SIM_LIGHT_SENSOR=1`, docs/SIM.md).
+room's light, as the stock reader does. Ticking it moves the Brightness slider to the level the
+Kindle has picked; the slider still works by hand, and opening Display while auto is on shows the
+level at that moment. A Kindle without a sensor has no such row (the simulator has one under
+`GRIMOIRE_SIM_LIGHT_SENSOR=1`, docs/SIM.md).
 
 ## Links on a page (2.0.0-beta.6)
 

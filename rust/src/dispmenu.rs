@@ -549,8 +549,18 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         D_STATUS => status_cycle_size(a),
         D_CORNER => status_cycle_corner(a),
         D_AUTO => {
-            light_set_auto(m.auto == 0);
+            let on = m.auto == 0;
+            if !on {
+                // Read the level auto last chose before turning it off: after it is off, the power
+                // service no longer moves the light, so this is where the slider leaves it.
+                light_get(&mut m.intensity, &mut m.warmth);
+            }
+            light_set_auto(on);
             m.auto = light_auto();
+            if on {
+                // Show the level the power service picked for the room at once.
+                light_get(&mut m.intensity, &mut m.warmth);
+            }
         }
         D_PIN => {
             if editor_pin_sleep_page(a) {
