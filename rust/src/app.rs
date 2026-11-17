@@ -693,6 +693,8 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     // The lasso's clipboard lasts one session: an earlier one's goes before anything can paste it.
     clipboard_clear_at_start();
     settings_load(&mut a.settings);
+    // (darker lines in imported PDFs: the imports this process queues are drawn at the setting, 2.2)
+    crate::pdfimport::set_darker(crate::pdfwork::Gamma::from_index(a.settings.pdf_gamma));
     let mut shortcuts_path = String::new();
     csnprintf!(&mut shortcuts_path, 600, "%s/shortcuts.ini", &store_root());
     // A starter map nobody edited becomes this build's (grimoire.log says so; no toast); edited files stay.
@@ -3150,6 +3152,9 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
     } else if key == "settings.font_bold" {
         csnprintf!(out, cap, "%s", st.font_bold.as_str());
+    } else if key == "settings.pdf_gamma" {
+        // darker lines in imported PDFs as settings.ini says it (2.2): 1.0, 1.5 or 2.0
+        csnprintf!(out, cap, "%s", crate::pdfwork::Gamma::from_index(st.pdf_gamma).name());
     } else if key == "settings.home" {
         // the home folder as settings.ini keeps it (2.2): empty for Notebooks, notebooks/<folder>, files/<path>
         csnprintf!(out, cap, "%s", st.home.as_str());
