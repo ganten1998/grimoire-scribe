@@ -24,7 +24,8 @@
 //!   marked bad as a whole, as a picture is. A page the worker cannot draw is marked alone, and so is one whose
 //!   worker ends or stalls twice on it; DEAD_PAGES_MAX such pages mark the whole PDF. No worker to be had (a sandbox
 //!   step failed, none starts), no room, the writer out of memory for a page, a file that changes while its pages are
-//!   made: nothing is marked, and the next look tries again.
+//!   made: nothing is marked, and the next look tries again (after a sandbox step failed, none does until Grimoire
+//!   starts again: the job's exit status, CODE_SANDBOX, marks the UI's session broken).
 //!
 //! grimoire.log never names the file here: page numbers, counts, sizes and reasons.
 
@@ -53,6 +54,10 @@ pub const DEAD_PAGES_MAX: usize = 2;
 
 /// A slice that ends with pages left: bgjob.rs queues the job again (its exit status).
 pub const CODE_MORE: i32 = 3;
+
+/// A slice whose worker the sandbox refused a step (its exit status): bgjob.rs marks the UI's session broken too, as a
+/// font check's 4 and an import's progress record tell it, so no look queues a template PDF's job again.
+pub const CODE_SANDBOX: i32 = 4;
 
 /// What a page's `.bad` says when its worker ended or stalled on it twice (a page the worker could not draw says
 /// nothing).
@@ -264,7 +269,7 @@ fn after_page(_page: u32) {
 }
 
 /// A sandbox step refused: not the file's fault, and this process asks for no more workers (as the pictures' pool and
-/// the font check do).
+/// the font check do); the job's exit status tells the UI (CODE_SANDBOX).
 fn sandbox_refused(step: &str) -> Stop {
     crate::sandbox::session_set_broken();
     Stop::Later(format!("the sandbox refused its step \"{step}\""))
@@ -303,8 +308,9 @@ struct Run<'a> {
 
 /// BgKind::Template with no notebook and a PDF's path (`src`, directly in grimoire/templates), in the background
 /// child: a slice of the PDF's pages made into templates. 0 when the PDF is done (every page made or marked, or the
-/// PDF marked: nothing more to do), CODE_MORE when pages are left for the next slice, -1 when nothing could be done
-/// now (the log says why; nothing is marked).
+/// PDF marked: nothing more to do), CODE_MORE when pages are left for the next slice, CODE_SANDBOX when no worker can
+/// be had in this session (a sandbox step failed), -1 when nothing could be done now otherwise (the log says why;
+/// nothing is marked either way).
 pub fn bg_template_pdf(src: &str) -> i32 {
     // (a worker that ended by itself has closed its pipe: a write to it must fail, never end this child)
     // SAFETY: setting a signal's disposition to ignore.
@@ -348,7 +354,12 @@ pub fn bg_template_pdf(src: &str) -> i32 {
         }
         Err(Stop::Later(why)) => {
             qlog!("templates: a PDF's pages not made now (%s); the next look tries again (%d ms)", why.as_str(), real_now_ms().wrapping_sub(t0) as i32);
-            -1
+            // (a sandbox step refused: the UI learns it from the exit status, and asks for no more workers)
+            if crate::sandbox::session_broken() {
+                CODE_SANDBOX
+            } else {
+                -1
+            }
         }
         Err(Stop::Changed) => {
             qlog!("templates: a PDF changed while its pages were made; what was made of it is removed, and the next look makes them from the file as it is");

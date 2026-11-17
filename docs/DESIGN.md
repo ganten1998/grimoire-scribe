@@ -3154,9 +3154,9 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   PDF syntax. The job opens the PDF once, with no link followed, as a plain file of the templates folder, and that
   open file is what the worker reads. With no worker to be had (a sandbox step failed, none starts, or one without
   the sandbox's steps where the sandbox is required) nothing is drawn and nothing is marked: the PDF's tile waits, as
-  a picture's does, and the next look tries again. A sandbox step that fails marks the session of the process it
-  failed in broken (that process asks for no more workers), and a session marked broken (as an import's failed step
-  marks the UI's) queues no PDF's job.
+  a picture's does, and the next look tries again. A sandbox step that fails marks the session broken, the UI's too:
+  the job's child ends with status 4 (`CODE_SANDBOX`), which bgjob.rs turns into the UI's mark, as an import's progress
+  record and a font check's status 4 do. A session marked broken queues no PDF's job until Grimoire starts again.
 - **The stored form** (docs/FORMAT.md, Template PDFs): in the folder's cache, under the key its previews already use
   (the FNV-1a hash of the PDF's name, size and time), `<hash>.pages` holds the page count, and each page is a picture
   of the Kindle's page size, `<hash>-p<nnnn>.png` (gray, or RGB for a page with colour, as the import keeps them),

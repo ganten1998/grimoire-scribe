@@ -796,7 +796,14 @@ fn pdfs_as_templates_are_told_as_they_are() {
     let waits = "nothing is drawn and nothing is marked: the PDF's tile waits, as a picture's does";
     told_on(&mut fails, DESIGN, waits, TPLPDF, r#"Err(StartErr::Worker(why)) => return Err(Stop::Later(format!("no worker ({why})"))),"#);
     told_on(&mut fails, DESIGN, waits, TPLPDF, "crate::sandbox::session_set_broken(); Stop::Later(");
-    told_on(&mut fails, DESIGN, "a session marked broken (as an import's failed step marks the UI's) queues no PDF's job", TPLPDF, "if crate::sandbox::session_broken() { return; }");
+    told_on(&mut fails, DESIGN, "A session marked broken queues no PDF's job until Grimoire starts again", TPLPDF, "if crate::sandbox::session_broken() { return; }");
+    told_on(
+        &mut fails,
+        DESIGN,
+        "the job's child ends with status 4 (`CODE_SANDBOX`), which bgjob.rs turns into the UI's mark",
+        BGJOB,
+        "if template_pdf(&job) && code == crate::bgwork_tplpdf::CODE_SANDBOX { crate::sandbox::session_set_broken();",
+    );
     // the page limit, whole
     told_on(&mut fails, DESIGN, "is no template as a whole and is never cut to its first pages", TPLPDF, "if n > TEMPLATE_PDF_MAX_PAGES {");
     told_on(&mut fails, DESIGN, "over 16 MB (marked before any worker starts)", TPLPDF, "if size > TEMPLATE_MAX_BYTES as u64 {");

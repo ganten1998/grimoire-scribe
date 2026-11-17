@@ -573,8 +573,10 @@ fn the_sheet_reads_the_folder_again_once_the_pages_are_counted() {
     canvas_free(&mut a.screen);
 }
 
-// No worker to be had (none starts, or a sandbox step fails where the sandbox is required): nothing is made and
-// nothing marked; after a sandbox step failed, this session queues no PDF's job. (Last: it leaves the session broken.)
+// No worker to be had (none starts, or one without the sandbox's steps where the sandbox is required): nothing is made
+// and nothing marked. A sandbox step that fails, in the job's own child as the app runs it (queued by a look, not called
+// here): nothing made or marked, the child's exit status marks this process's session broken too, and no look queues
+// the job again. (Last: it leaves the session broken.)
 fn no_worker_makes_nothing() {
     clean_env();
     folder(&[("Planner.pdf", pdffix::planner(2))]);
@@ -590,11 +592,16 @@ fn no_worker_makes_nothing() {
     clean_env();
     std::env::set_var("GRIMOIRE_WORK_FAIL_STEP", "seccomp");
     std::env::set_var("GRIMOIRE_SANDBOX", "require");
-    let (rc, log) = with_log("nosandbox", || job("Planner.pdf"));
-    check!(rc == -1 && cache_names().is_empty() && log.contains("the sandbox refused its step"));
-    check!(grimoire::sandbox::session_broken());
+    let path = format!("{}/Planner.pdf", tpl());
+    let (t, log) = with_log("nosandbox", || {
+        let t = scan();
+        settle();
+        t
+    });
+    check!(names(&t) == ["Planner"] && log.contains("the sandbox refused its step") && log.contains("bg: the sandbox refused a template PDF's worker a step"));
+    check!(cache_names().is_empty() && grimoire::sandbox::session_broken());
     let t = scan();
-    check!(names(&t) == ["Planner"] && !t[0].bad && !bg_busy());
+    check!(names(&t) == ["Planner"] && !t[0].bad && !bg_job_pending(BgKind::Template, "", &path) && !bg_busy());
     clean_env();
 }
 
