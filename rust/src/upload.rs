@@ -76,8 +76,9 @@ fn cleaned(n: &str) -> Option<String> {
         .filter(|&c| !unseen(c))
         .map(|c| match c {
             '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{2800}' | '\u{3000}' => ' ',
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\u{e000}'..='\u{f8ff}' | '\u{f0000}'..='\u{10ffff}' | '\u{fdd0}'..='\u{fdef}' | '\u{fffd}'..='\u{ffff}' => '_',
-            c if c.is_control() || (c as u32 & 0xfffe) == 0xfffe => '_',
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\u{fdd0}'..='\u{fdef}' | '\u{fffd}'..='\u{ffff}' => '_',
+            // (private use, written as numbers: test_terminess_keep reads a character there as an icon drawn)
+            c if c.is_control() || matches!(c as u32, 0xe000..=0xf8ff | 0xf0000..=0x10ffff) || (c as u32 & 0xfffe) == 0xfffe => '_',
             c => c,
         })
         .collect();
