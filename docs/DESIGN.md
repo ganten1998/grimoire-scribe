@@ -2957,8 +2957,8 @@ may cost is held to a few seconds a file, behind every other job.
 ## Files: home (2.2, issue #160)
 
 The place the main menu opens at: the Library's top unless the user sets a Library folder or a folder of the
-Kindle's storage shown in Files (the owner's D31). `home.rs` reads the setting; the Library (`library.rs`) opens
-there and keeps it; Files (`browser.rs`) has the rows that set it and the home folder as the top.
+Kindle's storage shown in Files. `home.rs` reads the setting; the Library (`library.rs`) opens there and keeps it;
+Files (`browser.rs`) has the rows that set it and the home folder as the top.
 
 - **The setting**, settings.ini `home=`: absent, empty or `notebooks` is the Library's top (no line is written for
   it); `notebooks/<folder>` is a Library folder by its path (`notebooks/School/2026`); `files/<path>` a folder of
@@ -3013,8 +3013,8 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   Files is walked again before it is kept ("Couldn't open folder." when it no longer opens), and a card's folder is
   checked again first ("File changed. Try again."). Nothing is said: the rows read the other way afterwards. When
   the screen has no room for every row, the Go to sheet leaves folders out from their end and keeps its Home row,
-  its home rows and Cancel. A picker offers none of it. The plan's "Set folder as home" on a file's card was left
-  out: the Go to sheet's row does the same for the folder shown, with one string fewer.
+  its home rows and Cancel. A picker offers none of it. A Set folder as home row on a file's card was left out: the
+  Go to sheet's row does the same for the folder shown, with one string fewer.
 - **The home folder as the top.** In Files at the folder that is home the header has no Back button (the title
   stands at the margin, as the Library's does), and Esc, or a Back key, asks "Exit Grimoire?" over Files as at the
   Library's top while the folder still opens as a home (`files_back`; while the question is up its answers and its

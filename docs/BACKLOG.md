@@ -59,7 +59,7 @@ only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md,
 the Covers view (issue #145; "Files: previews and the Covers view"); the home folder (issue #160; "Files: home").
 Waiting, each for its own issue:
 
-- **Home (issue #160): calls for the owner to confirm**, each the smallest reading of the plan: a Library folder
+- **Home (issue #160): calls for the owner to confirm**, each the smallest coherent reading: a Library folder
   that is home keeps its Back button (the Library has no path bar to lead up), and Esc there goes up as that button
   does ("Exit Grimoire?" is asked at a home inside Files, which has no Back button, and at the Library's top); no
   Set folder as home on a file's card (the Go to sheet's row sets the folder shown); a home inside Files opens Files
