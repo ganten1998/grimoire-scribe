@@ -3201,8 +3201,10 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   nanosecond), and its cache entries are keyed by the file it opened. A PDF written over, or another file put at its
   name, while its pages are made: no page of it drawn after the change is kept, what was made of it goes, nothing is
   marked, and the next look makes the pages of the file as it is then.
-- **Never an import.** The import watch reads `grimoire/import` alone: a PDF in the templates folder never becomes a
-  notebook, never moves, and never enters the import folder.
+- **Never an import by itself.** The import watch reads `grimoire/import` alone, and the template job writes only its
+  cache: the template job never makes a notebook of a PDF in the templates folder, never moves it, and never puts it
+  in the import folder. The user may still import one by choice: Import as notebook on its card in Files makes a
+  notebook of it, as it does of any PDF there.
 - **The sheet.** Until its job has counted the pages a PDF is one waiting tile under its name. When the sheet sees the
   count (when it looks for previews: as a job ends, and every 1.5 s while one runs) it reads the folder again, as
   after a copy, and the PDF's pages take its place, a tile a page named after the file and the page ("Planner p. 3",

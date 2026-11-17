@@ -840,6 +840,11 @@ fn pdfs_as_templates_are_told_as_they_are() {
     told_on(&mut fails, DESIGN, "a notebook's picture job refuses a PDF, so the picture worker is never handed one", TEMPLATES, "a PDF is no picture (its pages are the templates); nothing made\", id); return -1;");
     // never an import
     told_on(&mut fails, DESIGN, "The import watch reads `grimoire/import` alone", PDFIMPORT, r#"let dir = root_path("import");"#);
+    // ... and the template job makes no notebook and queues no import (the user's own Import as notebook aside)
+    told_on(&mut fails, DESIGN, "the template job never makes a notebook of a PDF in the templates folder", PDFIMPORT, r#"let dir = root_path("import");"#);
+    gone(&mut fails, TPLPDF, "store_create");
+    gone(&mut fails, TPLPDF, "pdf_import_queue");
+    gone(&mut fails, TPLPDF, "import_pick_queue");
     // the job's rank, and its slices
     told_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "if template_pdf(j) { return 4; }");
     stands_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "BgKind::FilePreviews => 4,");
