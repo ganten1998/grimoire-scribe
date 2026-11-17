@@ -96,9 +96,14 @@ fn key_of(bytes: &[u8]) -> String {
 
 /// KOReader's version 2 request for the PDF at `file` (written now), the reader on `page` of `pages`; started.
 fn hand_over(e: &Env, key: &str, file: &str, page: i32, pages: i32) -> BookStatus {
+    hand_over_with(e, key, file, page, pages, "")
+}
+
+/// `hand_over`, the request ending with the lines `more` (each with its newline).
+fn hand_over_with(e: &Env, key: &str, file: &str, page: i32, pages: i32, more: &str) -> BookStatus {
     std::fs::create_dir_all(e.book_dir()).unwrap();
     let req = format!(
-        "# Grimoire: a whole book to open, from KOReader's Grimoire plugin (docs/FORMAT.md)\nversion=2\nbook={key}\nfile={file}\ntitle={TITLE}\npages={pages}\npage={page}\nkind=paged\ntime={}\n",
+        "# Grimoire: a whole book to open, from KOReader's Grimoire plugin (docs/FORMAT.md)\nversion=2\nbook={key}\nfile={file}\ntitle={TITLE}\npages={pages}\npage={page}\nkind=paged\ntime={}\n{more}",
         wall_time()
     );
     std::fs::write(format!("{}/{BOOK_REQUEST}", e.book_dir()), req).unwrap();
@@ -241,6 +246,30 @@ fn a_pdf_handed_over_by_its_path_becomes_a_notebook_open_at_the_readers_page() {
     for private in ["Tabs", "documents", &key[..12], "Planner"] {
         assert!(!log.contains(private), "the log names {private:?}:\n{log}");
     }
+}
+
+// Darker lines (2.2, issue #173): the reader's contrast comes as the request's gamma= and the PDF import draws the
+// book's gray pages at it, whatever the setting says; a request without the line (an older plugin, or a reader at
+// KOReader's own contrast) is drawn at the setting. The notebook keeps the level its pages were drawn at.
+#[test]
+fn a_hand_over_draws_at_the_requests_gamma_else_at_the_setting() {
+    let level = |e: &Env, st: &BookStatus| gamma_among(e.ini(st.nb.as_str(), "source.ini").as_bytes());
+    for (more, setting, want) in [
+        ("gamma=2.0\n", grimoire::pdfwork::Gamma::Off, grimoire::pdfwork::Gamma::Strong),
+        ("gamma=1.0\n", grimoire::pdfwork::Gamma::Strong, grimoire::pdfwork::Gamma::Off),
+        ("", grimoire::pdfwork::Gamma::Medium, grimoire::pdfwork::Gamma::Medium),
+        ("gamma=9\n", grimoire::pdfwork::Gamma::Medium, grimoire::pdfwork::Gamma::Off),
+    ] {
+        let e = setup(&format!("gamma-{}", setting.name()));
+        set_darker(setting);
+        let bytes = pdffix::tabs();
+        let file = e.book("Tabs Planner.pdf", &bytes);
+        let mut st = hand_over_with(&e, &key_of(&bytes), &file, 1, 4, more);
+        run_book(&mut st);
+        assert_eq!((st.state, st.made), (BookState::Done, true), "{more:?}: {st:?}");
+        assert_eq!(level(&e, &st), want, "{more:?} with the setting at {}", setting.name());
+    }
+    set_darker(grimoire::pdfwork::Gamma::Off);
 }
 
 // A colour page of a PDF handed over by its path keeps its colour (the PDF import's own pictures), where KOReader's
