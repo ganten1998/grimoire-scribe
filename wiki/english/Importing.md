@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Importing-ja.md) | [Polski](../polish/Importing-pl.md)
+**English** | [日本語](Importing-ja) | [Polski](Importing-pl)
 
 # Importing Templates, Pictures and PDFs
 

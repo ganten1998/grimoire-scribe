@@ -1,4 +1,4 @@
-[English](../english/Importing.md) | **日本語** | [Polski](../polish/Importing-pl.md)
+[English](Importing) | **日本語** | [Polski](Importing-pl)
 
 # テンプレート、画像、PDF の取り込み
 

@@ -1,4 +1,4 @@
-[English](../english/Building-from-Source.md) | **日本語** | [Polski](../polish/Building-from-Source-pl.md)
+[English](Building-from-Source) | **日本語** | [Polski](Building-from-Source-pl)
 
 # ソースからビルド
 

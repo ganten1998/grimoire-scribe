@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Fonts-and-Language-ja.md) | [Polski](../polish/Fonts-and-Language-pl.md)
+**English** | [日本語](Fonts-and-Language-ja) | [Polski](Fonts-and-Language-pl)
 
 # Fonts and Language
 

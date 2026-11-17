@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Troubleshooting-ja.md) | [Polski](../polish/Troubleshooting-pl.md)
+**English** | [日本語](Troubleshooting-ja) | [Polski](Troubleshooting-pl)
 
 # Troubleshooting
 

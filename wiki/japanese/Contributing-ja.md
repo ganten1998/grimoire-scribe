@@ -1,4 +1,4 @@
-[English](../english/Contributing.md) | **日本語** | [Polski](../polish/Contributing-pl.md)
+[English](Contributing) | **日本語** | [Polski](Contributing-pl)
 
 English is required to contribute. All issues, pull requests, and discussions must be written in English.
 

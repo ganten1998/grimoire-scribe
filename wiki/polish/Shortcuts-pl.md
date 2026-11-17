@@ -1,4 +1,4 @@
-[English](../english/Shortcuts.md) | [日本語](../japanese/Shortcuts-ja.md) | **Polski**
+[English](Shortcuts) | [日本語](Shortcuts-ja) | **Polski**
 
 # Skróty klawiatury i kontrolera
 

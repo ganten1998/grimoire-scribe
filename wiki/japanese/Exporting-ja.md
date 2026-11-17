@@ -1,4 +1,4 @@
-[English](../english/Exporting.md) | **日本語** | [Polski](../polish/Exporting-pl.md)
+[English](Exporting) | **日本語** | [Polski](Exporting-pl)
 
 # Kindle からページを取り出す
 

@@ -1,4 +1,4 @@
-[English](../english/Fonts-and-Language.md) | [日本語](../japanese/Fonts-and-Language-ja.md) | **Polski**
+[English](Fonts-and-Language) | [日本語](Fonts-and-Language-ja) | **Polski**
 
 # Czcionki i język
 

@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Privacy-ja.md) | [Polski](../polish/Privacy-pl.md)
+**English** | [日本語](Privacy-ja) | [Polski](Privacy-pl)
 
 # Privacy
 

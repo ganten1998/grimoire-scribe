@@ -1,4 +1,4 @@
-[English](../english/Exporting.md) | [日本語](../japanese/Exporting-ja.md) | **Polski**
+[English](Exporting) | [日本語](Exporting-ja) | **Polski**
 
 # Przenoszenie stron z Kindla
 

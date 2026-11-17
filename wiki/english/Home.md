@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Home-ja.md) | [Polski](../polish/Home-pl.md)
+**English** | [日本語](Home-ja) | [Polski](Home-pl)
 
 # Grimoire
 

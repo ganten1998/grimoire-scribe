@@ -1,4 +1,4 @@
-[English](../english/Importing.md) | [日本語](../japanese/Importing-ja.md) | **Polski**
+[English](Importing) | [日本語](Importing-ja) | **Polski**
 
 # Importowanie szablonów, zdjęć i PDF-ów
 

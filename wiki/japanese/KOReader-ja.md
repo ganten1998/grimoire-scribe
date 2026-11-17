@@ -1,4 +1,4 @@
-[English](../english/KOReader.md) | **日本語** | [Polski](../polish/KOReader-pl.md)
+[English](KOReader) | **日本語** | [Polski](KOReader-pl)
 
 # KOReader
 
