@@ -2732,7 +2732,8 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
   already (in that folder or a folder of it one level down, which is what the Font sheet lists: one deeper is
   offered), never out of a place a pick never takes from (Grimoire's PDF copies, the trash, whose entries have
   Restore alone). The card's file is checked again first ("File changed. Try again."). A copy that went in says
-  "Copied to Fonts." unless the Font sheet is in front (`library_sheet_folder`), which shows it.
+  "Copied to Fonts." unless the Font sheet is in front, in the Library or over a notebook's page
+  (`library_sheet_folder`), which shows it.
 - **The Kindle's fonts folder is read only**, as every folder outside Grimoire's own is (`fsview`'s zones): a
   font's card there is Add to fonts and Cancel, with no Rename and no Delete, and the storage layer refuses a
   rename, a delete or any write there whatever a card would offer. Grimoire writes nothing into it, not even a
@@ -2773,7 +2774,9 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
   `test_fsview_writes.rs` (the name rules at the request and in the job, for every folder), the scenarios
   `files_19_add_to_fonts` (Files' card, " 2", a file its check refuses, the trash), `files_20_add_font` (the sheet's
   row, the pick from the Kindle's folder and from Documents, the wait, the check, a name taken, a refused file, no
-  row over a notebook's page), `files_21_add_font_full` (a copy whose writes fail) and `files_5_cards`, and
+  row over a notebook's page), `files_21_add_font_full` (a copy whose writes fail),
+  `files_22_add_font_over_a_notebook` (the sheet over a notebook's page while a copy runs: it waits, lists the
+  font, no toast) and `files_5_cards`, and
   `make l10n-check`'s `fonts-add` runs (the sheet, the pick and both cards in every language, in Classic) and
   `fonts-card` runs (Files' card in Gothic).
 

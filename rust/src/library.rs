@@ -7778,12 +7778,13 @@ pub fn library_shows_folder(a: &App, folder: &str) -> bool {
 }
 
 /// The folder of the Templates sheet in front over New notebook (the picker not over it), or Grimoire's fonts for
-/// the Font sheet in front, None for none: a copy into it that ends is shown there, with no toast (app.rs).
+/// the Font sheet in front, in the Library or over a notebook's page (Settings opened from the editor, which reads
+/// the folder again too), None for none: a copy into it that ends is shown there, with no toast (app.rs).
 pub fn library_sheet_folder(a: &App) -> Option<crate::bgwork_copy::CopyTo> {
-    let s = a.lib.as_deref().filter(|s| a.scr == ScreenId::Library && !s.files.open)?;
+    let s = a.lib.as_deref().filter(|s| !s.files.open)?;
     match s.modal {
-        Modal::Templates if s.ts.open => Some(tplsheet_folder(&s.ts)),
-        Modal::Font => Some(crate::bgwork_copy::CopyTo::Fonts),
+        Modal::Templates if s.ts.open && a.scr == ScreenId::Library => Some(tplsheet_folder(&s.ts)),
+        Modal::Font if a.scr == ScreenId::Library || library_settings_active(a) => Some(crate::bgwork_copy::CopyTo::Fonts),
         _ => None,
     }
 }
@@ -10334,7 +10335,13 @@ mod tests {
         fill(&mut a, per);
         assert!(add(&a).is_none());
         assert_eq!(probe(&mut a, "font.page"), "1/1");
+        // and a copy into the folder that ends is the sheet's to show there too (it reads the folder again), not a
+        // toast's; with the editor in front and no Settings over it, there is no sheet
+        a.scr = ScreenId::Editor;
+        assert_eq!(library_sheet_folder(&a), Some(CopyTo::Fonts), "the Font sheet over a notebook's page");
         lib(&mut a).settings_return_editor = false;
+        assert_eq!(library_sheet_folder(&a), None, "the editor, no Settings over it");
+        a.scr = ScreenId::Library;
         font_sheet_closed(&mut a);
         library_free(&mut a);
         canvas_free(&mut a.screen);
