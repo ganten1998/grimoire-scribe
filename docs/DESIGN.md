@@ -3211,10 +3211,15 @@ removed at the next start (`upload_sweep`, from `share_init`). The file is not s
 before Import loses it anyway, and a long fsync would hold the UI's loop).
 
 **The name is never a path.** `X-Grimoire-Name`, percent-decoded (a `%` without two hex digits refuses it), is shown
-on the Kindle and names the file in `import/`, nothing more: it must be UTF-8 that `fsview_name_check` takes as the
-name of a file in Grimoire's folders, with no control character and no character that turns or hides text (U+200B to
-U+200F, U+202A to U+202E, U+2060 to U+206F, U+FEFF), ending in `.pdf` in any case. Anything else, or none, is
-`Untitled.pdf` (`upload_name`).
+on the Kindle and names the file in `import/`, nothing more, cleaned so that the name shown is what the file is
+called (`upload_name`, `cleaned`): what draws as nothing or turns text goes (Unicode's format characters and
+Default_Ignorable_Code_Point: direction marks and overrides, zero-width characters, invisible fillers, variation
+selectors, tags; `unseen`); a space of another width, or a line or paragraph separator, is a plain space; each
+character a name in Grimoire's folders may not have (/ \ : * ? " < > |, a control character) or that draws as no
+letter of its own (private use, a noncharacter, a byte that was not UTF-8) is `_`. Spaces and dots go from both ends,
+`.pdf` is added where it is missing (any case is kept), and a name past 252 bytes is cut short before its `.pdf`, so
+that " 99" still fits. The result keeps `fsview_name_check`'s rules; a name that cleans to nothing, or none, is
+`Untitled.pdf`.
 
 **The question.** The Share screen draws the Library's question sheet over itself, as Files draws its Delete
 question: `Import "%s" (%s)?` with the name shortened with "..." to fit and the size as the file rows show sizes,

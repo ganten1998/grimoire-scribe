@@ -447,16 +447,19 @@ fn a_name_is_shown_and_never_a_path() {
     let tok = page_token();
     let body = pdf(3000);
     for (raw, shown) in [
-        ("..%2F..%2Fsettings.ini", UPLOAD_FALLBACK),
-        ("a%2Fb.pdf", UPLOAD_FALLBACK),
-        ("..%5C..%5Cx.pdf", UPLOAD_FALLBACK),
+        ("..%2F..%2Fsettings.ini", "_.._settings.ini.pdf"),
+        ("a%2Fb.pdf", "a_b.pdf"),
+        ("..%5C..%5Cx.pdf", "_.._x.pdf"),
         ("..", UPLOAD_FALLBACK),
-        ("x%0Ay.pdf", UPLOAD_FALLBACK),
-        ("x%00y.pdf", UPLOAD_FALLBACK),
-        ("x%1By.pdf", UPLOAD_FALLBACK),
-        (".hidden.pdf", UPLOAD_FALLBACK),
-        ("notes.txt", UPLOAD_FALLBACK),
+        ("x%0Ay.pdf", "x_y.pdf"),
+        ("x%00y.pdf", "x_y.pdf"),
+        ("x%1By.pdf", "x_y.pdf"),
+        (".hidden.pdf", "hidden.pdf"),
+        ("notes.txt", "notes.txt.pdf"),
         ("Caf%C3%A9%20menu.pdf", "Caf\u{e9} menu.pdf"),
+        ("2027%20Planner%E3%85%A4.pdf", "2027 Planner.pdf"),
+        ("2027%E2%80%A8Planner", "2027 Planner.pdf"),
+        ("%E2%80%8B.pdf", UPLOAD_FALLBACK),
     ] {
         let s = upload(&head(Some(&tok), Some(raw), body.len(), ""), &body);
         let q = question();
@@ -464,22 +467,27 @@ fn a_name_is_shown_and_never_a_path() {
         httpd_upload_answer(q.map_or(0, |q| q.0), false);
         check!(outcome(s) == "200 declined on the Kindle");
     }
-    // a very long name (over what a header here holds, and over 255 bytes) and none at all
-    for h in [head(Some(&tok), Some(&"a".repeat(1100)), body.len(), ""), head(Some(&tok), Some(&format!("{}.pdf", "b".repeat(300))), body.len(), ""), head(Some(&tok), None, body.len(), "")] {
+    // a very long name: over what a header here holds (the fallback), over 255 bytes (cut short before .pdf); none
+    let cut = format!("{}.pdf", "b".repeat(248));
+    for (h, shown) in [
+        (head(Some(&tok), Some(&"a".repeat(1100)), body.len(), ""), UPLOAD_FALLBACK),
+        (head(Some(&tok), Some(&format!("{}.pdf", "b".repeat(300))), body.len(), ""), cut.as_str()),
+        (head(Some(&tok), None, body.len(), ""), UPLOAD_FALLBACK),
+    ] {
         let s = upload(&h, &body);
         let q = question();
-        check!(q.as_ref().is_some_and(|q| q.1 == UPLOAD_FALLBACK));
+        check!(q.as_ref().is_some_and(|q| q.1 == shown));
         httpd_upload_answer(q.map_or(0, |q| q.0), false);
         check!(outcome(s) == "200 declined on the Kindle");
     }
-    // kept, a name that broke the rules is the fallback in import/, and nothing went anywhere else
+    // kept, a name that broke the rules is its cleaned self in import/, and nothing went anywhere else
     let before = import_names();
     let s = upload(&head(Some(&tok), Some("..%2F..%2Fsettings.ini"), body.len(), ""), &body);
     let q = question();
-    check!(httpd_upload_answer(q.map_or(0, |q| q.0), true) == Some(Ok(UPLOAD_FALLBACK.to_string())));
+    check!(httpd_upload_answer(q.map_or(0, |q| q.0), true) == Some(Ok("_.._settings.ini.pdf".to_string())));
     check!(outcome(s) == "200 imported");
     let mut after = before.clone();
-    after.push(UPLOAD_FALLBACK.to_string());
+    after.push("_.._settings.ini.pdf".to_string());
     after.sort();
     check!(import_names() == after);
     check!(std::fs::read_to_string(format!("{}/settings.ini", root())).unwrap_or_default() == "# untouched\n");

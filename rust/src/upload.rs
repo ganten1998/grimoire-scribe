@@ -38,16 +38,15 @@ pub const PART_NAME: &str = "share-upload.part";
 /// The first bytes of every PDF the import takes, checked before the Kindle asks.
 pub const PDF_MAGIC: &[u8; 5] = b"%PDF-";
 
-/// The name the Kindle shows and the file in import/ takes: the client's, percent-decoded, when it is text that
-/// fsview's rules let a file of Grimoire's folders be named (not empty, at most 255 bytes, none of / \ : * ? " < > |,
-/// no control character, no space at either end, no dot at either end), with no character that turns or hides text,
-/// ending in `.pdf` in any case; any other name, or none, is `UPLOAD_FALLBACK`. Never a path.
+/// The name the Kindle shows and the file in import/ takes: the client's, percent-decoded and cleaned (`cleaned`), so
+/// that what the question shows is what the file is called, and a name fsview's rules let a file of Grimoire's folders
+/// have. A name that cleans to nothing, none, or one whose escapes do not read, is `UPLOAD_FALLBACK`. Never a path.
 pub fn upload_name(raw: Option<&[u8]>) -> String {
-    raw.and_then(percent_decoded).filter(|n| name_ok(n)).unwrap_or_else(|| UPLOAD_FALLBACK.to_string())
+    raw.and_then(percent_decoded).and_then(|n| cleaned(&n)).unwrap_or_else(|| UPLOAD_FALLBACK.to_string())
 }
 
-/// `%XX` (two hex digits) as its byte, every other byte as it is; None for a `%` without two hex digits after it or
-/// for what is not UTF-8 once decoded.
+/// `%XX` (two hex digits) as its byte, every other byte as it is, as text (a byte that is not UTF-8 as U+FFFD, which
+/// `cleaned` makes `_`); None for a `%` without two hex digits after it.
 fn percent_decoded(raw: &[u8]) -> Option<String> {
     let hex = |c: Option<&u8>| c.and_then(|&c| (c as char).to_digit(16));
     let mut o = Vec::with_capacity(raw.len());
@@ -62,21 +61,46 @@ fn percent_decoded(raw: &[u8]) -> Option<String> {
             i += 1;
         }
     }
-    String::from_utf8(o).ok()
+    Some(String::from_utf8_lossy(&o).into_owned())
 }
 
-fn name_ok(n: &str) -> bool {
-    let b = n.as_bytes();
-    fsview_name_check(b, b, false).is_ok()
-        && !n.chars().any(|c| c.is_control() || turns_or_hides(c))
-        && b.len() > 4
-        && b[b.len() - 4..].eq_ignore_ascii_case(b".pdf")
+/// A name cleaned: a character that draws as nothing or turns text (`unseen`) goes; a space of another width, or a
+/// line or paragraph separator, is a plain space; a character a name in Grimoire's folders may not have (/ \ : * ? "
+/// < > |, a control character) or that draws as no letter of its own (private use, a noncharacter, U+FFFD) is `_`.
+/// Then spaces and dots go from its end, `.pdf` (in any case) is added where it is missing, spaces and dots go from
+/// its start, and a name past 252 bytes is cut short before its `.pdf` (so that " 99" still fits under 255). None
+/// when nothing is left before `.pdf`.
+fn cleaned(n: &str) -> Option<String> {
+    let mapped: String = n
+        .chars()
+        .filter(|&c| !unseen(c))
+        .map(|c| match c {
+            '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{2800}' | '\u{3000}' => ' ',
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\u{e000}'..='\u{f8ff}' | '\u{f0000}'..='\u{10ffff}' | '\u{fdd0}'..='\u{fdef}' | '\u{fffd}'..='\u{ffff}' => '_',
+            c if c.is_control() || (c as u32 & 0xfffe) == 0xfffe => '_',
+            c => c,
+        })
+        .collect();
+    let name = mapped.trim_end_matches(|c| c == ' ' || c == '.');
+    let pdf = name.len() >= 4 && name.as_bytes()[name.len() - 4..].eq_ignore_ascii_case(b".pdf");
+    let (stem, ext) = if pdf { name.split_at(name.len() - 4) } else { (name, ".pdf") };
+    let mut stem = stem.trim_start_matches(|c| c == ' ' || c == '.').to_string();
+    while stem.len() + ext.len() > FS_NAME_MAX - 3 {
+        stem.pop();
+    }
+    let name = format!("{stem}{ext}");
+    (!stem.is_empty() && fsview_name_check(name.as_bytes(), name.as_bytes(), false).is_ok()).then_some(name)
 }
 
-/// Characters that change which way text runs or show nothing (a name that read one way on the Kindle and named
-/// another file would mislead the question).
-fn turns_or_hides(c: char) -> bool {
-    matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{206F}' | '\u{FEFF}')
+/// Characters that draw as nothing or change which way text runs (format characters, direction marks, invisible
+/// fillers, joiners and selectors: Unicode's Cf and Default_Ignorable_Code_Point): a name that read one way on the
+/// Kindle and named another file would mislead the question.
+fn unseen(c: char) -> bool {
+    matches!(c as u32,
+        0xad | 0x34f | 0x600..=0x605 | 0x61c | 0x6dd | 0x70f | 0x890..=0x891 | 0x8e2 | 0x115f..=0x1160 | 0x17b4..=0x17b5
+        | 0x180b..=0x180f | 0x200b..=0x200f | 0x202a..=0x202e | 0x2060..=0x206f | 0x3164 | 0xfe00..=0xfe0f | 0xfeff
+        | 0xffa0 | 0xfff0..=0xfffb | 0x110bd | 0x110cd | 0x13430..=0x1343f | 0x1bca0..=0x1bca3 | 0x1d173..=0x1d17a
+        | 0xe0000..=0xe0fff)
 }
 
 /// Whether the token a request carries is the page's: the same length and bytes, compared in a time that does not
@@ -293,29 +317,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_name_is_shown_only_when_a_file_may_have_it() {
+    fn a_name_is_cleaned_to_what_it_shows() {
         let n = |s: &str| upload_name(Some(s.as_bytes()));
         assert_eq!(n("2027%20Planner.pdf"), "2027 Planner.pdf");
         assert_eq!(n("Caf%C3%A9%20%C3%BCber.PDF"), "Caf\u{e9} \u{fc}ber.PDF");
         assert_eq!(n("plain.pdf"), "plain.pdf");
-        // a path, a control byte, a name hidden or with an edge of space or dot, another kind of file: the fallback
-        for bad in [
-            "a%2Fb.pdf", "..%2F..%2Fetc%2Fpasswd.pdf", "a%5Cb.pdf", "..", "..pdf", ".pdf", "%2E.pdf", "x%00.pdf", "x%0A.pdf",
-            "x%09y.pdf", "x%7F.pdf", "%C2%85x.pdf", "%20x.pdf", "x.pdf%20", "x.pdf.", "notes", "notes.txt", "notes.pdfx",
-            "a%3Ab.pdf", "a*b.pdf", "a%22b.pdf", "a%3Cb.pdf", "a%7Cb.pdf", "a%3Fb.pdf", "x%E2%80%AEfdp.exe.pdf",
-            "x%E2%80%8B.pdf", "%EF%BB%BFx.pdf", "", "%", "%4", "%zz.pdf", "%FF.pdf", "%C3.pdf",
+        for (raw, shown) in [
+            // a character a name may not have, or a control character: `_`, never a path
+            ("a%2Fb.pdf", "a_b.pdf"), ("..%2F..%2Fetc%2Fpasswd.pdf", "_.._etc_passwd.pdf"), ("a%5Cb.pdf", "a_b.pdf"),
+            ("a%3Ab.pdf", "a_b.pdf"), ("a*b.pdf", "a_b.pdf"), ("a%22b.pdf", "a_b.pdf"), ("a%3Cb%3E.pdf", "a_b_.pdf"),
+            ("a%7Cb.pdf", "a_b.pdf"), ("a%3Fb.pdf", "a_b.pdf"), ("Q1%3A%20plan.pdf", "Q1_ plan.pdf"), ("x%00.pdf", "x_.pdf"),
+            ("x%0A.pdf", "x_.pdf"), ("x%09y.pdf", "x_y.pdf"), ("x%7F.pdf", "x_.pdf"), ("%C2%85x.pdf", "_x.pdf"),
+            ("x%EE%80%80.pdf", "x_.pdf"), ("x%EF%B7%90.pdf", "x_.pdf"), ("x%EF%BF%BE.pdf", "x_.pdf"), ("%FF.pdf", "_.pdf"),
+            ("%C3.pdf", "_.pdf"),
+            // spaces and dots at the ends go; .pdf is added where it is missing
+            ("%20x.pdf", "x.pdf"), ("x.pdf%20", "x.pdf"), ("x.pdf.", "x.pdf"), (".hidden.pdf", "hidden.pdf"),
+            ("notes", "notes.pdf"), ("notes.txt", "notes.txt.pdf"), ("notes.pdfx", "notes.pdfx.pdf"), ("a%20.pdf", "a .pdf"),
+            // what draws as nothing or turns text goes, a space of another width is a space: shown is what it is called
+            ("x%E2%80%AEfdp.exe.pdf", "xfdp.exe.pdf"), ("x%E2%80%8B.pdf", "x.pdf"), ("%EF%BB%BFx.pdf", "x.pdf"),
+            ("2027%20Planner%E3%85%A4.pdf", "2027 Planner.pdf"), ("%D8%9C2027.pdf", "2027.pdf"),
+            ("2027%E2%80%A8Planner.pdf", "2027 Planner.pdf"), ("2027%E2%80%A9Planner.pdf", "2027 Planner.pdf"),
+            ("%C2%A0x.pdf", "x.pdf"), ("a%E2%80%87b.pdf", "a b.pdf"), ("x%C2%ADy.pdf", "xy.pdf"), ("x%EF%B8%8F.pdf", "x.pdf"),
+            ("x%F3%A0%81%81.pdf", "x.pdf"), ("x%CD%8F.pdf", "x.pdf"), ("x%EF%BF%B9.pdf", "x.pdf"), ("x%E1%A0%8E.pdf", "x.pdf"),
+            ("x%E2%81%A6y.pdf", "xy.pdf"), ("x%EF%BE%A0.pdf", "x.pdf"),
         ] {
+            assert_eq!(n(raw), shown, "{raw}");
+        }
+        // nothing left before .pdf, escapes that do not read, or no name: the fallback
+        for bad in ["", "..", "..pdf", ".pdf", "%2E.pdf", "%20.pdf", "%E2%80%8B.pdf", "%E2%80%8B", "%", "%4", "%zz.pdf"] {
             assert_eq!(n(bad), UPLOAD_FALLBACK, "{bad}");
         }
-        // raw bytes that are not UTF-8, and none at all
-        assert_eq!(upload_name(Some(b"\xff\xfe.pdf")), UPLOAD_FALLBACK);
         assert_eq!(upload_name(None), UPLOAD_FALLBACK);
-        // 255 bytes at most
-        let long = format!("{}.pdf", "a".repeat(251));
-        assert_eq!(n(&long), long);
-        assert_eq!(n(&format!("{}.pdf", "a".repeat(252))), UPLOAD_FALLBACK);
-        // the fallback keeps the rules itself
-        assert!(name_ok(UPLOAD_FALLBACK));
+        // raw bytes that are not UTF-8
+        assert_eq!(upload_name(Some(b"\xff\xfe.pdf")), "__.pdf");
+        // 252 bytes at most, cut before .pdf at a character's edge, so that " 99" still fits under 255
+        assert_eq!(n(&format!("{}.pdf", "a".repeat(248))), format!("{}.pdf", "a".repeat(248)));
+        assert_eq!(n(&format!("{}.pdf", "a".repeat(300))), format!("{}.pdf", "a".repeat(248)));
+        assert_eq!(n(&format!("{}.PDF", "\u{e9}".repeat(200))), format!("{}.PDF", "\u{e9}".repeat(124)));
+        // every name it gives keeps the rules, the fallback too
+        for raw in ["a%2Fb.pdf", "notes", "x%E2%80%AEfdp.exe.pdf", &"z".repeat(400)] {
+            let name = n(raw);
+            assert!(fsview_name_check(name.as_bytes(), name.as_bytes(), false).is_ok() && name.len() <= FS_NAME_MAX - 3, "{name}");
+        }
+        assert!(fsview_name_check(UPLOAD_FALLBACK.as_bytes(), UPLOAD_FALLBACK.as_bytes(), false).is_ok());
     }
 
     #[test]
