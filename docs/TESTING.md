@@ -3256,3 +3256,9 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
    Documents the same way.
 10. **Spanish**: Settings > Language > Español: the Go to sheet's "Inicio: ...", "Usar como inicio" and "Restablecer
     el inicio a Cuadernos", the folder's card and the Library folder's menu read whole, upright and sideways.
+11. **Other spellings of a refused folder** (with Grimoire closed, over SSH): the walk refuses a path part ending in
+    a dot or a space, and knows the refused folders by identity as well as by name. Write in turn into settings.ini
+    `home=files/documents.` and `home=files/documents ` (a space at its end), then, for a refused folder with a long
+    name that is there (Grimoire's `bluetooth`, `extensions` at the storage's top), its short name on the storage:
+    `home=files/grimoire/BLUETO~1`, `home=files/EXTENS~1` (`ls -d /mnt/us/grimoire/BLUETO~1` shows that the storage
+    takes it). Each start shows the Library's top with "Home folder not found.", and the line is gone afterwards.

@@ -3081,7 +3081,12 @@ Lane L0 adds them with nothing visible: each keeps what the Scribe showed before
   the file with `O_NOFOLLOW|O_NONBLOCK`, so a link anywhere fails and a FIFO never waits; each folder must be
   on the root's device, and Grimoire's notebooks (for a pick also its PDFs and trash) are refused by `st_dev`
   and `st_ino` whatever the case of the name. Zones by name in any case: the system's folders, dot-entries,
-  `*.sdr` and Grimoire's own refused; its import, templates, photos and fonts writable; the rest read-only.
+  `*.sdr`, a name ending in a dot or a space (no name on the Kindle's storage ends so) and Grimoire's own refused;
+  its import, templates, photos and fonts writable; the rest read-only. The refused folders are recognised by
+  identity as well as by name: `FsStorage::open` notes the `st_dev` and `st_ino` of the system's folders at the
+  root and of Grimoire's own refused folders (`FsStorage.refused`), and the walk refuses a folder that has one of
+  them, whatever name reached it. Every caller of the walk has this: Files, the picker, a home, a font the
+  settings name, a PDF KOReader hands over by its path, and the jobs.
   `FsListing` reads names and `d_type` only, at most 5,000, in slices of at most 20 ms with the folder kept
   open between ticks, links and refused entries left out; stats (`fstatat`, no link followed) only for the
   rows asked, in slices. Free space: a big job leaves 100 MB; under 200 MB is "nearly full". The log has

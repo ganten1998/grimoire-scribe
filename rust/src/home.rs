@@ -228,6 +228,11 @@ mod tests {
             "system",
             "system/fonts",
             ".hidden",
+            // (a part ending in a dot or a space, and a refused folder by another spelling the storage takes for its
+            // name: fsview refuses both, on the Mac's storage too)
+            "documents.",
+            "documents/Planners ",
+            "\u{17f}ystem/fonts",
         ] {
             assert!(!ok(p), "{p}");
         }

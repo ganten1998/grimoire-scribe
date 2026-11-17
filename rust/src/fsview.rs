@@ -12,11 +12,12 @@
 //! - One walk, no links: each component opened with openat(O_DIRECTORY|O_NOFOLLOW) from the one before, the
 //!   file with O_NOFOLLOW, so a link anywhere fails (O_NOFOLLOW covers the last component only; the Scribe's
 //!   kernel, 4.9, has no openat2). Each directory must be on the root's device, and none may be Grimoire's
-//!   notebooks (nor, for a pick, its PDFs or trash), compared by st_dev and st_ino: a path cased differently
-//!   on a case-insensitive storage cannot reach them by name.
-//! - Zones: lists hide by a deny-list (dot-entries, *.sdr, the system's folders, Grimoire's own); writes go
-//!   by an allow-list (what is inside Grimoire's import, templates, photos and fonts), so safety never
-//!   depends on the deny-list being complete.
+//!   notebooks, a system folder or one of Grimoire's own refused folders (nor, for a pick, its PDFs or trash),
+//!   compared by st_dev and st_ino as well as by name: a path spelled differently, which the storage takes for
+//!   one of them (another case on a case-insensitive storage, another name of the same folder), cannot reach them.
+//! - Zones: lists hide by a deny-list (dot-entries, *.sdr, a name ending in a dot or a space, the system's
+//!   folders, Grimoire's own); writes go by an allow-list (what is inside Grimoire's import, templates, photos
+//!   and fonts), so safety never depends on the deny-list being complete.
 //! - Never a hard delete, never an overwrite: delete is a rename into the trash, and every rename is
 //!   renameat2(RENAME_NOREPLACE), or where the storage refuses that call (and on the Mac) renameat over a
 //!   reservation of the new name made first (an O_EXCL create, or mkdirat), so nothing another writer puts
@@ -214,10 +215,13 @@ fn eq_nocase(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// The zone of a path, given where Grimoire's own folder is (relative to the root). Names compare without
-/// regard to ASCII case, as a case-insensitive storage finds them.
+/// regard to ASCII case, as a case-insensitive storage finds them. A part that ends in a dot or a space is
+/// refused: no name on the Kindle's storage ends so (vfat drops both), and such a part would name another entry.
+/// (The system's folders and Grimoire's own are refused by identity too: `FsStorage::open_dir`.)
 fn zone_of(grimoire: Option<&StoragePath>, p: &StoragePath, pick: bool) -> FsZone {
     let comps: Vec<&[u8]> = p.components().collect();
-    if comps.iter().any(|n| n.first() == Some(&b'.') || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) {
+    let odd_end = |n: &[u8]| matches!(n.last(), Some(b'.' | b' '));
+    if comps.iter().any(|n| n.first() == Some(&b'.') || odd_end(n) || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) {
         return FsZone::Refused;
     }
     if comps.first().is_some_and(|n| SYSTEM.iter().any(|s| eq_nocase(n, s))) {
@@ -253,6 +257,10 @@ pub struct FsStorage {
     not_picked: Vec<(u64, u64)>,
     /// (dev, ino) of Grimoire's trash, where the writes put what is deleted
     trash: Option<(u64, u64)>,
+    /// (dev, ino) of the refused folders that are there as the storage is opened: the system's at the root (SYSTEM)
+    /// and Grimoire's own (OWN_REFUSED). The walk refuses them by identity as well as by name, so no other spelling
+    /// of a name that the storage takes for one of them reaches it.
+    refused: Vec<(u64, u64)>,
 }
 
 fn open_dir_at(dirfd: i32, name: &[u8]) -> Result<OwnedFd, FsErr> {
@@ -316,6 +324,10 @@ impl FsStorage {
         let rel = grimoire.strip_prefix(base).and_then(|r| r.strip_prefix('/')).map(|r| r.trim_end_matches('/'));
         let g = grimoire.trim_end_matches('/');
         let trash = identity(&format!("{g}/trash"));
+        // (the system's folders as the root has them, no link followed; Grimoire's own by its own root, which it trusts)
+        let system = SYSTEM.iter().filter_map(|n| CString::new(*n).ok().and_then(|c| stat_at(root_fd.as_raw_fd(), &c).ok()));
+        let mut refused: Vec<(u64, u64)> = system.filter(|s| s.kind() == FsKind::Dir).map(|s| (s.dev, s.ino)).collect();
+        refused.extend(OWN_REFUSED.iter().filter_map(|n| identity(&format!("{g}/{}", String::from_utf8_lossy(n)))));
         Ok(FsStorage {
             root: root_fd,
             dev,
@@ -323,6 +335,7 @@ impl FsStorage {
             notebooks: identity(&format!("{g}/notebooks")),
             not_picked: [identity(&format!("{g}/PDFs")), trash].into_iter().flatten().collect(),
             trash,
+            refused,
         })
     }
 
@@ -337,7 +350,8 @@ impl FsStorage {
     }
 
     /// The folder at `p`, opened one component at a time from the root, never through a link, each on the
-    /// root's device and none of Grimoire's own folders; a refused zone is not entered.
+    /// root's device and none of Grimoire's own folders; a refused zone is not entered, and a refused folder is
+    /// known by its identity as well as by its name (`refused`).
     pub fn open_dir(&self, p: &StoragePath, pick: bool) -> Result<OwnedFd, FsErr> {
         if self.zone(p, pick) == FsZone::Refused {
             return Err(FsErr::Refused);
@@ -350,7 +364,7 @@ impl FsStorage {
                 return Err(FsErr::OtherDevice);
             }
             let id = Some((st.dev, st.ino));
-            if id == self.notebooks || (pick && self.not_picked.iter().any(|&o| Some(o) == id)) {
+            if id == self.notebooks || self.refused.iter().any(|&o| Some(o) == id) || (pick && self.not_picked.iter().any(|&o| Some(o) == id)) {
                 return Err(FsErr::Refused);
             }
             fd = next;
