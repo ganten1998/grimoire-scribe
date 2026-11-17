@@ -5,6 +5,9 @@
 // A "gone" pin is a phrase a file must no longer hold: a sentence that said what the code does not do. It catches
 // the old words coming back (a merge settled the wrong way), not the old meaning in new words. A "present" pin is
 // a name the code itself has (a constant, a file's name), never prose, so a reworded sentence does not fail here.
+// A "told on" pin is a sentence that states a safety rule, held with the code that makes it true (a line, or a
+// whole function with its comments aside): it fails when the code changes and when the sentence is reworded or
+// goes, so that the two are read again together.
 // A phrase is looked for in the file with every run of white space made one space, and in a source file without
 // the marks that open its comment lines, so a paragraph or a comment wrapped anew is the same text. Each test
 // gathers every pin that fails and prints them together.
@@ -29,6 +32,8 @@ const BROWSER: File = ("rust/src/browser.rs", include_str!("../src/browser.rs"))
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const BGWORK_COPY: File = ("rust/src/bgwork_copy.rs", include_str!("../src/bgwork_copy.rs"));
+const PREVIEWS: File = ("rust/src/bgwork_previews.rs", include_str!("../src/bgwork_previews.rs"));
+const ADDFONT_TESTS: File = ("rust/tests/test_addfont.rs", include_str!("test_addfont.rs"));
 const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
 const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
@@ -76,6 +81,57 @@ fn present(fails: &mut Vec<String>, f: File, name: &str) {
 fn stands_on(fails: &mut Vec<String>, f: File, words: &str, on: File, base: &str) {
     if flat(f).contains(words) && !flat(on).contains(base) {
         fails.push(format!("{} says \"{words}\", and {} no longer says \"{base}\": the first is to follow", f.0, on.0));
+    }
+}
+
+/// A sentence that stands on a line of code and is itself held: `f` must still say `words` (a sentence reworded or
+/// gone fails here, so that its pin is reworded with it), and `on` must still say `base`.
+fn told_on(fails: &mut Vec<String>, f: File, words: &str, on: File, base: &str) {
+    if !flat(f).contains(words) {
+        fails.push(format!("{} no longer says \"{words}\": its pin is to follow it", f.0));
+    }
+    stands_on(fails, f, words, on, base);
+}
+
+/// The code of the function whose first line is the first to hold `sig` in a source file: that line to the brace
+/// that closes the function, its comment lines left out and every run of white space made one space. None when no
+/// line holds `sig`.
+fn code_of(f: File, sig: &str) -> Option<String> {
+    let (mut depth, mut opened, mut words) = (0i32, false, Vec::new());
+    for line in f.1.lines().skip_while(|l| !l.contains(sig)) {
+        let text = line.trim_start();
+        if text.starts_with("//") {
+            continue;
+        }
+        words.extend(text.split_whitespace());
+        for ch in text.chars() {
+            match ch {
+                '{' => (depth, opened) = (depth + 1, true),
+                '}' => depth -= 1,
+                _ => {}
+            }
+        }
+        if opened && depth <= 0 {
+            return Some(words.join(" "));
+        }
+    }
+    None
+}
+
+/// A sentence that stands on a whole function and is itself held: `f` must still say `words`, and the function
+/// `sig` opens in `on` must still be `code` to the letter (its comments aside). Any change to that function's code
+/// fails here, a line added to it too, so that the sentence is read again against it and its pin follows.
+fn told_on_code(fails: &mut Vec<String>, f: File, words: &str, on: File, sig: &str, code: &str) {
+    if !flat(f).contains(words) {
+        fails.push(format!("{} no longer says \"{words}\": its pin is to follow it", f.0));
+    }
+    match code_of(on, sig) {
+        None => fails.push(format!("{} has no line with \"{sig}\"", on.0)),
+        Some(now) if now != code => fails.push(format!(
+            "{} says \"{words}\", and the code of {}'s \"{sig}\" is no longer what it stood on: the first is to follow\n    now: {now}",
+            f.0, on.0
+        )),
+        Some(_) => {}
     }
 }
 
@@ -607,9 +663,10 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
 // Add a font... and Add to fonts (2.2, issue #161): a font file copied into grimoire/fonts by the copy job is no
 // font until its check has passed. The sentences that say what keeps a copy from being taken for a font stand on
 // the code that does it: the temporary name's form (bgwork_copy.rs) and the scan's refusal of a dot-name
-// (userfonts.rs); the look the copy asks for, which sets a time and nothing else; the limit with its figure; and the
-// Kindle's own fonts folder outside the folders a write may touch (fsview.rs). The day one of those changes, the
-// sentence fails here until it is read again and follows.
+// (userfonts.rs); the look the copy asks for, which sets a time and nothing else; the limit with its figure; the
+// Kindle's own fonts folder outside the folders a write may touch (fsview.rs); and what reads a font file as a font
+// (nothing before its check has passed it) and what draws its preview in Files' Covers view (the sandboxed worker).
+// The day one of those changes, the sentence fails here until it is read again and follows.
 #[test]
 fn a_font_added_from_a_file_is_told_as_it_is() {
     let mut fails = Vec::new();
@@ -636,5 +693,28 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
         FSVIEW,
         "if OWN_WRITABLE.iter().any(|s| eq_nocase(n, s)) { return FsZone::Writable; }",
     );
+    // Nothing in the writer or the UI parses, applies, measures or loads a copied font before its check has passed
+    // it: what reads a font file as a font in this process is load_file, which takes only bytes that hash to a
+    // passing verdict's, and guarded_face, the one maker of a face from them. A preview of it in Files' Covers view
+    // is the sandboxed worker's sample (font_preview, by font_sample's worker). Those sentences are held with that
+    // code; the words that said a copied font is "not sampled" and has "no preview" are gone (Covers makes one).
+    const LOAD_FILE: &str = r#"fn load_file(st: &FsStorage, rel: &str, dpi: f32, room: usize) -> Result<Loaded, LoadErr> { if !userfont_rel_ok(rel) { return Err(LoadErr::Missing); } let sp = StoragePath::new(rel.as_bytes()).ok_or(LoadErr::Missing)?; let s = st.stat(&sp, false).map_err(|_| LoadErr::Missing)?; let l = Listed { rel: rel.to_string(), size: s.size, mtime: s.mtime, key: key_of(rel, s.size, s.mtime) }; if name_kind(rel.rsplit('/').next().unwrap_or("")) != NameKind::Font || l.size == 0 || l.size > FONT_FILE_MAX as u64 || guard_out(l.key) { return Err(LoadErr::Refused); } let Some(v) = VerdictDir::open(false).ok().and_then(|vd| verdict_for(&vd, l.key, l.size)) else { let bad = std::path::Path::new(&cache_file(l.key, "bad")).exists(); if bad { return Err(LoadErr::Refused); } queue_check("", dpi); return Err(LoadErr::Checking); }; let VerdictKind::Passed(facts) = v.what else { return Err(LoadErr::Refused) }; if l.size as usize > room { return Err(LoadErr::Memory); } let data = read_listed(st, &l).ok_or(LoadErr::Missing)?; if font_hash(&data) != v.hash { qlog!("font: a font file is not the one that was checked: checking it again"); queue_check(&format!("recheck:{:016x}", l.key), dpi); return Err(LoadErr::Checking); } Ok(Loaded { data: Rc::new(data), facts: Rc::new(facts), key: l.key }) }"#;
+    const GUARDED_FACE: &str = r#"fn guarded_face(l: &Loaded, bold: bool) -> Option<SafeFace> { if !guard_arm_keys(&[l.key]) { qlog!("font: the guard's mark could not be written: your font is not used"); return None; } let face = SafeFace::new(l.data.clone(), l.facts.clone(), bold); if face.is_none() && !bold { guard_disarm_keys(&[l.key]); } face }"#;
+    const FONT_PREVIEW: &str = r#"fn font_preview(data: &[u8]) -> Result<Canvas, Fail> { use crate::fontcheck::*; match font_sample(data, PREVIEW_W, PREVIEW_H, mono_ms() + preview_limit_ms(PreviewKind::Font)) { Ok(px) => gray_of(&px, PREVIEW_W, PREVIEW_H, 1), Err(FontOut::Refused(_)) => Err(Fail::Refused), Err(FontOut::Slow | FontOut::SlowGlyphs { .. }) => Err(Fail::Strike(NoPreview::Slow)), Err(FontOut::Dead(_)) => Err(Fail::Strike(NoPreview::Ended)), Err(FontOut::NoWorker(_)) => Err(Fail::Later(NO_WORKER)), Err(_) => Err(Fail::Later("out of memory")), } }"#;
+    let covers = "a preview of it in Files' Covers view is made by the sandboxed worker, as for any font in Files (issue #145)";
+    let covers_cap = "A preview of it in Files' Covers view is made by the sandboxed worker, as for any font in Files (issue #145)";
+    for (f, parses, covers) in [
+        (DESIGN, "Nothing in the writer or the UI parses, applies, measures or loads the file before its check has passed it", covers_cap),
+        (USERFONTS, "Nothing in the writer or the UI parses, applies, measures or loads it before then", covers),
+        (ADDFONT_TESTS, "Until then nothing in the writer or the UI parses, applies, measures or loads it", covers_cap),
+    ] {
+        told_on_code(&mut fails, f, parses, USERFONTS, "fn load_file(", LOAD_FILE);
+        told_on_code(&mut fails, f, parses, USERFONTS, "fn guarded_face(", GUARDED_FACE);
+        told_on_code(&mut fails, f, covers, PREVIEWS, "fn font_preview(", FONT_PREVIEW);
+        told_on(&mut fails, f, covers, FONTCHECK, "let mut wk = match start_worker_until(data.len(), until) {");
+    }
+    gone(&mut fails, DESIGN, "not applied, not sampled, not measured, no preview, no tap");
+    gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
+    gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
     none_failed(&fails, "a font added from a file");
 }

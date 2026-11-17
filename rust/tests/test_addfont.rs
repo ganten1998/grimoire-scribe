@@ -1,7 +1,9 @@
 // test_addfont.rs (2.2, issue #161): a font added from a file, by the Font sheet's Add a font... or by Add to fonts
 // on a font's card in Files. The rule these cases hold: the copy gives a font nothing. What lands in grimoire/fonts
 // is a file there, as one put there over USB, and Grimoire reads it as a font only after the sandboxed worker has
-// passed these very bytes. Until then it is listed and no more: not loaded, not drawn, no preview of it read.
+// passed these very bytes. Until then nothing in the writer or the UI parses, applies, measures or loads it: it is
+// listed, takes no tap and has no preview from a check. A preview of it in Files' Covers view is made by the
+// sandboxed worker, as for any font in Files (issue #145), and gives it nothing.
 //
 // Every case goes the way the app goes: the font pick's own rows and card on a drawn screen (browser.rs), the real
 // copy job forked as the app forks it (bgwork_copy.rs), the real font check with a real worker, a fresh exec of the
@@ -9,6 +11,7 @@
 // order: the storage root, the store's root and the environment are the process's.
 //
 //  - the pick copies a font out of the Kindle's own fonts folder, and only its check makes it one
+//  - a preview in Files' Covers view is the worker's, and gives a copied font nothing
 //  - a font that fails its check after the copy is listed with its reason and never loaded
 //  - a copy cut short (a failed write, a temporary file a dead copy left) is no font, and the next copy removes it
 //  - the source is the plain file that was listed: no link, and not another file put in its place meanwhile
@@ -226,6 +229,39 @@ fn the_pick_copies_and_only_the_check_makes_a_font() {
     check!(snapshot(&format!("{root}/fonts")) == kindle);
     b.close();
     canvas_free(&mut a.screen);
+}
+
+// Files' Covers view in grimoire/fonts asks a preview of every font on its screen, a copied one too, checked or not.
+// That preview is a sample the sandboxed worker draws (bgwork_previews.rs, issue #145): with no worker to be had
+// there is none, and the one a worker drew gives the file nothing. It is still being checked, cannot be used, has no
+// preview from a check and no verdict, and a load of it is refused.
+fn a_covers_preview_is_the_workers_and_gives_nothing() {
+    use grimoire::bgwork_previews::*;
+    let (root, g) = tree("covers");
+    let st = FsStorage::open(&root, &g).unwrap();
+    let arg = |s: &FsStat, p: &str| format!("{}.{}.{}.{}:{}", s.dev, s.ino, s.size, s.mtime, p);
+    let serif = st.stat(&sp("fonts/Serif.ttf"), true).unwrap();
+    check!(bg_copy_file("fonts", &arg(&serif, "fonts/Serif.ttf")) == 0);
+    let p = sp("grimoire/fonts/Serif.ttf");
+    let s = st.stat(&p, false).unwrap();
+    // no worker to be had: no preview
+    std::env::set_var("GRIMOIRE_WORK_EXE", NO_WORKER);
+    check!(bg_file_preview(&arg(&s, "grimoire/fonts/Serif.ttf")) == -1);
+    check!(!matches!(preview_cached(&p, &s), Cached::Preview(_)));
+    // the worker's sample
+    std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
+    check!(bg_file_preview(&arg(&s, "grimoire/fonts/Serif.ttf")) == 0);
+    check!(matches!(preview_cached(&p, &s), Cached::Preview(_)));
+    // and the font is as it was: being checked, and nothing more
+    std::env::set_var("GRIMOIRE_WORK_EXE", NO_WORKER);
+    let l = listed();
+    check!(l.len() == 1 && state_of(&l, "Serif.ttf") == "checking");
+    let mut f = l[0].clone();
+    check!(!f.usable() && userfont_preview(&mut f).is_none());
+    check!(userfonts_try_load("Serif.ttf", "") == Err(LoadErr::Checking));
+    settle();
+    check!(kept(&g, ".font") == 0 && kept(&g, ".pgm") == 0);
+    std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
 }
 
 // A font that fails its check after the copy: a file cut short, a symbol font, and a file that is no font at all
@@ -487,6 +523,7 @@ fn the_folder_is_looked_at_once_the_copy_is_old_enough() {
 #[test]
 fn test_addfont() {
     run!(the_pick_copies_and_only_the_check_makes_a_font);
+    run!(a_covers_preview_is_the_workers_and_gives_nothing);
     run!(a_font_that_fails_its_check_is_listed_and_never_loaded);
     run!(a_copy_cut_short_is_no_font);
     run!(the_source_is_the_file_that_was_listed);
@@ -495,7 +532,7 @@ fn test_addfont() {
     run!(the_kindles_fonts_folder_is_read_only);
     run!(the_folder_is_looked_at_once_the_copy_is_old_enough);
     std::env::remove_var("GRIMOIRE_STORAGE");
-    for n in ["pick", "refused", "cut", "source", "room", "names", "kindle", "age"] {
+    for n in ["pick", "covers", "refused", "cut", "source", "room", "names", "kindle", "age"] {
         let _ = std::fs::remove_dir_all(format!("{}/addfont-{}-{n}", tl_tmp(), std::process::id()));
     }
     done();

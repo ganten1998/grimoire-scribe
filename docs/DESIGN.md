@@ -2747,11 +2747,12 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
   copy job's sweep, above). The copy is synced before its rename. Once it is in, the app asks for the folder to be looked at
   (`userfonts_added`, from `copy_told`) once the file is as old as the check asks of any file before it reads it
   (`STABLE_AGE_S` and half a second), so that one check passes it; no look is queued before that, as it would only
-  find the file too young. Until a verdict for those bytes is where verdicts are kept, the file is listed by name
-  and nothing more: not applied, not sampled, not measured, no preview, no tap, and a load of it is refused. In
-  the pick, on a card and in the sheet nothing opens a font file: rows are names, sizes and dates; a card names a
-  family only from a passing verdict (`grimoire/fonts` alone); a file of the Kindle's folder is listed by name and
-  size, and the Covers view's previews are the worker's (issue #145).
+  find the file too young. Nothing in the writer or the UI parses, applies, measures or loads the file before its
+  check has passed it: until a verdict for those bytes is where verdicts are kept, the Font sheet lists it by name
+  with no tap, and a load of it is refused. A preview of it in Files' Covers view is made by the sandboxed worker,
+  as for any font in Files (issue #145): a sample, which is no check and gives the file nothing. In the pick, on a
+  card and in the sheet nothing opens a font file: rows are names, sizes and dates; a card names a family only from
+  a passing verdict (`grimoire/fonts` alone); a file of the Kindle's folder is listed by name and size.
 - **Kinds.** The pick and Files' cards offer `.ttf` and `.otf`, the names Files' rows have taken as fonts since
   issue #124 and the ones the sheet's own text asks for ("Copy .ttf or .otf files into grimoire/fonts over USB.").
   The Kindle's folder may also hold collections (`.ttc`, `.otc`: the check takes the first face of one copied
@@ -2763,7 +2764,8 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
   read only, a collection and a web font as other files), `library.rs`'s `the_font_sheets_add_a_font_row` (the
   row's place and pages, its tap, the wait and its end, no row over a notebook's page),
   `rust/tests/test_addfont.rs` (the pick and the real copy job and font check with real workers: no font before its
-  check passes, and only those bytes; a font that fails its check; a copy cut short and what a dead copy left; a
+  check passes, and only those bytes; a Covers preview, the worker's, which gives a copied font nothing; a font that
+  fails its check; a copy cut short and what a dead copy left; a
   link, a linked folder and a file swapped between the listing and the tap; too big and the floor; a name taken and
   names the rules refuse; the Kindle's folder unchanged; the look held until the copy is old enough),
   `test_fsview_writes.rs` (the name rules at the request and in the job, for every folder), the scenarios

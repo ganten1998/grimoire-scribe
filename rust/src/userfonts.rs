@@ -1232,8 +1232,9 @@ fn added_wait_ms() -> u32 {
 /// A font file was copied into grimoire/fonts by the copy job (the Font sheet's Add a font..., Files' Add to
 /// fonts): the folder is looked at for it, and the file checked as every file there is, by the same job, once it
 /// is as old as the check asks. Nothing else follows from the copy: the file is no font to Grimoire until that
-/// check has passed its bytes, and it is listed (the Font sheet's row says "Checking...") but never applied,
-/// sampled or measured before. `userfonts_tick` queues the look.
+/// check has passed its bytes. Nothing in the writer or the UI parses, applies, measures or loads it before then
+/// (the Font sheet lists it, its row "Checking..."); a preview of it in Files' Covers view is made by the
+/// sandboxed worker, as for any font in Files (issue #145). `userfonts_tick` queues the look.
 pub fn userfonts_added(dpi: f32) {
     with(|st| {
         st.dpi = dpi;
