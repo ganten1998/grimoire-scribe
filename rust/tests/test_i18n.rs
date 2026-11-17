@@ -296,9 +296,10 @@ fn count_entry(code: &str, e: &I18nEntry, forms: i32, bad: &mut i32) {
 }
 
 // The Plural-Forms line each language's catalog must carry: src/i18n.c has the same rule by hand.
-const K_RULES: [(&str, &str); 2] = [
+const K_RULES: [(&str, &str); 3] = [
     ("es", "Plural-Forms: nplurals=2; plural=(n != 1);"),
     ("ja", "Plural-Forms: nplurals=1; plural=0;"),
+    ("pl", "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);"),
 ];
 
 fn catalogs_hold_together() {
@@ -372,12 +373,20 @@ fn plurals() {
     check!(ng_("%d notebook", "%d notebooks", 0) == ja_notebook);
     check!(ng_("%d notebook", "%d notebooks", 1) == ja_notebook);
     check!(ng_("%d notebook", "%d notebooks", 2) == ja_notebook);
+    // Polish: 1 the first form, 2 to 4 (but not 12 to 14) the second, the rest the third.
+    i18n_set("pl");
+    check!(ng_("%d notebook", "%d notebooks", 1) == "%d notatnik");
+    check!(ng_("%d notebook", "%d notebooks", 2) == "%d notatniki");
+    check!(ng_("%d notebook", "%d notebooks", 5) == "%d notatnik\u{f3}w");
+    check!(ng_("%d notebook", "%d notebooks", 12) == "%d notatnik\u{f3}w");
+    check!(ng_("%d notebook", "%d notebooks", 22) == "%d notatniki");
+    check!(ng_("%d notebook", "%d notebooks", 0) == "%d notatnik\u{f3}w");
     // Missing: the English form for the count.
     check!(ng_("%d frog", "%d frogs", 1) == "%d frog" && ng_("%d frog", "%d frogs", 3) == "%d frogs");
     i18n_set("en");
     check!(ng_("%d notebook", "%d notebooks", 1) == "%d notebook");
     check!(ng_("%d notebook", "%d notebooks", 0) == "%d notebooks");
-    check!(i18n_plural_forms("en") == 2 && i18n_plural_forms("es") == 2 && i18n_plural_forms("ja") == 1 && i18n_plural_forms("xx") == 0);
+    check!(i18n_plural_forms("en") == 2 && i18n_plural_forms("es") == 2 && i18n_plural_forms("ja") == 1 && i18n_plural_forms("pl") == 3 && i18n_plural_forms("xx") == 0);
 }
 
 fn rd32(m: &[u8], at: usize) -> u32 {

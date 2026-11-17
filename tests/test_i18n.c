@@ -200,6 +200,7 @@ static const struct {
 } k_rules[] = {
     {"es", "Plural-Forms: nplurals=2; plural=(n != 1);"},
     {"ja", "Plural-Forms: nplurals=1; plural=0;"},
+    {"pl", "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);"},
 };
 
 TEST(catalogs_hold_together) {
@@ -268,12 +269,20 @@ TEST(plurals) {
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 0), "%d" "\xe3\x83\x8e\xe3\x83\xbc\xe3\x83\x88"));
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 1), "%d" "\xe3\x83\x8e\xe3\x83\xbc\xe3\x83\x88"));
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 2), "%d" "\xe3\x83\x8e\xe3\x83\xbc\xe3\x83\x88"));
+    // Polish: 1 the first form, 2 to 4 (but not 12 to 14) the second, the rest the third.
+    i18n_set("pl");
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 1), "%d notatnik"));
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 2), "%d notatniki"));
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 5), "%d notatnik\xc3\xb3" "w"));
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 12), "%d notatnik\xc3\xb3" "w"));
+    CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 22), "%d notatniki"));
     // Missing: the English form for the count.
     CHECK(!strcmp(NG_("%d frog", "%d frogs", 1), "%d frog") && !strcmp(NG_("%d frog", "%d frogs", 3), "%d frogs"));
     i18n_set("en");
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 1), "%d notebook"));
     CHECK(!strcmp(NG_("%d notebook", "%d notebooks", 0), "%d notebooks"));
     CHECK(i18n_plural_forms("en") == 2 && i18n_plural_forms("es") == 2 && i18n_plural_forms("ja") == 1 &&
+          i18n_plural_forms("pl") == 3 &&
           i18n_plural_forms("xx") == 0);
 }
 

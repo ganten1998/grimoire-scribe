@@ -26,6 +26,14 @@ tplsheet empty0 ja lg templates 783d283f840a332f
 tplsheet empty0 ja lg photos b0450805dbb0b0cc
 tplsheet empty0 ja lc templates 11eb1b764b37ab04
 tplsheet empty0 ja lc photos 9c47abc1cc453172
+tplsheet empty0 pl pg templates d0cb3868cd80a683
+tplsheet empty0 pl pg photos fbcb85ee7efc71ed
+tplsheet empty0 pl pc templates e46425001435cdf7
+tplsheet empty0 pl pc photos dc9c7d2c8691cbe3
+tplsheet empty0 pl lg templates d7fe5ae20c3f5d52
+tplsheet empty0 pl lg photos 689f033c3b09c580
+tplsheet empty0 pl lc templates a2396bb24b022baa
+tplsheet empty0 pl lc photos 6eed308367ba400e
 tplsheet empty1 en pg templates 07fe1fbf994f9c85
 tplsheet empty1 en pg photos 7635faf5eedf4d43
 tplsheet empty1 en pc templates 1f2c78da83551a1e
@@ -50,6 +58,14 @@ tplsheet empty1 ja lg templates a5d914d61f3e6270
 tplsheet empty1 ja lg photos b0450805dbb0b0cc
 tplsheet empty1 ja lc templates ce189e2c7db83277
 tplsheet empty1 ja lc photos 9c47abc1cc453172
+tplsheet empty1 pl pg templates f1865ed006bb914b
+tplsheet empty1 pl pg photos fbcb85ee7efc71ed
+tplsheet empty1 pl pc templates 6f0f609037e1eeab
+tplsheet empty1 pl pc photos dc9c7d2c8691cbe3
+tplsheet empty1 pl lg templates afb699916bba7f3a
+tplsheet empty1 pl lg photos 689f033c3b09c580
+tplsheet empty1 pl lc templates 299b363171fa1e92
+tplsheet empty1 pl lc photos 6eed308367ba400e
 tplsheet pg turn 1 -> 1 page 2 7d02ff8031d4fcca
 tplsheet pc turn 1 -> 1 page 2 99db4c77f84e3f5d
 tplsheet lg turn 1 -> 1 page 2 3a38c1575e568e53
