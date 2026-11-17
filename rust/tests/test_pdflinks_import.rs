@@ -130,7 +130,7 @@ fn every_kind_of_destination_and_action_resolves_to_its_page() {
         Lnk::new(r(8), Act::Named("LastPage")),           // page 8
         Lnk::new(r(9), Act::Named("PrevPage")),           // none before page 1: left out
         Lnk::new(r(10), Act::Named("FirstPage")),         // its own page: left out
-        Lnk::new(r(11), Act::Uri("https://example.org")), // web: counted, left out
+        Lnk::new(r(11), Act::Uri("https://example.org")), // web: a W record (2.2), no document link
         Lnk::new(r(12), Act::Launch("a.exe")),            // other: counted, left out
         Lnk::new(r(13), Act::Missing),                    // no such page: left out
         Lnk::new(r(14), Act::Nothing),                    // no action: left out
@@ -144,8 +144,9 @@ fn every_kind_of_destination_and_action_resolves_to_its_page() {
     };
     let c = e.walk(&make_linked(&plain_pages(8), &on(1, 8, links), &extra));
     assert_eq!(pairs(&c), vec![(1, 2), (1, 3), (1, 4), (1, 6), (1, 7), (1, 8), (1, 5), (1, 2), (1, 8)]);
-    // the places inside the walk's counts: one web link, two other actions, five that go nowhere
-    assert_eq!(c.left, LeftOut { uri: 1, other: 2, dead: 5, capped: 0 });
+    // the places inside the walk's counts: two other actions, five that go nowhere (the web link is kept apart)
+    assert_eq!(c.left, LeftOut { uri: 0, other: 2, dead: 5, capped: 0 });
+    assert_eq!(c.webs.iter().map(|w| (w.src, w.address.as_str())).collect::<Vec<_>>(), vec![(1, "https://example.org")]);
     // the order they were drawn in is their index
     assert_eq!(c.links.iter().map(|(l, _)| l.index).collect::<Vec<_>>(), (0..9).collect::<Vec<u32>>());
 }
@@ -335,7 +336,10 @@ fn an_import_writes_doclinks_and_names_and_the_work_files_go() {
     let id = e.import("Doc.pdf", &make_linked(&plain_pages(3), &on(1, 3, links), &extra));
     let dl = doclinks_load(&id);
     let got: Vec<(u32, u32)> = dl.links.iter().map(|l| (l.pid, l.target)).collect();
-    assert_eq!(arr(&got), arr(&[(1, 2), (1, 3), (1, 3)]), "the web link is left out");
+    assert_eq!(arr(&got), arr(&[(1, 2), (1, 3), (1, 3)]), "the web link is no document link");
+    // (it is a web link, in weblinks.ini: 2.2)
+    let wl = weblinks_load(&id);
+    assert_eq!(wl.links.iter().map(|l| (l.pid, l.address.as_str())).collect::<Vec<_>>(), vec![(1, "http://x")]);
     let mut nav = Nav::default();
     nav_init(&mut nav);
     assert_eq!(nav_load(&id, &mut nav), 0);
@@ -658,4 +662,145 @@ fn a_worker_that_dies_or_stalls_in_the_link_walk_costs_the_notebook_its_links_on
         std::env::remove_var("GRIMOIRE_PDF_TEST_LINKS");
         std::env::remove_var("GRIMOIRE_PDF_WATCHDOG_MS");
     }
+}
+
+// ---- web links (2.2, issue #174) ----
+
+fn leak(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+// A URI action's address is kept when the rules take it (weblinks_address_ok: http or https, printable ASCII without a
+// space, at most 200 bytes, its ends trimmed of spaces and NULs first), as a W record a quad (its box: no polygon);
+// any other is left out and counted (F's first count), and a hidden one is not on the paper at all.
+#[test]
+fn a_pdfs_web_links_are_kept_by_the_rules_and_the_rest_counted() {
+    let e = setup("web-rules");
+    let at200 = leak(format!("https://example.org/{}", "a".repeat(200 - 20)));
+    let at201 = leak(format!("{at200}b"));
+    let mut wrapped = Lnk::new([20.0, 300.0, 400.0, 340.0], Act::Uri("https://example.org/two/quads"));
+    wrapped.quads = vec![[20.0, 340.0, 400.0, 340.0, 20.0, 320.0, 400.0, 320.0], [20.0, 320.0, 100.0, 320.0, 20.0, 300.0, 100.0, 300.0]];
+    let mut hidden = Lnk::new(r(12), Act::Uri("https://hidden.example"));
+    hidden.flags = 2;
+    let links = vec![
+        Lnk::new(r(0), Act::Uri("https://example.org/a")),
+        Lnk::new(r(1), Act::Uri("HTTP://EXAMPLE.ORG/B")),
+        Lnk::new(r(2), Act::Uri("  http://example.net/c  ")),
+        Lnk::new(r(3), Act::Uri(at200)),
+        Lnk::new(r(4), Act::Uri("javascript:alert(1)")),
+        Lnk::new(r(5), Act::Uri("file:///etc/passwd")),
+        Lnk::new(r(6), Act::Uri("mailto:someone@example.org")),
+        Lnk::new(r(7), Act::Uri("http://exa mple.org")),
+        Lnk::new(r(8), Act::Uri(at201)),
+        Lnk::new(r(9), Act::Uri("http://a\\001b.example")), // a control byte, as an octal escape in the PDF string
+        Lnk::new(r(10), Act::Uri("http://caf\\351.example")), // a byte outside ASCII
+        Lnk::new(r(11), Act::Uri("/relative/path")),
+        hidden,
+        Lnk::new(r(13), Act::Page(2)),
+        wrapped,
+    ];
+    let c = e.walk(&make_linked(&plain_pages(2), &on(1, 2, links), &Extra::default()));
+    let kept: Vec<&str> = c.webs.iter().map(|w| w.address.as_str()).collect();
+    assert_eq!(kept, vec!["https://example.org/a", "HTTP://EXAMPLE.ORG/B", "http://example.net/c", at200, "https://example.org/two/quads", "https://example.org/two/quads"]);
+    assert_eq!(c.left.uri, 8, "the refused ones are counted, the hidden one is not");
+    assert_eq!(pairs(&c), vec![(1, 2)], "the page link is a document link, as before");
+    // each its place among the page's web links, and its area in page pixels as an L record's
+    assert_eq!(c.webs.iter().map(|w| w.index).collect::<Vec<_>>(), (0..6).collect::<Vec<u32>>());
+    assert!(c.webs.iter().all(|w| w.src == 1 && w.w >= 1 && w.h >= 1));
+    let (q0, q1) = (&c.webs[4], &c.webs[5]);
+    assert!(q0.w > q1.w * 3, "a quad each: {q0:?} {q1:?}");
+}
+
+// The writer takes a W record only by the same rules (a worker that lies can only lie inside them), and the records
+// go through the work folder's links.part and come back the same.
+#[test]
+fn the_workers_web_records_are_checked_and_survive_the_work_folder() {
+    let web = |src: u32, a: &str| Rec::Web(WireWeb { src, x: 4, y: 8, w: 40, h: 20, index: 0, address: a.to_string() });
+    let mut c = Collected::default();
+    assert!(c.take(web(1, "https://example.org/x"), 2).is_ok());
+    assert!(c.take(web(3, "https://example.org/x"), 2).is_err(), "a page the PDF lacks");
+    assert!(c.take(web(0, "https://example.org/x"), 2).is_err());
+    assert!(c.take(web(1, "javascript:alert(1)"), 2).is_err());
+    assert!(c.take(web(1, "http://a b"), 2).is_err());
+    assert!(c.take(Rec::Web(WireWeb { src: 1, x: 999_999, y: 0, w: 1, h: 1, index: 0, address: "https://e.org".into() }), 2).is_err());
+    assert!(c.take(Rec::Left(LeftOut { uri: 3, other: 0, dead: 0, capped: 0 }), 2).is_ok());
+    let back = Collected::from_parts(c.links_text().as_bytes(), b"", 2).unwrap();
+    assert_eq!(back.webs, c.webs);
+    assert_eq!(back.left, c.left);
+    // the grammar: eight words, signed areas of at least 1 px, the address by the rules
+    assert_eq!(parse_record(b"W 1 -4 8 40 20 0 https://e.org/p?q=1"), Ok(Rec::Web(WireWeb { src: 1, x: -4, y: 8, w: 40, h: 20, index: 0, address: "https://e.org/p?q=1".into() })));
+    for bad in [&b"W 1 4 8 40 20 0 ftp://e.org"[..], b"W 1 4 8 0 20 0 https://e.org", b"W 1 4 8 40 20 0", b"W 1 4 8 40 20 0 https://e.org x", b"W 1 4 8 40 20 0 https://e.org\x01"] {
+        assert!(parse_record(bad).is_err(), "{}", String::from_utf8_lossy(bad));
+    }
+    assert!(Collected::from_parts(b"W 1 4 8 40 20 0 data:x\nF 0 0 0 0\n", b"", 2).is_none(), "a part is read as strictly");
+}
+
+/// The files of notebook `id`'s folder, by name (the page files and pictures left out).
+fn info_files(root: &str, id: &str) -> std::collections::BTreeMap<String, Vec<u8>> {
+    std::fs::read_dir(format!("{root}/notebooks/{id}"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .map(|e| (e.file_name().to_string_lossy().into_owned(), std::fs::read(e.path()).unwrap()))
+        .filter(|(n, _)| n.ends_with(".ini"))
+        .collect()
+}
+
+// An import writes the web links into weblinks.ini, a file of their own: its doclinks.ini, nav.ini and links.ini are
+// those of the same PDF without its web links, byte for byte, so a version before 2.2 (which reads those and never
+// weblinks.ini) sees the notebook as that PDF's. A PDF without web links makes no weblinks.ini.
+#[test]
+fn an_import_keeps_web_links_apart_and_its_other_files_as_without_them() {
+    let e = setup("web-apart");
+    let tabs = |web: bool| {
+        let mut v = vec![Lnk::new(r(0), Act::Page(2)), Lnk::new(r(1), Act::Page(3))];
+        if web {
+            v.insert(1, Lnk::new(r(2), Act::Uri("https://example.org/one")));
+            v.push(Lnk::new(r(3), Act::Uri("http://example.org/two,with,commas")));
+            v.push(Lnk::new(r(4), Act::Uri("javascript:void(0)")));
+        }
+        v
+    };
+    let extra = Extra { outline: vec![OutItem::new("Start", 1)], ..Default::default() };
+    let with = e.import("With.pdf", &make_linked(&plain_pages(3), &on(1, 3, tabs(true)), &extra));
+    let without = e.import("Without.pdf", &make_linked(&plain_pages(3), &on(1, 3, tabs(false)), &extra));
+    let (fw, fo) = (info_files(&e.root, &with), info_files(&e.root, &without));
+    for f in ["doclinks.ini", "nav.ini"] {
+        assert!(fo.contains_key(f), "{f}");
+        assert_eq!(fw.get(f), fo.get(f), "{f} is the same with web links or without");
+    }
+    assert!(!fo.contains_key("weblinks.ini"), "no web link, no file");
+    assert!(!fw.contains_key("links.ini") && !fo.contains_key("links.ini"));
+    let names = |m: &std::collections::BTreeMap<String, Vec<u8>>| m.keys().filter(|k| *k != "weblinks.ini").cloned().collect::<Vec<_>>();
+    assert_eq!(names(&fw), names(&fo));
+    let text = String::from_utf8(fw["weblinks.ini"].clone()).unwrap();
+    let lines: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
+    assert_eq!(lines.len(), 2, "{text}");
+    assert!(lines[0].starts_with("web.1=") && lines[0].ends_with(",https://example.org/one"), "{text}");
+    assert!(lines[1].ends_with(",http://example.org/two,with,commas"), "{text}");
+    // 2.1.0's reader of doclinks.ini (this version's: the same code) takes every line of it and carries none
+    let dl = doclinks_load(&with);
+    assert!(dl.writable && dl.unknown.is_empty());
+    assert_eq!(dl.links.len(), 2);
+    // the import's toast leaves nothing out for room
+    assert_eq!(finished_trimmed(&with), 0);
+}
+
+// A page with more web links than it takes (256) keeps its first, in the document's order, and the end says some
+// links were left out (the toast counts them with the document links left out for room).
+#[test]
+fn a_page_of_more_web_links_than_it_takes_keeps_its_first() {
+    let e = setup("web-full");
+    let links: Vec<Lnk> = (0..300usize)
+        .map(|k| {
+            let (x, y) = (10.0 + (k % 20) as f64 * 20.0, 10.0 + (k / 20) as f64 * 30.0);
+            Lnk::new([x, y, x + 15.0, y + 20.0], Act::Uri(leak(format!("https://example.org/{k}"))))
+        })
+        .collect();
+    let id = e.import("Full.pdf", &make_linked(&plain_pages(2), &on(1, 2, links), &Extra::default()));
+    let wl = weblinks_load(&id);
+    assert_eq!(wl.links.len(), WEBLINKS_PER_PAGE);
+    assert_eq!(wl.links[0].address, "https://example.org/0");
+    assert_eq!(wl.links[WEBLINKS_PER_PAGE - 1].address, format!("https://example.org/{}", WEBLINKS_PER_PAGE - 1));
+    assert_eq!(finished_trimmed(&id), (300 - WEBLINKS_PER_PAGE) as u32);
 }

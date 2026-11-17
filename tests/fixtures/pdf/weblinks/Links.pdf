@@ -1,0 +1,98 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 3 /Kids [4 0 R 6 0 R 8 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 465 620] /Annots [10 0 R 11 0 R 12 0 R] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 279 >>
+stream
+0 G 2 w 20 20 425 580 re S
+BT /F1 18 Tf 40 580 Td (Web links 1) Tj ET
+0.85 0.85 0.85 rg 40 480 260 40 re f
+BT /F1 14 Tf 50 495 Td (example.org/grimoire) Tj ET
+0.7 0.7 0.7 rg 380 500 80 40 re f
+0.85 0.85 0.85 rg 40 380 260 40 re f
+BT /F1 14 Tf 50 395 Td (a script: refused) Tj ET
+
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 465 620] /Annots [13 0 R 14 0 R] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 339 >>
+stream
+0 G 2 w 20 20 425 580 re S
+BT /F1 18 Tf 40 580 Td (Web links 2) Tj ET
+0.85 0.85 0.85 rg 40 400 380 40 re f
+0.85 0.85 0.85 rg 40 360 160 40 re f
+BT /F1 14 Tf 50 415 Td (example.org/a/long/address/that/goes/on/) Tj ET
+BT /F1 14 Tf 50 375 Td (two/lines) Tj ET
+0.85 0.85 0.85 rg 40 200 260 40 re f
+BT /F1 14 Tf 50 215 Td (mail: refused) Tj ET
+
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 465 620] /Annots [15 0 R] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 156 >>
+stream
+0 G 2 w 20 20 425 580 re S
+BT /F1 18 Tf 40 580 Td (Web links 3) Tj ET
+0.85 0.85 0.85 rg 40 480 260 40 re f
+BT /F1 14 Tf 50 495 Td (example.com/notes) Tj ET
+
+endstream
+endobj
+10 0 obj
+<< /Type /Annot /Subtype /Link /Rect [40 480 300 520] /Border [0 0 0] /A << /S /URI /URI (https://example.org/grimoire) >> >>
+endobj
+11 0 obj
+<< /Type /Annot /Subtype /Link /Rect [380 500 460 540] /Border [0 0 0] /Dest [8 0 R /XYZ 10 10 0] >>
+endobj
+12 0 obj
+<< /Type /Annot /Subtype /Link /Rect [40 380 300 420] /Border [0 0 0] /A << /S /URI /URI (javascript:alert(1)) >> >>
+endobj
+13 0 obj
+<< /Type /Annot /Subtype /Link /Rect [40 360 420 440] /Border [0 0 0] /A << /S /URI /URI (https://example.org/a/long/address/that/goes/on/two/lines) >> /QuadPoints [40 440 420 440 40 400 420 400 40 400 200 400 40 360 200 360] >>
+endobj
+14 0 obj
+<< /Type /Annot /Subtype /Link /Rect [40 200 300 240] /Border [0 0 0] /A << /S /URI /URI (mailto:someone@example.org) >> >>
+endobj
+15 0 obj
+<< /Type /Annot /Subtype /Link /Rect [40 480 300 520] /Border [0 0 0] /A << /S /URI /URI (  http://example.com/notes  ) >> >>
+endobj
+xref
+0 16
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000133 00000 n 
+0000000203 00000 n 
+0000000360 00000 n 
+0000000690 00000 n 
+0000000840 00000 n 
+0000001230 00000 n 
+0000001373 00000 n 
+0000001580 00000 n 
+0000001722 00000 n 
+0000001839 00000 n 
+0000001972 00000 n 
+0000002217 00000 n 
+0000002357 00000 n 
+trailer
+<< /Size 16 /Root 1 0 R >>
+startxref
+2499
+%%EOF

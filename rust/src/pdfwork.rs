@@ -35,8 +35,11 @@
 //!                                   1), i its place among the page's links (the order the PDF drew them)
 //!   `Q <x0> <y0> .. <x3> <y3>`      the quad of the link just before it, corners in 1/16 px, signed
 //!   `O <page> <hex>`                an outline title (UTF-8, hex) that names this page: at most one a page
-//!   `F <uri> <other> <dead> <capped>`  what the walk left out: web links, other actions, links without a
-//!                                   place to go or an area, links past the worker's cap
+//!   `W <src> <x> <y> <w> <h> <i> <address>`  a web link (2.2): its page from 1, its area as an L record's, i its
+//!                                   place among the page's web links, the address as it is (weblinks_address_ok:
+//!                                   http or https, printable ASCII without a space, at most 200 bytes)
+//!   `F <uri> <other> <dead> <capped>`  what the walk left out: web links whose address the rules refuse, other
+//!                                   actions, links without a place to go or an area, links past the worker's cap
 
 use crate::sandbox::*;
 
@@ -119,6 +122,7 @@ pub enum Rec {
     Link(WireLink),
     Quad([i32; 8]),
     Name { page: u32, text: Vec<u8> },
+    Web(WireWeb),
     Left(LeftOut),
 }
 
@@ -134,16 +138,31 @@ pub struct WireLink {
     pub index: u32,
 }
 
+/// A web link as the worker sends it (W record, 2.2): its page, area (page pixels), place among the page's web links
+/// and its address, which the writer takes only by weblinks_address_ok.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WireWeb {
+    pub src: u32,
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+    pub index: u32,
+    pub address: String,
+}
+
 /// What the link walk left out (F record), for the log.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LeftOut {
+    /// web links whose address the rules refuse (weblinks_address_ok); the others are W records since 2.2
     pub uri: u32,
     pub other: u32,
     pub dead: u32,
     pub capped: u32,
 }
 
-/// The most link records a worker sends (the notebook keeps at most 14,400 in the end).
+/// The most link records a worker sends, web links included (the notebook keeps at most 14,400 document links and
+/// 3,600 web links in the end).
 pub const LINKS_MAX: usize = 60_000;
 /// Corners and areas stay within this many pixels of the page (a hostile file's numbers go no further).
 pub const LINK_COORD_MAX: i32 = 200_000;
@@ -218,6 +237,15 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
             Ok(Rec::Quad(q))
         }
         ("O", 3) => Ok(Rec::Name { page: num(1)?, text: unhex(t[2]).ok_or(bad)? }),
+        ("W", 8) => {
+            let sn = |i: usize| t.get(i).and_then(|x| snumber(x)).ok_or(Violation("record"));
+            let (w, h) = (sn(4)?, sn(5)?);
+            // (the address is one word: the rules take no space, and nothing outside printable ASCII)
+            if w < 1 || h < 1 || !crate::weblinks::weblinks_address_ok(t[7].as_bytes()) {
+                return Err(bad);
+            }
+            Ok(Rec::Web(WireWeb { src: num(1)?, x: sn(2)?, y: sn(3)?, w, h, index: num(6)?, address: t[7].to_string() }))
+        }
         ("F", 5) => Ok(Rec::Left(LeftOut { uri: num(1)?, other: num(2)?, dead: num(3)?, capped: num(4)? })),
         ("E", 2 | 3) => Ok(Rec::Err(match (t[1], t.get(2)) {
             ("password", None) => ErrCode::Password,
@@ -245,6 +273,8 @@ pub struct Collected {
     pub links: Vec<(WireLink, Option<[i32; 8]>)>,
     /// page from 1 and its name (UTF-8, at most 95 bytes)
     pub names: Vec<(u32, Vec<u8>)>,
+    /// the web links (2.2), each address by weblinks_address_ok
+    pub webs: Vec<WireWeb>,
     pub left: LeftOut,
     seen_left: bool,
 }
@@ -259,7 +289,7 @@ impl Collected {
                 if l.src < 1 || l.src > pages || l.dst < 1 || l.dst > pages || off {
                     return bad("a link outside its pages");
                 }
-                if self.links.len() >= LINKS_MAX {
+                if self.links.len() + self.webs.len() >= LINKS_MAX {
                     return bad("too many links");
                 }
                 self.links.try_reserve(1).map_err(|_| Violation("out of memory"))?;
@@ -280,6 +310,18 @@ impl Collected {
                 self.names.push((page, text));
                 Ok(())
             }
+            Rec::Web(l) => {
+                let off = l.x.abs().max(l.y.abs()) > LINK_COORD_MAX || l.w > 2 * LINK_COORD_MAX || l.h > 2 * LINK_COORD_MAX;
+                if l.src < 1 || l.src > pages || off || !crate::weblinks::weblinks_address_ok(l.address.as_bytes()) {
+                    return bad("a web link outside its page");
+                }
+                if self.links.len() + self.webs.len() >= LINKS_MAX {
+                    return bad("too many links");
+                }
+                self.webs.try_reserve(1).map_err(|_| Violation("out of memory"))?;
+                self.webs.push(l);
+                Ok(())
+            }
             Rec::Left(l) if !self.seen_left => {
                 self.left = l;
                 self.seen_left = true;
@@ -289,7 +331,7 @@ impl Collected {
         }
     }
 
-    /// links.part: the L and Q records, then F.
+    /// links.part: the L and Q records, the W records, then F.
     pub fn links_text(&self) -> String {
         let mut t = String::new();
         for (l, q) in &self.links {
@@ -297,6 +339,9 @@ impl Collected {
             if let Some(q) = q {
                 t.push_str(&format!("Q {}\n", q.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(" ")));
             }
+        }
+        for l in &self.webs {
+            t.push_str(&format!("W {} {} {} {} {} {} {}\n", l.src, l.x, l.y, l.w, l.h, l.index, l.address));
         }
         let l = self.left;
         t.push_str(&format!("F {} {} {} {}\n", l.uri, l.other, l.dead, l.capped));
@@ -921,8 +966,9 @@ mod links {
             map
         }
 
-        /// Where an annotation or outline item goes: /A (GoTo, Named) first, else /Dest. `Err(())` for an
-        /// action Grimoire leaves out (counted by the caller), `Ok(None)` for none that resolves.
+        /// Where an annotation or outline item goes: /A (GoTo, Named) first, else /Dest. `Err` for an action
+        /// that goes to no page (a URI's with its address when the rules take it, else counted by the caller),
+        /// `Ok(None)` for none that resolves.
         fn target(&mut self, d: &Dict<'a>, src: u32) -> Result<Option<u32>, Kind> {
             if let Some(act) = d.get::<Dict<'a>>("A") {
                 let Some(s) = act.get::<Name<'a>>("S") else { return Err(Kind::Other) };
@@ -942,7 +988,10 @@ mod links {
                     };
                 }
                 if name_is(&s, b"URI") {
-                    return Err(Kind::Uri);
+                    // (the address as weblinks_address_ok takes it, its ends trimmed; a string the rules refuse, or
+                    // none, is a web link left out)
+                    let u = act.get::<hayro::hayro_syntax::object::String<'a>>("URI");
+                    return Err(Kind::Uri(u.and_then(|u| crate::weblinks::weblinks_address_from(u.as_bytes()))));
                 }
                 return Err(Kind::Other);
             }
@@ -954,8 +1003,15 @@ mod links {
     }
 
     enum Kind {
-        Uri,
+        /// a web link, with its address when the rules take it
+        Uri(Option<String>),
         Other,
+    }
+
+    /// Where a link annotation goes: a page (L records), or an address (W records, 2.2).
+    enum Goes {
+        Page(u32),
+        Web(String),
     }
 
     fn pt(fit: Affine, x: f64, y: f64) -> Option<(f64, f64)> {
@@ -1045,6 +1101,7 @@ mod links {
             let Some(annots) = page.raw().get::<Array<'_>>("Annots") else { continue };
             let fit = page_fit(page, w, h);
             let mut index = 0u32;
+            let mut web_index = 0u32;
             for item in annots.raw_iter().take(ANNOTS_PER_PAGE) {
                 let Some(Object::Dict(a)) = wk.resolve(item) else { continue };
                 match a.get::<Name<'_>>("Subtype") {
@@ -1055,14 +1112,15 @@ mod links {
                 if a.get::<i32>("F").is_some_and(|f| f & (2 | 32) != 0) {
                     continue;
                 }
-                let dst = match wk.target(&a, src) {
-                    Ok(Some(d)) if d != src => d,
+                let goes = match wk.target(&a, src) {
+                    Ok(Some(d)) if d != src => Goes::Page(d),
                     // a link to its own page goes nowhere
                     Ok(_) => {
                         wk.left.dead += 1;
                         continue;
                     }
-                    Err(Kind::Uri) => {
+                    Err(Kind::Uri(Some(address))) => Goes::Web(address),
+                    Err(Kind::Uri(None)) => {
                         wk.left.uri += 1;
                         continue;
                     }
@@ -1127,12 +1185,21 @@ mod links {
                         continue;
                     }
                     let (x, y, bw, bh) = box_of(&corners);
-                    out.put(&format!("L {src} {dst} {x} {y} {bw} {bh} {index}\n"));
-                    if polygon {
-                        let q: Vec<String> = corners.iter().flat_map(|c| [clamp_px(c.0 * 16.0).to_string(), clamp_px(c.1 * 16.0).to_string()]).collect();
-                        out.put(&format!("Q {}\n", q.join(" ")));
+                    match &goes {
+                        Goes::Page(dst) => {
+                            out.put(&format!("L {src} {dst} {x} {y} {bw} {bh} {index}\n"));
+                            if polygon {
+                                let q: Vec<String> = corners.iter().flat_map(|c| [clamp_px(c.0 * 16.0).to_string(), clamp_px(c.1 * 16.0).to_string()]).collect();
+                                out.put(&format!("Q {}\n", q.join(" ")));
+                            }
+                            index += 1;
+                        }
+                        // (a web link's area is its quad's box: no polygon)
+                        Goes::Web(address) => {
+                            out.put(&format!("W {src} {x} {y} {bw} {bh} {web_index} {address}\n"));
+                            web_index += 1;
+                        }
                     }
-                    index += 1;
                     sent += 1;
                 }
             }
@@ -1375,7 +1442,7 @@ impl Session {
             }
             match parse_record(&line) {
                 Ok(Rec::ProbeDone) => return Ok(got),
-                Ok(r @ (Rec::Link(_) | Rec::Quad(_) | Rec::Name { .. } | Rec::Left(_))) => {
+                Ok(r @ (Rec::Link(_) | Rec::Quad(_) | Rec::Name { .. } | Rec::Web(_) | Rec::Left(_))) => {
                     if let Err(v) = got.take(r, self.pages) {
                         self.w.kill_and_reap();
                         return Err(v.0);

@@ -511,6 +511,43 @@ fn a_fill_writes_links_and_names_only_for_the_pages_it_adds() {
     assert_eq!(names(&id, &nb), ["Cover", "", "", ""]);
 }
 
+/// The web links of notebook `id` whose pages it lists: (its page's book page, area, address), in order.
+fn web_links(id: &str, nb: &NotebookInfo) -> Vec<(i32, Rect, String)> {
+    let bp = book_pages(id, nb);
+    let book = |pid: u32| nb.page_ids.iter().position(|&p| p == pid).map_or(-1, |i| bp[i]);
+    let mut wl = weblinks_load(id);
+    weblinks_prune(&mut wl, nb);
+    let mut v: Vec<(i32, Rect, String)> = wl.links.iter().map(|l| (book(l.pid), l.area, l.address.clone())).collect();
+    v.sort_by_key(|x| (x.0, x.1.y, x.1.x));
+    v
+}
+
+// A fill brings the web links of the pages it adds (2.2, issue #174), and only theirs: the web links of the pages the
+// notebook kept are not added a second time, and weblinks.ini's lines for them are as they were.
+#[test]
+fn a_fill_brings_the_web_links_of_the_pages_it_adds() {
+    let e = setup("web-fill");
+    let bytes = pdffix::weblinks();
+    let (id, ends) = import_all(&e.drop("Links.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 3, blank: 0 }, "{ends:?}");
+    let whole = web_links(&id, &e.info(&id));
+    assert_eq!(whole.iter().map(|l| l.0).collect::<Vec<_>>(), [1, 2, 2, 3], "{whole:?}");
+    drop_pages(&id, &[2]);
+    let before = e.info(&id);
+    assert_eq!(web_links(&id, &before).len(), 2);
+    let (_, ends) = import_all(&e.drop("Links again.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 1));
+    let nb = e.info(&id);
+    assert_eq!(book_pages(&id, &nb), [1, 2, 3]);
+    assert_eq!(web_links(&id, &nb), whole, "page 2's two come back, the others once each");
+    assert_eq!(&nb.page_ids[0], &before.page_ids[0]);
+    // the same PDF a third time: every page is there, nothing is added
+    let (_, ends) = import_all(&e.drop("Links a third time.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Already, "{ends:?}");
+    assert_eq!(web_links(&id, &e.info(&id)), whole);
+}
+
 // A notebook that has every page of the book: "PDF already imported.", and nothing of it is written.
 #[test]
 fn a_notebook_with_every_page_says_already() {
