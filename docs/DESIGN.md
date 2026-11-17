@@ -3222,7 +3222,8 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   out when the sheet opens, as before. With no template to offer, the sheet counts them among the files it cannot use,
   as for pictures. A template PDF's tiles are templates only: the Photos sheet lists no PDF.
 - **Colour** follows a picture template's: a page with colour is kept in colour, drawn behind the ink as such a
-  template is, and its preview is gray.
+  template is, and its preview is gray. Darker lines (issue #173, "Darker lines in imported PDFs") are not applied to
+  template pages: a page is stored as the worker draws it, whatever that setting says.
 - **Users with no PDF in the folder** see what they saw: the same tiles and jobs, and the sheet's tick asks nothing
   of the folder for a picture.
 - **Use as template on a PDF** (`browser.rs`): Files' PDF card has it after Import as notebook, never for a PDF already

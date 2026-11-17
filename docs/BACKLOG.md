@@ -13,7 +13,11 @@ on a PDF's card in Files (docs/DESIGN.md, PDFs as templates). Waiting:
   (never its first 50); the templates folder's 16 MB for a PDF too, and so for its copy from Files; the pages drawn
   at the Kindle's page size, rendered when the Templates sheet looks at the folder, ranked behind imports and font
   checks with Files' previews, in an import's slices; a page whose worker ends twice is left out alone, two such
-  pages leave the whole PDF out; the tiles named "<file> p. <n>" with no new string.
+  pages leave the whole PDF out; the tiles named "<file> p. <n>" with no new string; at most 200 tiles of PDF pages
+  on the sheet in all, a PDF past them left out whole; a PDF's tile the sheet cannot use (a refused PDF, one past the
+  200, a page left out) kept crossed out at every opening, where a picture's is left out; darker lines (#173) not
+  applied to template pages (to apply them, the setting's level would join the cache key, and the pages be drawn
+  again when it changes).
 - **From a file...** in the Templates sheet still picks pictures alone: picking a PDF there would need the picture
   pick to list PDFs, with their own card.
 - **The empty Templates sheet** names only pictures in its text, and `templates/README.txt` (written once) does not
