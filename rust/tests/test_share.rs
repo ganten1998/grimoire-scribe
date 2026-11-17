@@ -416,8 +416,8 @@ fn share_app() -> App {
 // A question that ends while it is shown, for whatever reason, is taken away first, with "Not imported.", and the
 // next is drawn only at a later tick, even one that reads the same: here a second send ends the question shown and a
 // third, with the same name and size, comes in the same poll. The question is taken away all the same.
-// (The server's quiet time after a send that was not imported, made 0 here, would refuse the third: the screen's rule
-// is held without it.)
+// (The server's quiet time after a send ends, made 0 here, would refuse the third: the screen's rule is held without
+// it.)
 fn a_question_that_ends_is_taken_away_before_another_is_drawn() {
     let mut a = share_app();
     let root = store_root();
@@ -542,8 +542,8 @@ fn test_share() {
     run!(every_screen_is_the_c_screen);
     run!(the_card_knows_whether_it_is_live_view);
     run!(wifi_controls_remain_reachable_on_live_cards_without_an_address);
-    // (the question cases send again at once after a send that was not imported: no quiet time for them, and the
-    // screen's own rule is held as if there were none)
+    // (the question cases send again at once after a send ends: no quiet time for them, and the screen's own rule is
+    // held as if there were none)
     std::env::set_var("GRIMOIRE_UPLOAD_QUIET_MS", "0");
     run!(the_question_asks_and_only_a_tap_after_it_was_shown_answers);
     run!(a_question_that_ends_is_taken_away_before_another_is_drawn);

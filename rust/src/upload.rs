@@ -27,9 +27,10 @@ pub const UPLOAD_ASK_MS: u32 = 120_000;
 /// After a refusal sent while the browser may still be sending, what it sends is read and dropped this long, so that
 /// it reads the refusal (a close with bytes unread would reset the connection under it).
 pub const UPLOAD_DRAIN_MS: u32 = 5_000;
-/// After a send ends any way but Import (Cancel, no answer, the browser gone, a second send, a body refused), no
-/// new send is taken for this long: longer than the toast "Not imported." (3 s), so that a question that went is
-/// seen to go before another can come, and short enough to send again at once after a Cancel by mistake.
+/// After a send ends, however it ends (Import, Cancel, no answer, the browser gone, a second send, a body refused), no
+/// new send is taken for this long: longer than the toast that ends a question ("Copied to grimoire/import." or "Not
+/// imported.", 3 s), so that a question that went is seen to go before another can come, and short enough to send
+/// again soon after a Cancel by mistake or to send the next PDF after an Import.
 pub const UPLOAD_QUIET_MS: u32 = 5_000;
 /// The name of a PDF whose own name is not one a file in Grimoire's folders may have.
 pub const UPLOAD_FALLBACK: &str = "Untitled.pdf";

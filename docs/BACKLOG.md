@@ -6,9 +6,9 @@ why. Newest decisions first within each section.
 
 ## Send a PDF from the Share page (2.2, issue #175): what waits, and what is for the owner
 
-Built: `POST /upload` while Share is open, the page's token, the send's code, the limits and the 5 seconds after a
-send not imported, one temporary file removed on every way out, the Kindle's question, Import into `grimoire/import`,
-the page's button (docs/DESIGN.md, "Send a PDF from the Share page"). The calls taken, each the owner's to change:
+Built: `POST /upload` while Share is open, the page's token, the send's code, the limits and the 5 seconds after each
+send, one temporary file removed on every way out, the Kindle's question, Import into `grimoire/import`, the page's
+button (docs/DESIGN.md, "Send a PDF from the Share page"). The calls taken, each the owner's to change:
 
 - **The size limit is 64 MB** (`UPLOAD_MAX`, the import's limit where the private mapping is refused), so every PDF
   sent imports on every Kindle. The Scribe maps PDFs and imports up to 512 MB copied over USB; raising the limit to
@@ -22,8 +22,9 @@ the page's button (docs/DESIGN.md, "Send a PDF from the Share page"). The calls 
   question goes with "Not imported.".
 - **The send's code is four digits** (`upload::new_code`): it ties the question to the page that sent the PDF and is
   no password, so four are enough; more would be harder to read and compare on two screens.
-- **After a send that is not imported, the next waits 5 seconds** (`UPLOAD_QUIET_MS`): longer than the toast "Not
-  imported.", short enough to send again soon after a Cancel by mistake.
+- **After each send, imported or not, the next waits 5 seconds** (`UPLOAD_QUIET_MS`): longer than the toast that
+  ends the question ("Copied to grimoire/import." or "Not imported."), short enough to send again soon after a Cancel
+  by mistake, and about the time it takes to pick the next PDF after an Import.
 - **Share's X closes Share while the Kindle asks**, as the question's Cancel, and so does Esc. A tap elsewhere outside
   the question does nothing (Files' Delete question takes it as Keep it).
 - **A name is cleaned, not refused**: a character a file may not have becomes `_`, one that draws as nothing goes,

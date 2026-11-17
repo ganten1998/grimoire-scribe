@@ -5,6 +5,7 @@
 # env: GRIMOIRE_LANG=es
 # env: GRIMOIRE_CHECK_FIT=1
 # env: GRIMOIRE_UPLOAD_ASK_MS=6000
+# env: GRIMOIRE_UPLOAD_QUIET_MS=0
 # copy: tests/fixtures/pdf/planner grimoire/send
 # Send a PDF from the Share page (2.2, issue #175) in Spanish and Classic, every text checked for fit, as
 # share_upload_5_es_fit_gothic does in Gothic.

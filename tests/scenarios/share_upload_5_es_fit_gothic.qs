@@ -4,10 +4,12 @@
 # env: GRIMOIRE_LANG=es
 # env: GRIMOIRE_CHECK_FIT=1
 # env: GRIMOIRE_UPLOAD_ASK_MS=6000
+# env: GRIMOIRE_UPLOAD_QUIET_MS=0
 # copy: tests/fixtures/pdf/planner grimoire/send
 # Send a PDF from the Share page (2.2, issue #175) in Spanish, every text checked for fit (share_upload_5_es_fit_classic
 # runs the same in Classic): the Kindle's question upright and sideways, its Importar toast, and the toast of a
-# question that went unanswered (GRIMOIRE_UPLOAD_ASK_MS shortens the wait).
+# question that went unanswered (GRIMOIRE_UPLOAD_ASK_MS shortens the wait; GRIMOIRE_UPLOAD_QUIET_MS=0 lets that send
+# come right after the Import).
 # rust-only
 wait 300
 tap 1345 95

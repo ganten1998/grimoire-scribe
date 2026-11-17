@@ -3342,7 +3342,8 @@ lines marked "Over SSH, optional" look at the files themselves and can be left o
    new).
 3. **A few seconds after**: right after that Cancel, send again at once: the page says "Wait 5 seconds, then send
    again." and the Kindle asks nothing. Wait 5 seconds and send: the Kindle asks, with a new code, the one the page
-   now shows. Cancel.
+   now shows. Tap Import, and send again at once: the same "Wait 5 seconds, then send again.", and no question over
+   the toast "Copied to grimoire/import.".
 4. **A quick double tap**: send, and tap twice quickly where Import will be as the question appears (the first tap
    before it is drawn): the question stays until a tap after it is shown. Then Cancel.
 5. **X during a question**: send, and while the Kindle asks tap Share's X: the question goes, Share closes at once,

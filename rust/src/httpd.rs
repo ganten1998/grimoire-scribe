@@ -311,7 +311,7 @@ struct State {
     upload: Upload,
     /// the Share page's token, while Share keeps the server (a new one each time it opens; never logged or stored)
     token: Option<String>,
-    /// when the last upload ended any way but Import: no new one is taken for UPLOAD_QUIET_MS after it
+    /// when the last upload ended, however it ended (Import too): no new one is taken for UPLOAD_QUIET_MS after it
     quiet_from: Option<u32>,
 }
 
@@ -2233,16 +2233,16 @@ fn host_ok(req: &[u8]) -> bool {
 //
 // One upload at a time, only while Share keeps the server. The request is held to upload.rs's rules in this order:
 // Share open, the Host header (host_ok), the Origin and Sec-Fetch-Site headers (same_origin), the page's token
-// (same_token), a Content-Length (no chunked body) of at least five bytes and at most UPLOAD_MAX, no other upload under
-// way (a second one ends the first: neither is kept), none ended moments ago without Import (UPLOAD_QUIET_MS), and room
-// for it above the storage's floor. Nothing of the head past these headers, and nothing of the body but its first five
-// bytes, is looked at before the user's yes: the body goes into the one temporary file (upload::Part) as it comes,
-// unread; once it is all in, the Kindle asks (the Share screen, httpd_upload_question), the reply's head and the send's
-// code (upload::new_code) go to the browser, and the reply's last line waits for the user's answer. Import renames the
-// file into import/ (Part::commit); every other way out drops the Part, which removes the file: Cancel, no answer in
-// UPLOAD_ASK_MS, a body that stalls for UPLOAD_STALL_MS or is not whole after UPLOAD_BODY_MS, a browser that hangs up,
-// Share left, sleep, a second upload, the server stopping. The log says what came and how it ended, never the name, the
-// token or the code.
+// (same_token), a Content-Length (no chunked body) of at least five bytes and at most UPLOAD_MAX, no more bytes with
+// the head than that, no other upload under way (a second one ends the first: neither is kept), none ended moments ago
+// (UPLOAD_QUIET_MS, after an Import too), and room for it above the storage's floor. Nothing of the head past these
+// headers, and nothing of the body but its first five bytes, is looked at before the user's yes: the body goes into the
+// one temporary file (upload::Part) as it comes, unread; once it is all in, the Kindle asks (the Share screen,
+// httpd_upload_question), the reply's head and the send's code (upload::new_code) go to the browser, and the reply's
+// last line waits for the user's answer. Import renames the file into import/ (Part::commit); every other way out drops
+// the Part, which removes the file: Cancel, no answer in UPLOAD_ASK_MS, a body that stalls for UPLOAD_STALL_MS or is
+// not whole after UPLOAD_BODY_MS, a browser that hangs up, Share left, sleep, a second upload, the server stopping. The
+// log says what came and how it ended, never the name, the token or the code.
 
 /// Every value of a header in a request's head, as header_get reads the first (its name in any case, then a colon;
 /// the spaces and tabs before the value left out; the value to its line's end), however long.
@@ -2284,7 +2284,7 @@ fn upload_state() -> UploadState {
 }
 
 /// The upload forgotten without a yes, its temporary file removed (its Part drops), its connection left as it is;
-/// no new one is taken for UPLOAD_QUIET_MS (Import's yes forgets it in httpd_upload_answer, with no quiet time).
+/// no new one is taken for UPLOAD_QUIET_MS (Import's yes forgets it in httpd_upload_answer, with the same quiet time).
 fn upload_drop() {
     with(|s| {
         s.upload = Upload { serial: s.upload.serial, ..Upload::default() };
@@ -2361,7 +2361,7 @@ fn route_upload(c: usize) {
         return upload_refuse(c, 409, "another PDF is being sent", "a second upload came while one was under way");
     }
     if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {
-        // (a send ended moments ago without Import: its question is seen to go before another can come)
+        // (a send ended moments ago, Import or not: its question is seen to go before another can come)
         return upload_refuse(c, 503, "wait a few seconds", "too soon after the last one ended");
     }
     if !free_bytes().is_some_and(|free| fsview_room_for(free, len)) {
@@ -2620,7 +2620,8 @@ pub fn httpd_upload_discard(end: UploadEnd) {
 
 /// The user's answer to question `serial` (one that has gone is no answer: None, nothing done). Import renames the
 /// file into import/: Some(Ok(the name it took)), or Some(Err(errno)) and the file is gone. Cancel: None, the file gone.
-/// The browser that sent it is told either way, in its reply's last line.
+/// The browser that sent it is told either way, in its reply's last line, and either way no new upload is taken for
+/// UPLOAD_QUIET_MS.
 pub fn httpd_upload_answer(serial: u32, import: bool) -> Option<Result<String, i32>> {
     let (st, c, at) = with(|s| (s.upload.st, s.upload.client, s.upload.serial));
     if st != UploadState::Asking || at != serial {
@@ -2630,9 +2631,11 @@ pub fn httpd_upload_answer(serial: u32, import: bool) -> Option<Result<String, i
         upload_end(UploadEnd::Declined);
         return None;
     }
+    // (the quiet time follows an Import as it follows every end: no other question comes right over its toast)
     let (part, name) = with(|s| {
         let taken = (s.upload.part.take(), std::mem::take(&mut s.upload.name));
         s.upload = Upload { serial: s.upload.serial, ..Upload::default() };
+        s.quiet_from = Some(now_ms());
         taken
     });
     let r = part.map_or(Err(libc::EBADF), |p| p.commit(&name));

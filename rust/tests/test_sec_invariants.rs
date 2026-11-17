@@ -785,7 +785,7 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
 // functions), each header the rules read there once, no chunked body, one length and exactly that many bytes, a token
 // new each time Share opens and gone when it closes, nothing looked at past the first five bytes before the yes, the
 // one temporary file made afresh and removed whenever its Part drops (and when its connection closes), two senders
-// keeping neither, the quiet time after a send not imported, the send's code (drawn, given in its own reply alone,
+// keeping neither, the quiet time after a send ends (Import too), the send's code (drawn, given in its own reply alone,
 // drawn on the Kindle, never logged: the code side and the tests that look at the log and the files), a question that
 // ends taken away first, the name never a path (whole functions), never a rename over a file, the question answered
 // only once shown and asked again after a turn, X and Esc closing Share, the network table's three rows, the log's
@@ -855,12 +855,15 @@ fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
     // the token: 128 random bits, gone when Share closes
     told_on_code(&mut fails, DESIGN, "The token is 128 random bits", UPLOAD, "pub fn new_token(", NEW_TOKEN);
     told_on(&mut fails, DESIGN, "gone when it closes", HTTPD, "upload_end(UploadEnd::ShareClosed); with(|s| s.token = None);");
-    // the quiet time after a send not imported, with its figure
-    let quiet = "**After an upload ends any way but Import, no new one is taken for `UPLOAD_QUIET_MS`**";
+    // the quiet time after a send ends, however it ends (Import too), with its figure
+    let quiet = "**After an upload ends, however it ends, no new one is taken for `UPLOAD_QUIET_MS`**";
     told_on(&mut fails, DESIGN, quiet, HTTPD, r#"if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {"#);
     told_on_code(&mut fails, DESIGN, quiet, HTTPD, "fn upload_drop(", UPLOAD_DROP);
     told_on(&mut fails, DESIGN, quiet, HTTPD, "if s.upload.st != UploadState::None && s.upload.client == i { s.upload = Upload { serial: s.upload.serial, ..Upload::default() }; s.quiet_from = Some(now_ms());");
+    told_on(&mut fails, DESIGN, quiet, HTTPD, "let taken = (s.upload.part.take(), std::mem::take(&mut s.upload.name)); s.upload = Upload { serial: s.upload.serial, ..Upload::default() }; s.quiet_from = Some(now_ms()); taken });");
     beside(&mut fails, DESIGN, "`UPLOAD_QUIET_MS`", &format!("{} s", grimoire::upload::UPLOAD_QUIET_MS / 1000));
+    gone(&mut fails, DESIGN, "ends any way but Import");
+    gone(&mut fails, DESIGN, "before the next send after one not imported");
     // the other time limits, with their figures
     beside(&mut fails, DESIGN, "`UPLOAD_STALL_MS`", &format!("{} s", grimoire::upload::UPLOAD_STALL_MS / 1000));
     beside(&mut fails, DESIGN, "`UPLOAD_BODY_MS`", &format!("{} minutes", grimoire::upload::UPLOAD_BODY_MS / 60_000));
@@ -912,7 +915,7 @@ fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
     told_on(&mut fails, DESIGN, live, HTTPD, r#"return respond_text(400, "no body allowed");"#);
     told_on(&mut fails, DESIGN, live, HTTPD, r#"let Some(event) = header_get(req, "X-Grimoire-Key", 32) else {"#);
     told_on(&mut fails, DESIGN, live, HTTPD, r#"return respond_text(405, "GET only");"#);
-    let send = "one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one not imported";
+    let send = "one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one ends";
     told_on(&mut fails, DESIGN, send, HTTPD, "upload_end(UploadEnd::Another);");
     told_on(&mut fails, DESIGN, send, HTTPD, "if len > UPLOAD_MAX {");
     told_on_code(&mut fails, DESIGN, send, HTTPD, "fn header_one(", HEADER_ONE);
@@ -920,6 +923,6 @@ fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
     told_on(&mut fails, DESIGN, send, HTTPD, "upload_reply_open(c, &code);");
     told_on(&mut fails, DESIGN, send, HTTPD, "let r = part.map_or(Err(libc::EBADF), |p| p.commit(&name));");
     told_on(&mut fails, DESIGN, send, HTTPD, r#"if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {"#);
-    beside(&mut fails, DESIGN, "before the next send after one not imported", &format!("{} s", grimoire::upload::UPLOAD_QUIET_MS / 1000));
+    beside(&mut fails, DESIGN, "before the next send after one ends", &format!("{} s", grimoire::upload::UPLOAD_QUIET_MS / 1000));
     none_failed(&fails, "a PDF sent from the Share page");
 }

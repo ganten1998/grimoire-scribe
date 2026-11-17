@@ -7,7 +7,7 @@
 // One process, one thread: the client end of each exchange is a non-blocking socket written and read between
 // httpd_poll calls.
 //
-// A sim-feature test: after a send ends any way but Import the server takes no new one for a few seconds
+// A sim-feature test: after a send ends, however it ends, the server takes no new one for a few seconds
 // (UPLOAD_QUIET_MS), and the cases here send again at once, with that time made 0 (GRIMOIRE_UPLOAD_QUIET_MS, as the
 // other time limits are shortened, which only the simulator's builds read); one case holds the quiet time itself.
 #![cfg(feature = "sim")]
@@ -716,11 +716,10 @@ fn idle(ms: u64) {
     }
 }
 
-// After a send ends any way but Import (Cancel, no answer, the browser gone, a second send), the server takes no new
-// one for UPLOAD_QUIET_MS (shortened here): it is refused with 503 and nothing is kept, and once that time is over
-// the next is asked about as usual. Import's yes holds nothing back. Two sends at once still end both, and a third
-// right behind them waits.
-fn after_a_send_that_ends_without_import_the_next_waits() {
+// After a send ends, however it ends (Cancel, the browser gone, no answer, a second send, Import), the server takes no
+// new one for UPLOAD_QUIET_MS (shortened here): it is refused with 503 and nothing is kept, and once that time is over
+// the next is asked about as usual. Two sends at once still end both, and a third right behind them waits.
+fn after_a_send_ends_the_next_waits() {
     let before: Vec<String> = import_names();
     let names: Vec<&str> = before.iter().map(|s| s.as_str()).collect();
     let tok = page_token();
@@ -777,10 +776,17 @@ fn after_a_send_that_ends_without_import_the_next_waits() {
     check!(r.status() == "HTTP/1.0 503 Service Unavailable" && r.text() == "wait a few seconds\n");
     check!(nothing_kept(&names));
     idle(700);
-    // Import holds nothing back: the next is asked about at once
+    // Import: the same, so no other question comes over its toast
     let (q, s) = asked();
-    check!(httpd_upload_answer(q.map_or(0, |q| q.0), true).is_some_and(|r| r.is_ok()));
+    let kept = httpd_upload_answer(q.map_or(0, |q| q.0), true).and_then(|r| r.ok()).unwrap_or_default();
+    check!(kept == "next.pdf");
     check!(outcome(s) == "200 imported");
+    check!(waits());
+    let mut names = names.clone();
+    names.push(&kept);
+    names.sort();
+    check!(nothing_kept(&names));
+    idle(700);
     let (q, s) = asked();
     check!(q.is_some());
     httpd_upload_answer(q.map_or(0, |q| q.0), false);
@@ -832,7 +838,7 @@ fn test_share_upload() {
     log_capture(&log);
     check!(httpd_acquire(HTTPD_SHARE, port(), 300.0, true) == 0);
     run!(the_page_offers_to_send_with_a_token_of_its_own);
-    // (the cases below send again at once after a send that was not imported: no quiet time for them)
+    // (the cases below send again at once after a send ends: no quiet time for them)
     std::env::set_var("GRIMOIRE_UPLOAD_QUIET_MS", "0");
     run!(a_pdf_waits_for_the_kindle_and_import_keeps_it);
     run!(cancel_keeps_nothing);
@@ -846,7 +852,7 @@ fn test_share_upload() {
     run!(a_leftover_of_a_crash_goes_at_the_start);
     run!(slow_bodies_and_unanswered_questions_end);
     run!(no_room_is_refused);
-    run!(after_a_send_that_ends_without_import_the_next_waits);
+    run!(after_a_send_ends_the_next_waits);
     httpd_stop();
     let t = log_captured(&log);
     // what the log said: each way in and out, and none of the names or tokens sent

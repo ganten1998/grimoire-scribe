@@ -3171,7 +3171,7 @@ half again the title's size, so the user can see that the question is about the 
 **The code is never logged, never written to the storage, never in another connection's answer or in a page, and it
 is gone with the send.** Four digits are enough for what it does: it is no password, only a check of one send against
 one question; the server draws it, so no sender chooses it, and a question follows another only after the first was
-taken away and the quiet time below.
+answered or taken away and the quiet time below.
 
 **Who may send.** In this order, each refused with a short plain answer: the Share screen keeps the server (403
 `share is closed`: with Share closed and no Live view the server is not running at all); the Host header names the
@@ -3188,16 +3188,17 @@ header without a preflight, which the server refuses (OPTIONS answers 405), and 
 body; 400 with two), at least five bytes (415) and at most `UPLOAD_MAX`, 64 MB (413): the import's limit for one PDF
 where the private mapping is refused (`s1::PDF_MAX_READ_WHOLE`), so every PDF sent can be imported on every Kindle;
 the page refuses a bigger file before sending. One upload at a time: **a second upload while one is under way ends
-both** (the second refused with 409, the first told `another PDF was sent`). **After an upload ends any way but
-Import, no new one is taken for `UPLOAD_QUIET_MS`** (5 s, 503: Cancel, no answer, the browser gone, a second upload,
-a body refused): longer than the toast "Not imported.", so a question that went is seen to go before another can
-come. A connection sends exactly the length it said: more, with the head or once the Kindle asks, is refused (400, or
-the last line `more than its length`) and nothing is kept. Room for it above the storage's floor, 100 MB left after
-it (`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS` (30 s) of each read and `UPLOAD_BODY_MS` (10 minutes)
-in all (408), read up to 256 KiB a poll; the Kindle asks for `UPLOAD_ASK_MS` (2 minutes, then `no answer on the
-Kindle`). The head within a connection's 4096 bytes, and 16 connections, as for every request. A refusal sent while
-the body may still come is followed by reading and dropping what still comes for `UPLOAD_DRAIN_MS` (5 s) or until the
-browser closes, so that the close does not reset the connection under the answer.
+both** (the second refused with 409, the first told `another PDF was sent`). **After an upload ends, however it ends,
+no new one is taken for `UPLOAD_QUIET_MS`** (5 s, 503: Import, Cancel, no answer, the browser gone, a second upload,
+a body refused): longer than the toast that ends a question ("Copied to grimoire/import." or "Not imported."), so a
+question that went is seen to go before another can come. A connection sends exactly the length it said: more, with
+the head or once the Kindle asks, is refused (400, or the last line `more than its length`) and nothing is kept. Room
+for it above the storage's floor, 100 MB left after it (`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS`
+(30 s) of each read and `UPLOAD_BODY_MS` (10 minutes) in all (408), read up to 256 KiB a poll; the Kindle asks for
+`UPLOAD_ASK_MS` (2 minutes, then `no answer on the Kindle`). The head within a connection's 4096 bytes, and 16
+connections, as for every request. A refusal sent while the body may still come is followed by reading and dropping
+what still comes for `UPLOAD_DRAIN_MS` (5 s) or until the browser closes, so that the close does not reset the
+connection under the answer.
 
 **Before the yes.** Of the body only its first five bytes are looked at before the user's yes: they must be `%PDF-`,
 checked before any byte is written and refused at the first byte that differs (415). The body is written to one file
@@ -3266,17 +3267,17 @@ What reaches the share server from the network, and who:
 |---|---|---|---|
 | Share's pages and downloads (every GET but `/live`) | the Share screen is open | anyone on the network: no password | Host must name the Kindle by address; 16 connections, a 4096-byte request, 30 s idle; renders forked, 2 at a time, others queued 2 minutes at most |
 | Live view (`/live` and its streams, `POST /live/key`) | Live view is on | a browser paired with the Kindle's one-use code or QR token (pair.c) | sessions in an HttpOnly SameSite=Strict cookie; the key POST is bodyless, its event in a custom header, its preflight refused |
-| Send a PDF (`POST /upload`) | the Share screen is open | anyone who loaded the Share page (its token) | one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one not imported |
+| Send a PDF (`POST /upload`) | the Share screen is open | anyone who loaded the Share page (its token) | one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one ends |
 
 **The rules, in short.** While Share is open, a browser that loaded its page may send one PDF at a time; with Share
 closed nothing is taken. The server takes only what the rules above allow, looks at nothing of a body but its first
 five bytes before the user's yes, and writes nothing but the one temporary file until then. Every PDF is asked about
 on the Kindle before anything is kept, under the name its file will have, with its size and the send's code, which
-only the page that sent it shows. A question that ends without an answer is taken away first, and after a send that
-is not imported the next is taken only after `UPLOAD_QUIET_MS`. Only Import keeps a PDF: it goes into
-`grimoire/import` under a name that is never a path and never replaces a file, and the sandboxed import parses it as
-any PDF copied in. Share's X and Esc close Share at any time, which ends a send and takes no more. A page of another
-site the user visits cannot send at all.
+only the page that sent it shows. A question that ends without an answer is taken away first, and after any send ends
+the next is taken only after `UPLOAD_QUIET_MS`. Only Import keeps a PDF: it goes into `grimoire/import` under a name
+that is never a path and never replaces a file, and the sandboxed import parses it as any PDF copied in. Share's X
+and Esc close Share at any time, which ends a send and takes no more. A page of another site the user visits cannot
+send at all.
 
 - **Strings**: `Import "%s" (%s)?`, Send a PDF to the Kindle, Confirm on the Kindle., Not imported., Another PDF is
   being sent. Try again., Open Share on the Kindle, then reload this page., `Wait %d seconds, then send again.`,
