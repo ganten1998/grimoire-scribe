@@ -256,9 +256,16 @@ fn a_colour_page_is_left_exactly_as_it_is() {
     set_darker(Gamma::Off);
 }
 
+/// The mark of the file at `src`, as its file holds it.
+fn mark_of(e: &Env, src: &str) -> String {
+    let line = format!("src={src}");
+    e.marks().into_iter().find(|m| m.lines().any(|l| l == line)).unwrap_or_else(|| panic!("no mark for {src}"))
+}
+
 // The level is the one the UI queued the file at, carried by its mark: a pick at the setting, a pick at a level of its
-// own (KOReader's request) whatever the setting, and a pick that waits for the lock keeps its level until a later scan
-// queues it, though the setting changed meanwhile. A file of import/ is queued at the setting the scan sees.
+// own (KOReader's request) whatever the setting, and a pick that waits for the lock keeps its level (its own, or the
+// setting's as it was then) until a later scan queues it, though the setting changed meanwhile. A file of import/ is
+// queued at the setting the scan sees.
 #[test]
 fn the_mark_carries_the_level_the_file_was_queued_at() {
     let e = setup("marks");
@@ -266,6 +273,7 @@ fn the_mark_carries_the_level_the_file_was_queued_at() {
     e.put("documents/One.pdf", &pdffix::planner(1));
     e.put("documents/Two.pdf", &pdffix::planner(2));
     e.put("documents/Three.pdf", &pdffix::planner(3));
+    e.put("documents/Five.pdf", &pdffix::planner(5));
     let level = |name: &str| {
         let nb = e.notebooks().into_iter().find(|n| n.name.as_str() == name).unwrap_or_else(|| panic!("{name}"));
         gamma_among(e.source_ini(nb.id.as_str()).as_bytes())
@@ -282,23 +290,55 @@ fn the_mark_carries_the_level_the_file_was_queued_at() {
     assert!(matches!(q, Queued::Started(_)), "{q:?}");
     drain();
     assert_eq!(level("Two"), Gamma::Strong);
-    // KOReader's level Off, the setting Medium: Off
+    // two picks wait for the lock while the setting is Medium: one at KOReader's level Off, one at the setting
     lock_release_if_idle();
     let other = e.hold_lock();
     let q = pdf_import_queue_at(&StoragePath::new(b"documents/Three.pdf").unwrap(), None, None, Some(Gamma::Off), DPI);
     assert_eq!(q, Queued::Waiting);
-    assert!(e.marks().iter().all(|m| !m.contains("gamma=")), "a waiting mark at Off says none: {:?}", e.marks());
+    let q = pdf_import_queue(&StoragePath::new(b"documents/Five.pdf").unwrap(), None, None, DPI);
+    assert_eq!(q, Queued::Waiting);
+    let three = mark_of(&e, "documents/Three.pdf");
+    assert!(three.contains("state=waiting") && !three.contains("gamma="), "a waiting mark at Off says none: {three}");
+    let five = mark_of(&e, "documents/Five.pdf");
+    assert!(five.contains("state=waiting") && five.lines().any(|l| l == "gamma=1.5"), "a waiting mark keeps the setting's level: {five}");
     drop(other);
     set_darker(Gamma::Strong);
-    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1);
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 2);
     drain();
     assert_eq!(level("Three"), Gamma::Off, "the level it waited with, not the setting of the scan");
+    assert_eq!(level("Five"), Gamma::Medium, "the level it waited with, not the setting of the scan");
     // a file of import/: the scan's setting
     e.drop("Four.pdf", &pdffix::planner(4));
     assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1);
     drain();
     assert_eq!(level("Four"), Gamma::Strong);
     set_darker(Gamma::Off);
+}
+
+// A pick that finds a copy of its PDF being imported waits for that copy's notebook (H9): its mark turns back to
+// waiting with the level it was queued at. Taken again once the copy's import is gone (here its work folder removed
+// before it ended), it makes its own notebook at that level, whatever the setting says.
+#[test]
+fn a_pick_that_waits_for_a_copy_keeps_its_level() {
+    let e = setup("deferred");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let bytes = pdffix::planner(3);
+    let first = e.drop("First.pdf", &bytes);
+    let mut ida = String::new();
+    store_make_id(&mut ida);
+    assert_eq!(run_slice(&ida, &first), SliceEnd::More, "the first copy is being imported");
+    // the second copy, picked at Strong (its mark as the queue writes it), the setting Off
+    let second = "documents/Second.pdf";
+    e.put(second, &bytes);
+    assert!(mark_write_public(&Mark { state: MarkState::Making, src: second.into(), pick: true, gamma: Gamma::Strong, ..Default::default() }));
+    let (_, ends) = import_all(second);
+    assert_eq!(ends, [SliceEnd::Deferred]);
+    let m = mark_of(&e, second);
+    assert!(m.contains("state=waiting") && m.lines().any(|l| l == "gamma=2.0"), "the waiting mark keeps its level: {m}");
+    std::fs::remove_dir_all(format!("{}/notebooks/.import-{ida}", e.root)).unwrap();
+    let (id, ends) = import_all(second);
+    assert!(matches!(last(&ends), SliceEnd::Done { blank: 0, .. }), "{ends:?}");
+    assert_eq!(gamma_lines(&e.source_ini(&id)), ["gamma=2.0"], "drawn at the level it waited with");
 }
 
 /// Takes the pages of book pages `book` out of notebook `id`'s list (as a delete in the Pages view does).

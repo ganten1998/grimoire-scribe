@@ -3195,8 +3195,9 @@ KOReader plugin carry the reader's contrast.
 - **Tests**: `pdfwork.rs`'s unit tests (each level against the formula, Off byte for byte, a colour page and a mixed
   page untouched, only the three values read); `pdfimport.rs`'s (the state's and the mark's line);
   `test_pdf_darker.rs` (each level's pages are the pages at Off through its table, a colour page's picture the same
-  file at every level, the level a pick, a pick of a level of its own and a waiting pick were queued at, a fill at
-  its notebook's level both ways, the same PDF again, the notebook's line read strictly); `test_store.rs`
+  file at every level, the level a pick, a pick of a level of its own, a pick waiting for the lock and one waiting
+  for a copy of its PDF were queued at, a fill at its notebook's level both ways, the same PDF again, the
+  notebook's line read strictly); `test_store.rs`
   `pdf_gamma_key`; `library.rs`'s row test; `test_annotate.rs` and `test_koreader_pdf.rs` (the request's line);
   the plugin's stub test; the scenarios `z_pdf_darker_*` and `y_koreader_pdf_darker_*`. docs/TESTING.md has the
   Scribe's checks.

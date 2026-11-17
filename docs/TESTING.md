@@ -3328,8 +3328,9 @@ draws the PDF darker (a contrast from 1.25: 1.5; from 1.75: 2.0); otherwise the 
 Automated: `rust/src/pdfwork.rs`'s unit tests (each level against the formula, Off byte for byte, a colour page and a
 mixed page untouched, only `1.0`, `1.5` and `2.0` read), `rust/src/pdfimport.rs`'s (the mark's and the state's
 `gamma=`), `rust/tests/test_pdf_darker.rs` (each level's pages are the pages at Off through the level's table, a
-colour page's picture the same file at every level, the level a pick, a pick at a level of its own and a waiting pick
-were queued at, a fill at its notebook's level both ways, the same PDF again "already imported", the notebook's line
+colour page's picture the same file at every level, the level a pick, a pick at a level of its own, a pick waiting for
+the lock and one waiting for a copy of its PDF were queued at, a fill at its notebook's level both ways, the same PDF
+again "already imported", the notebook's line
 read strictly), `rust/tests/test_store.rs` (`pdf_gamma_key`), `rust/src/library.rs`'s row test, `rust/tests/test_annotate.rs`
 and `rust/tests/test_koreader_pdf.rs` (the request's `gamma=`), `tests/koplugin_test.lua` (each contrast's line, the
 file browser's, none for version 1), and the scenarios `tests/scenarios/z_pdf_darker_1_row.qs` (the row, its list,
