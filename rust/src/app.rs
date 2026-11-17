@@ -2871,6 +2871,10 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if let Some(k) = key.strip_prefix("library.") {
         return library_probe(a, k, out, cap);
     }
+    // the Share screen's question for a PDF sent from its page (2.2, #175): share.ask, share.upload
+    if let Some(k) = key.strip_prefix("share.") {
+        return crate::share::share_probe(a, k, out, cap);
+    }
     // The storage the picker browses (the runner's, docs/SIM.md): storage.exists.PATH, storage.size.PATH (-1
     // without it) and storage.names.DIR (sorted, joined by |), PATH relative to the storage root, no link followed.
     if let Some(rest) = key.strip_prefix("storage.") {

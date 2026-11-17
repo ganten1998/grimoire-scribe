@@ -175,6 +175,177 @@ fn wifi_controls_remain_reachable_on_live_cards_without_an_address() {
     std::env::remove_var("GRIMOIRE_SIM_ADDRS");std::fs::remove_file(path).unwrap();
 }
 
+// ---- the question a PDF sent from the Share page asks (issue #175) ----
+
+fn probe(a: &mut App, key: &str) -> String {
+    let mut o = String::new();
+    check!(app_probe(a, key, &mut o, 512) == 0);
+    o
+}
+
+/// The screen's tick, as the main loop gives it, then a moment.
+fn tick(a: &mut App) {
+    share_tick(a, now_ms());
+    std::thread::sleep(Duration::from_millis(1));
+}
+
+/// Everything the server answers on s, to its close, the screen ticking between reads.
+fn answer(a: &mut App, s: &mut TcpStream) -> String {
+    let mut out = Vec::new();
+    let mut b = [0u8; 4096];
+    for _ in 0..20_000 {
+        tick(a);
+        match s.read(&mut b) {
+            Ok(0) => break,
+            Ok(n) => out.extend_from_slice(&b[..n]),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(_) => break,
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A browser on the Wi-Fi sends a small PDF named `name` (percent-encoded) as the Share page's script does: the page
+/// for its token, then the POST. Its connection, the body sent; the screen has ticked until it asks.
+fn send_pdf(a: &mut App, name: &str) -> TcpStream {
+    let mut g = TcpStream::connect(("127.0.0.1", PORT as u16)).unwrap();
+    g.write_all(b"GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+    g.set_nonblocking(true).unwrap();
+    let page = answer(a, &mut g);
+    const AT: &str = "window.GRIMOIRE_UPLOAD={\"token\":\"";
+    let token: String = page.find(AT).map(|i| page[i + AT.len()..].chars().take_while(|c| c.is_ascii_hexdigit()).collect()).unwrap_or_default();
+    check!(token.len() == 32);
+    let body = format!("%PDF-1.4\n{}\n%%EOF\n", "x".repeat(1000));
+    let mut s = TcpStream::connect(("127.0.0.1", PORT as u16)).unwrap();
+    let head = format!("POST /upload HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nOrigin: http://127.0.0.1:{PORT}\r\nContent-Length: {}\r\nX-Grimoire-Token: {token}\r\nX-Grimoire-Name: {name}\r\n\r\n", body.len());
+    s.write_all(head.as_bytes()).unwrap();
+    s.write_all(body.as_bytes()).unwrap();
+    s.set_nonblocking(true).unwrap();
+    for _ in 0..5000 {
+        tick(a);
+        if !probe(a, "share.ask").is_empty() {
+            break;
+        }
+    }
+    s
+}
+
+fn touch(a: &mut App, down: bool, x: f32, y: f32, t: u32) {
+    share_event(a, &InEvent { type_: if down { InType::TouchDown } else { InType::TouchUp }, x, y, t_ms: t, ..Default::default() });
+}
+
+fn the_question_asks_and_only_a_tap_after_it_was_shown_answers() {
+    std::env::set_var("GRIMOIRE_SIM_ADDRS", "wlan0=192.168.0.20");
+    ui_set_theme(UiTheme::Gothic);
+    i18n_apply("en");
+    let root = store_root();
+    let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+    check!(canvas_init(&mut a.screen, 1860, 2480) == 0);
+    a.settings.http_port = PORT;
+    share_init(&mut a);
+    a.scr = ScreenId::Share;
+    share_enter(&mut a);
+    check!(probe(&mut a, "share.ask").is_empty() && probe(&mut a, "share.upload") == "none");
+    check!(grimoire::share::share_control_point(&a, "ask.import").is_none());
+    let mut s = send_pdf(&mut a, "2027%20Planner.pdf");
+    check!(probe(&mut a, "share.ask") == "Import \"2027 Planner.pdf\" (1 KB)?");
+    check!(probe(&mut a, "share.upload") == "asking");
+    // drawn, not shown yet: no contact answers it, wherever it lands (the second of two taps at one place)
+    check!(a.asked == Asked::Drawn);
+    let (ix, iy) = grimoire::share::share_control_point(&a, "ask.import").unwrap();
+    let (cx, cy) = grimoire::share::share_control_point(&a, "ask.cancel").unwrap();
+    let t = now_ms();
+    touch(&mut a, true, ix, iy, t);
+    touch(&mut a, false, ix, iy, t + 50);
+    check!(probe(&mut a, "share.upload") == "asking" && !probe(&mut a, "share.ask").is_empty());
+    // the screen's own controls are not there while it is up
+    check!(grimoire::share::share_control_point(&a, "done").is_none() && grimoire::share::share_control_point(&a, "live").is_none());
+    // shown (app_flush notes when): a contact too soon after, one that lifts on the other row, one off the rows
+    let at = now_ms();
+    a.asked = Asked::Shown(at);
+    touch(&mut a, true, ix, iy, at + PEN_REOPEN_MS - 1);
+    touch(&mut a, false, ix, iy, at + PEN_REOPEN_MS + 100);
+    touch(&mut a, true, ix, iy, at + PEN_REOPEN_MS);
+    touch(&mut a, false, cx, cy, at + PEN_REOPEN_MS + 100);
+    touch(&mut a, true, 20.0, 20.0, at + PEN_REOPEN_MS);
+    touch(&mut a, false, 20.0, 20.0, at + PEN_REOPEN_MS + 100);
+    check!(probe(&mut a, "share.upload") == "asking");
+    check!(!std::path::Path::new(&format!("{root}/import/2027 Planner.pdf")).exists());
+    // Import: the PDF into grimoire/import, the toast says where, the browser is told
+    touch(&mut a, true, ix, iy, at + PEN_REOPEN_MS);
+    touch(&mut a, false, ix, iy, at + PEN_REOPEN_MS + 100);
+    check!(probe(&mut a, "share.ask").is_empty() && probe(&mut a, "share.upload") == "none");
+    check!(a.toast.as_str() == "Copied to grimoire/import.");
+    check!(std::fs::read(format!("{root}/import/2027 Planner.pdf")).is_ok_and(|b| b.starts_with(b"%PDF-1.4") && b.ends_with(b"%%EOF\n")));
+    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 200 OK"));
+    check!(grimoire::share::share_control_point(&a, "done").is_some());
+    // Cancel: nothing kept, no toast
+    a.toast.set("");
+    let mut s = send_pdf(&mut a, "Cancelled.pdf");
+    a.asked = Asked::Shown(now_ms().wrapping_sub(PEN_REOPEN_MS));
+    let (cx, cy) = grimoire::share::share_control_point(&a, "ask.cancel").unwrap();
+    let t = now_ms();
+    touch(&mut a, true, cx, cy, t);
+    touch(&mut a, false, cx, cy, t + 80);
+    check!(probe(&mut a, "share.ask").is_empty() && a.toast.as_str().is_empty());
+    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 410 Gone"));
+    check!(!std::path::Path::new(&format!("{root}/import/Cancelled.pdf")).exists());
+    check!(!std::path::Path::new(&grimoire::upload::part_path()).exists());
+    // Esc is Cancel
+    let mut s = send_pdf(&mut a, "Esc.pdf");
+    check!(grimoire::share::share_back(&mut a) && a.scr == ScreenId::Share);
+    check!(probe(&mut a, "share.ask").is_empty() && answer(&mut a, &mut s).starts_with("HTTP/1.0 410 Gone"));
+    // a turn draws it at its new place: asked again, not shown there yet
+    let mut s = send_pdf(&mut a, "Turned.pdf");
+    a.asked = Asked::Shown(now_ms());
+    a.w = 2480;
+    a.h = 1860;
+    check!(canvas_init(&mut a.screen, 2480, 1860) == 0);
+    a.relayout = true;
+    share_leave(&mut a);
+    share_enter(&mut a);
+    a.relayout = false;
+    check!(a.asked == Asked::Drawn && probe(&mut a, "share.ask") == "Import \"Turned.pdf\" (1 KB)?");
+    // sleep ends it, and the wake shows the screen without it
+    share_sleep(&mut a);
+    check!(probe(&mut a, "share.ask").is_empty() && probe(&mut a, "share.upload") == "none");
+    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 410 Gone"));
+    a.relayout = true;
+    share_enter(&mut a);
+    a.relayout = false;
+    check!(probe(&mut a, "share.ask").is_empty());
+    // no answer for a while: it goes, and the toast says it was not imported
+    std::env::set_var("GRIMOIRE_UPLOAD_ASK_MS", "200");
+    let mut s = send_pdf(&mut a, "Unanswered.pdf");
+    for _ in 0..2000 {
+        tick(&mut a);
+        if probe(&mut a, "share.ask").is_empty() {
+            break;
+        }
+    }
+    std::env::remove_var("GRIMOIRE_UPLOAD_ASK_MS");
+    check!(probe(&mut a, "share.ask").is_empty() && a.toast.as_str() == "Not imported.");
+    check!(answer(&mut a, &mut s).starts_with("HTTP/1.0 408 Request Timeout"));
+    // leaving Share ends it (and the server with it)
+    let mut s = send_pdf(&mut a, "Left.pdf");
+    share_leave(&mut a);
+    check!(probe(&mut a, "share.upload") == "none" && !httpd_running());
+    let mut rest = Vec::new();
+    let _ = s.read_to_end(&mut rest);
+    check!(!std::path::Path::new(&format!("{root}/import/Left.pdf")).exists());
+    check!(!std::path::Path::new(&grimoire::upload::part_path()).exists());
+    // in import/ only what Import kept (beside the import's own dot-files)
+    let names: Vec<String> = std::fs::read_dir(format!("{root}/import")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| !n.starts_with('.')).collect();
+    check!(names == ["2027 Planner.pdf"]);
+    // a leftover of a crash goes at the next start (share_init)
+    check!(std::fs::write(grimoire::upload::part_path(), b"%PDF-").is_ok());
+    share_free(&mut a);
+    share_init(&mut a);
+    check!(!std::path::Path::new(&grimoire::upload::part_path()).exists());
+    share_free(&mut a);
+    std::env::remove_var("GRIMOIRE_SIM_ADDRS");
+}
+
 #[test]
 fn test_share() {
     let root = format!("{}/share-{}", tl_tmp(), std::process::id());
@@ -185,6 +356,7 @@ fn test_share() {
     run!(every_screen_is_the_c_screen);
     run!(the_card_knows_whether_it_is_live_view);
     run!(wifi_controls_remain_reachable_on_live_cards_without_an_address);
+    run!(the_question_asks_and_only_a_tap_after_it_was_shown_answers);
     let _ = std::fs::remove_dir_all(&root);
     done();
 }

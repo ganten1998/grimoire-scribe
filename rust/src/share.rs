@@ -18,6 +18,9 @@ const H_WIFI_ON: i32 = 6;
 const H_WIFI_OFF: i32 = 7;
 const H_WIFI_CHECK: i32 = 8;
 const H_WIFI_DONE: i32 = 9;
+/// the question a PDF sent from the Share page asks (issue #175): its two rows
+const H_ASK_IMPORT: i32 = 120;
+const H_ASK_CANCEL: i32 = 121;
 /// addresses listed: the first in big type, each other one on a small line
 const MAX_SHOWN: usize = 3;
 /// the code or the icon, the text, the counter, Done, Retry
@@ -56,6 +59,24 @@ pub struct ShareState {
     pairings: i32,
     /// live_viewers() as last drawn
     viewers: i32,
+    /// the question a PDF sent from the Share page asks, while the server waits for its answer (issue #175)
+    ask: Option<Ask>,
+}
+
+/// "Import "name" (size)?" over the Share screen, the Library's question sheet with Import and Cancel: the server's
+/// number for it, what it shows, where it was drawn and its rows. A contact answers it only once it has been shown
+/// (app_ask, app_asked_seen), and only a tap that comes down and lifts on one row.
+#[derive(Default)]
+struct Ask {
+    serial: u32,
+    name: String,
+    size: u64,
+    rect: Rect,
+    hits: HitList,
+    /// the contact under way came down before the question was shown, or off its rows: its lift answers nothing
+    swallow: bool,
+    /// the row the contact under way came down on
+    down: Option<i32>,
 }
 
 /// The screen's state, which share_init has made (the C's `S`, a->share).
@@ -832,6 +853,115 @@ fn draw(a: &mut App) {
         placed(a, label, r);
     }
     check_layout(a, in_);
+    draw_ask(a);
+}
+
+/// The question's title for a sheet `w` wide: the name shortened with "..." until it fits, as the Library's Delete
+/// question does.
+fn ask_title(name: &str, size: u64, w: i32) -> String {
+    let size = crate::browser::size_label(size);
+    // TRANSLATORS: the question on the Kindle's Share screen when a PDF was sent from its page in a browser: its
+    // file's name (shortened with "..." when long) and its size ("12.3 MB"); Import keeps it, Cancel does not.
+    let title = |n: &str| cformat!(tr("Import \"%s\" (%s)?"), n, size.as_str());
+    let wide = |t: &str| font_measure(FontFace::Title, ui_title_size(), t).max(font_measure(FontFace::Bold, ui_title_size(), t));
+    let mut t = title(name);
+    let mut n = name.chars().count();
+    while n > 1 && wide(&t) > w {
+        n -= 1;
+        t = title(&format!("{}...", name.chars().take(n).collect::<String>()));
+    }
+    t
+}
+
+/// The question over the screen, when one is asked: the Library's question sheet (its title, a Primary row and a
+/// plain one), drawn as Files draws its Delete question. Drawn for the first time or at a new place (the screen
+/// turned), it has not been shown yet (app_ask): every draw of it is invalidated with the screen's.
+fn draw_ask(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let Some(k) = s(a).ask.as_ref() else { return };
+    let (name, size, was) = (k.name.clone(), k.size, k.rect);
+    let (rh, gap) = (ui_px(140.0), ui_px(20.0));
+    let rows = [(H_ASK_IMPORT, IconKind::Pdf, tr("Import")), (H_ASK_CANCEL, IconKind::Close, tr("Cancel"))];
+    let rect = crate::library::sheet_rect(aw, ah, ui_px(120.0) + ui_px(72.0) + rows.len() as i32 * (rh + gap));
+    if rect != was {
+        app_ask(a);
+    }
+    let title = ask_title(&name, size, rect.w - ui_px(160.0));
+    let c = &mut a.screen;
+    let inner = ui_sheet(c, rect, &title);
+    let mut hits = HitList::default();
+    for (i, (id, icon, label)) in rows.iter().enumerate() {
+        let r = Rect::new(inner.x, inner.y + i as i32 * (rh + gap), inner.w, rh);
+        ui_frame(c, r, ui_px(16.0), 255, true, 0);
+        ui_frame(c, r, ui_px(16.0), 0, false, if *id == H_ASK_IMPORT { ui_px(6.0) } else { ui_px(3.0) });
+        ui_icon(c, *icon, Rect::new(r.x + ui_px(20.0), r.y + ui_px(15.0), rh - ui_px(30.0), rh - ui_px(30.0)), 0);
+        font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), r.h), label, 0);
+        hits_add(&mut hits, r, *id, 0);
+    }
+    if let Some(k) = s(a).ask.as_mut() {
+        k.rect = rect;
+        k.hits = hits;
+    }
+}
+
+/// The server's question as the screen shows it: a new one is drawn (over the screen, its sheet refreshed), one gone
+/// without an answer here (no answer in two minutes, a second PDF sent, the browser gone) is taken away and says so.
+fn ask_sync(a: &mut App) {
+    let now = httpd_upload_question();
+    let shown = s(a).ask.as_ref().map(|k| (k.serial, k.rect));
+    match (now, shown) {
+        (Some((serial, name, size)), sh) if sh.map(|x| x.0) != Some(serial) => {
+            let old = sh.map_or(RECT_EMPTY, |x| x.1);
+            s(a).ask = Some(Ask { serial, name, size, ..Ask::default() });
+            draw(a);
+            let r = s(a).ask.as_ref().map_or(RECT_EMPTY, |k| k.rect);
+            app_invalidate(a, rect_union(old, r), RefreshMode::Ui);
+        }
+        (None, Some((_, old))) => {
+            s(a).ask = None;
+            draw(a);
+            app_invalidate(a, old, RefreshMode::Ui);
+            app_toast(a, tr("Not imported."), 3000);
+        }
+        _ => {}
+    }
+}
+
+/// The user's answer to the question shown: Import (the PDF into grimoire/import, where the Library's import takes
+/// it) or Cancel (it goes). The screen under the sheet is drawn again, and Import's toast says where it went.
+fn ask_answer(a: &mut App, import: bool) {
+    let Some(k) = s(a).ask.take() else { return };
+    let r = httpd_upload_answer(k.serial, import);
+    draw(a);
+    app_invalidate(a, k.rect, RefreshMode::Ui);
+    match r {
+        Some(Ok(_)) => app_toast(a, &cformat!(tr("Copied to %s."), "grimoire/import"), 3000),
+        Some(Err(_)) => app_toast(a, tr("Couldn't import PDF. Is the storage full?"), 4000),
+        None => {}
+    }
+}
+
+/// A contact while the question is up: only a tap that came down after the question was shown and lifts on the row
+/// it came down on answers; anything else, on the sheet or off it, does nothing.
+fn ask_event(a: &mut App, ev: &InEvent) {
+    let ph = app_pointer_phase(ev);
+    let seen = app_asked_seen(a, ev);
+    let Some(k) = s(a).ask.as_mut() else { return };
+    let at = hits_find(&k.hits, ev.x, ev.y).map(|h| h.id);
+    if ph == 0 {
+        k.swallow = !seen;
+        k.down = at;
+        return;
+    }
+    if ph != 2 {
+        return;
+    }
+    let (swallow, down) = (k.swallow, k.down.take());
+    k.swallow = false;
+    if swallow || at.is_none() || at != down {
+        return;
+    }
+    ask_answer(a, at == Some(H_ASK_IMPORT));
 }
 
 fn start(a: &mut App) {
@@ -889,6 +1019,7 @@ pub fn share_open_live(a: &mut App) {
     // enter would take it for the card closing). Share's downloads stop answering with it.
     if !s(a).live {
         httpd_release(HTTPD_SHARE);
+        s(a).ask = None; // (and a PDF sent from its page goes)
     }
     s(a).live = true;
     share_enter(a);
@@ -902,6 +1033,10 @@ pub fn share_live_card_up(a: &App) -> bool {
 
 pub fn share_init(a: &mut App) {
     a.share = Some(Box::default());
+    // (a PDF sent from the Share page that a crash left waiting for its answer: gone, issue #175)
+    if crate::upload::upload_sweep() {
+        qlog!("share: a sent PDF the last run left unanswered was removed");
+    }
 }
 pub fn share_free(a: &mut App) {
     wifi_free();
@@ -926,8 +1061,10 @@ pub fn share_enter(a: &mut App) {
 // the wake's relayout watches the server again (start, from share_enter).
 /// asleep on Share: the server waits unwatched
 pub fn share_sleep(a: &mut App) {
-    let _ = a;
     input_watch_fd(-1);
+    // A PDF sent from the page and not answered yet goes: nobody answers a sleeping Kindle (issue #175).
+    httpd_upload_discard(UploadEnd::Asleep);
+    s(a).ask = None;
 }
 
 // The sleep screen while this screen is up and no page is shown in its place: the card without
@@ -1004,6 +1141,7 @@ pub fn share_leave(a: &mut App) {
     if a.relayout {
         return;
     }
+    s(a).ask = None; // (its upload goes with Share: httpd_release)
     if s(a).live {
         // The card goes: its code with it (a new one each time it opens), and the stream goes on.
         pair_forget_invitation();
@@ -1020,6 +1158,10 @@ pub fn share_leave(a: &mut App) {
 
 pub fn share_event(a: &mut App, ev: &InEvent) {
     httpd_poll();
+    if s(a).ask.is_some() {
+        // (the question is the screen's only control while it is up)
+        return ask_event(a, ev);
+    }
     if app_pointer_phase(ev) != 2 {
         return;
     }
@@ -1078,6 +1220,11 @@ pub fn share_back(a: &mut App) -> bool {
     if a.scr != ScreenId::Share {
         return false;
     }
+    if s(a).ask.is_some() {
+        // (Esc on the question is its Cancel)
+        ask_answer(a, false);
+        return true;
+    }
     if s(a).wifi_open {
         s(a).wifi_open = false;
         if !s(a).started {
@@ -1101,6 +1248,7 @@ pub fn share_back(a: &mut App) -> bool {
 
 pub fn share_tick(a: &mut App, now: u32) {
     httpd_poll();
+    ask_sync(a);
     if s(a).wifi_open {
         if !wifi_busy()
             && !wifi_failed()
@@ -1183,6 +1331,15 @@ pub fn share_tick(a: &mut App, now: u32) {
 
 /// Test selectors resolve only visible controls, just like the screen's pointer handler.
 pub fn share_control_point(a: &App, name: &str) -> Option<(f32, f32)> {
+    // the question's rows (issue #175), while it is up; the screen's other controls answer nothing then
+    if let Some(k) = a.share.as_ref()?.ask.as_ref() {
+        let id = match name {
+            "ask.import" => H_ASK_IMPORT,
+            "ask.cancel" => H_ASK_CANCEL,
+            _ => return None,
+        };
+        return k.hits.h.iter().find(|h| h.id == id).map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
+    }
     let id = match name {
         "wifi" => H_WIFI,
         "wifi.on" => H_WIFI_ON,
@@ -1205,4 +1362,25 @@ pub fn share_control_point(a: &App, name: &str) -> Option<(f32, f32)> {
 }
 pub fn share_wifi_open(a: &App) -> bool {
     crate::library::library_wifi_from_share(a)
+}
+
+/// The headless runner's checks (app_probe's "share." keys): "ask", the question's title as drawn ("" with none);
+/// "upload", where the server's upload is (none, receiving or asking).
+pub fn share_probe(a: &App, key: &str, out: &mut String, cap: usize) -> i32 {
+    match key {
+        "ask" => {
+            let t = a.share.as_ref().and_then(|st| st.ask.as_ref()).map_or(String::new(), |k| ask_title(&k.name, k.size, k.rect.w - ui_px(160.0)));
+            csnprintf!(out, cap, "%s", &t);
+        }
+        "upload" => {
+            let st = match httpd_upload_state() {
+                UploadState::None => "none",
+                UploadState::Receiving => "receiving",
+                UploadState::Asking => "asking",
+            };
+            csnprintf!(out, cap, "%s", st);
+        }
+        _ => return -1,
+    }
+    0
 }
