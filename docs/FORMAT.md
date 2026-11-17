@@ -979,7 +979,8 @@ waits, and within 10 s of the end of a previous run's import):
   its box as the area, a quad that is not an axis-aligned rectangle also as a closed `outline.` polygon),
   else `/Rect`. Web links (a URI action) are kept from 2.2 when their address passes the rules of `weblinks.ini`
   (below), each quad (or the rectangle) a web link whose area is its box, and are otherwise left out and counted in
-  the log; GoToR, Launch, JavaScript, a link with no
+  the log (the web links' line counts apart those whose area is off the page and the addresses over 200 bytes);
+  GoToR, Launch, JavaScript, a link with no
   action, one whose destination does not resolve, an empty rectangle, a link to its own page and one that falls
   off the page are left out and counted too. Walks are capped (name trees and the outline: depth 32, 100,000
   entries and nodes, a visited set; 20,000 annotations a page; 60,000 links a PDF) and the rest is left out.

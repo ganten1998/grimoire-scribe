@@ -107,6 +107,17 @@ pub fn weblinks_address_from(raw: &[u8]) -> Option<String> {
     String::from_utf8(b.to_vec()).ok()
 }
 
+/// Whether a URI action's string the rules refuse was an http or https address longer than WEBLINK_ADDRESS_MAX (its
+/// ends trimmed as weblinks_address_from trims them): the import's log counts those apart.
+pub fn weblinks_address_long(raw: &[u8]) -> bool {
+    let pad = |c: &u8| matches!(c, b' ' | b'\t' | b'\r' | b'\n' | 0);
+    let s = raw.iter().position(|c| !pad(c)).unwrap_or(raw.len());
+    let e = raw.iter().rposition(|c| !pad(c)).map_or(s, |e| e + 1);
+    let b = &raw[s..e.max(s)];
+    let web = (b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://")) || (b.len() >= 8 && b[..8].eq_ignore_ascii_case(b"https://"));
+    web && b.len() > WEBLINK_ADDRESS_MAX
+}
+
 /// The host an address names, what the card's title shows: for an address the rules take, the host a browser opens
 /// as the URL standard writes it (`URL.host`): the host in lower case, then `:` and the port unless it is the
 /// scheme's own (80 for http, 443 for https). The whole address for one the rules refuse.
@@ -661,6 +672,15 @@ mod tests {
     }
 
     #[test]
+    fn an_address_over_the_cap_is_told_apart() {
+        let at200 = format!("https://e.org/{}", "a".repeat(WEBLINK_ADDRESS_MAX - 14));
+        assert!(weblinks_address_from(at200.as_bytes()).is_some() && !weblinks_address_long(at200.as_bytes()));
+        let at201 = format!("  {at200}b\r\n");
+        assert!(weblinks_address_from(at201.as_bytes()).is_none() && weblinks_address_long(at201.as_bytes()));
+        assert!(!weblinks_address_long(format!("javascript:{}", "a".repeat(300)).as_bytes()));
+    }
+
+    #[test]
     fn the_worker_trims_an_addresss_ends_and_nothing_inside() {
         assert_eq!(weblinks_address_from(b"  https://example.org/x\r\n\x00").as_deref(), Some("https://example.org/x"));
         assert_eq!(weblinks_address_from(b"\x00\x00"), None);
@@ -891,8 +911,9 @@ mod tests {
         assert_eq!(at(155.0, 125.0), Some(("https://small.example".into(), true)));
         assert_eq!(at(250.0, 150.0), Some(("https://big.example".into(), true)));
         assert_eq!(at(320.0, 150.0), None);
-        // below both: only the small one's growth to 80 px reaches it
-        assert_eq!(at(155.0, 190.0).map(|x| x.0), Some("https://big.example".into()));
+        // below the small one, inside the big one: the big one's own area (the small one's growth ends at 165)
+        assert_eq!(at(155.0, 190.0), Some(("https://big.example".into(), true)));
+        // below both: nothing reaches it
         assert_eq!(at(155.0, 205.0), None);
         assert_eq!(at(100.0, 50.0), None);
         // above the big one: the small one's growth reaches it, not exactly

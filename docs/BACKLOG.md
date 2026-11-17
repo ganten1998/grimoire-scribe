@@ -333,8 +333,9 @@ The smallest coherent reading was taken for each call; each can change without a
   grown touch area), then a web link; a web link never takes the clock's corner. A whole-page web link (a
   `/Rect` over the page is all it takes) never hides a tab or a link of the user's.
 - **Limits**: 4,000 a notebook (3,600 kept by an import's water level), 256 a page, as the document links' rule
-  (taken). Refused addresses are counted in the import's log line; web links left out for room count in "Some links
-  were left out.".
+  (taken). Refused addresses are counted in the import's log line, with those over 200 bytes and those off the
+  page apart (a long one is silent to the user: the printed link does nothing, as all did before 2.2); web links
+  left out for room count in "Some links were left out.".
 - **The notebook PDF**: web links are not written into it (taken: the smallest). Writing them as URI link
   annotations would make an exported notebook's web links work in a PDF reader and give them back on import; it
   is a few lines in export.rs, if the owner wants it.

@@ -698,6 +698,8 @@ fn a_pdfs_web_links_are_kept_by_the_rules_and_the_rest_counted() {
         // a `\` (a browser reads it as `/`: the host would be evil.example) and a `user@` part
         Lnk::new([20.0, 200.0, 40.0, 220.0], Act::Uri("https://evil.example\\\\@trusted.example/")),
         Lnk::new([60.0, 200.0, 80.0, 220.0], Act::Uri("https://trusted.example@evil.example/")),
+        // an address the rules take on an area off the page (right of its 420 points): left out, counted apart
+        Lnk::new([500.0, 100.0, 520.0, 120.0], Act::Uri("https://off.example/")),
         hidden,
         Lnk::new(r(13), Act::Page(2)),
         wrapped,
@@ -706,6 +708,7 @@ fn a_pdfs_web_links_are_kept_by_the_rules_and_the_rest_counted() {
     let kept: Vec<&str> = c.webs.iter().map(|w| w.address.as_str()).collect();
     assert_eq!(kept, vec!["https://example.org/a", "HTTP://EXAMPLE.ORG/B", "http://example.net/c", at200, "https://example.org/two/quads", "https://example.org/two/quads"]);
     assert_eq!(c.left.uri, 10, "the refused ones are counted, the hidden one is not");
+    assert_eq!(c.web_left, WebLeft { capped: 0, off: 1, long: 1 }, "off the page, and the 201-byte address among the refused");
     assert_eq!(pairs(&c), vec![(1, 2)], "the page link is a document link, as before");
     // each its place among the page's web links, and its area in page pixels as an L record's
     assert_eq!(c.webs.iter().map(|w| w.index).collect::<Vec<_>>(), (0..6).collect::<Vec<u32>>());
@@ -739,6 +742,8 @@ fn the_workers_web_records_are_checked_and_survive_the_work_folder() {
     assert!(!other.take_webs(b"W 1 4 8 40 20 0 data:x\n", 2) && other.webs.is_empty());
     // the grammar: eight words, signed areas of at least 1 px, the address by the rules
     assert_eq!(parse_record(b"W 1 -4 8 40 20 0 https://e.org/p?q=1"), Ok(Rec::Web(WireWeb { src: 1, x: -4, y: 8, w: 40, h: 20, index: 0, address: "https://e.org/p?q=1".into() })));
+    assert_eq!(parse_record(b"U 1 2 3"), Ok(Rec::WebLeft(WebLeft { capped: 1, off: 2, long: 3 })));
+    assert!(parse_record(b"U 1").is_err() && parse_record(b"U 1 2 3 4").is_err());
     for bad in [&b"W 1 4 8 40 20 0 ftp://e.org"[..], b"W 1 4 8 0 20 0 https://e.org", b"W 1 4 8 40 20 0", b"W 1 4 8 40 20 0 https://e.org x", b"W 1 4 8 40 20 0 https://e.org\x01"] {
         assert!(parse_record(bad).is_err(), "{}", String::from_utf8_lossy(bad));
     }
@@ -835,6 +840,56 @@ fn an_import_keeps_web_links_apart_and_its_other_files_as_without_them() {
     assert_eq!(dl.links.len(), 2);
     // the import's toast leaves nothing out for room
     assert_eq!(finished_trimmed(&with), 0);
+}
+
+/// What `f` logs (the writer's qlog lines go to stderr): stderr sent to a file of `e`'s while it runs.
+fn logged(e: &Env, f: impl FnOnce()) -> String {
+    let path = format!("{}/captured.log", e.root);
+    let c = std::ffi::CString::new(path.clone()).unwrap();
+    // SAFETY: dup, open and dup2 on descriptor 2 and one opened here, closed again; stderr is put back after f.
+    let saved = unsafe {
+        let saved = libc::dup(2);
+        let fd = libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        if fd >= 0 {
+            libc::dup2(fd, 2);
+            libc::close(fd);
+        }
+        saved
+    };
+    f();
+    // SAFETY: descriptor 2 back from the copy made above, and the copy closed.
+    unsafe {
+        libc::dup2(saved, 2);
+        libc::close(saved);
+    }
+    let t = std::fs::read_to_string(&path).unwrap_or_default();
+    eprint!("{t}");
+    t
+}
+
+// The import's log line for web links says how many it kept, and apart from those refused for their address, how
+// many were off the page and how many were addresses over 200 bytes (no string for the user: a line in
+// grimoire.log). A web link off the page is never refused by the writer: the walk leaves it out.
+#[test]
+fn the_import_logs_web_links_off_the_page_and_too_long() {
+    let e = setup("web-log");
+    let long = leak(format!("https://example.org/{}", "a".repeat(200)));
+    let links = vec![
+        Lnk::new(r(0), Act::Uri("https://example.org/kept")),
+        Lnk::new([500.0, 100.0, 520.0, 120.0], Act::Uri("https://off.example/")),
+        Lnk::new(r(2), Act::Uri(long)),
+    ];
+    let pdf = make_linked(&plain_pages(2), &on(1, 2, links), &Extra::default());
+    let mut id = String::new();
+    let log = logged(&e, || id = e.import("Log.pdf", &pdf));
+    assert_eq!(weblinks_load(&id).links.len(), 1);
+    let line = format!("import: {id}: 1 web link(s) (1 added, 0 already there, 0 refused, 0 left out for room); left out: 1 off the page, 1 over 200 bytes");
+    assert!(log.contains(&line), "{log}");
+    assert!(log.contains("left out: 1 web,"), "the long one is a refused web link on the document links' line: {log}");
+    // only refused and off: the line is there with no link kept
+    let pdf = make_linked(&plain_pages(3), &on(1, 3, vec![Lnk::new(r(0), Act::Uri(long))]), &Extra::default());
+    let log = logged(&e, || id = e.import("Long.pdf", &pdf));
+    assert!(log.contains(&format!("import: {id}: 0 web link(s) (0 added, 0 already there, 0 refused, 0 left out for room); left out: 0 off the page, 1 over 200 bytes")), "{log}");
 }
 
 /// `n` web links of 200 bytes on a page of 420 x 595 points, a small box each, the k-th to https://example.org/<k>/...

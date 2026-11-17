@@ -3329,8 +3329,8 @@ The test PDF is `tests/fixtures/pdf/weblinks/Links.pdf` (three pages: a web link
 on page 2, one on page 3; a `javascript:` and a `mailto:` link, which are refused); any PDF with web links will do.
 
 1. **Import**: copy `Links.pdf` into `/mnt/us/grimoire/import/` over USB; the Library makes the notebook "Links".
-   grimoire.log has `import: <id>: 4 web link(s) (4 added, 0 already there, 0 refused, 0 left out for room)` and
-   `left out: 2 web` on the document links' line (the two refused). Over SSH,
+   grimoire.log has `import: <id>: 4 web link(s) (4 added, 0 already there, 0 refused, 0 left out for room); left
+   out: 0 off the page, 0 over 200 bytes` and `left out: 2 web` on the document links' line (the two refused). Over SSH,
    `cat /mnt/us/grimoire/notebooks/<id>/weblinks.ini` shows four `web.` lines, each address as the PDF has it.
 2. **The card**: open the notebook and tap the box near the top of page 1: the heavy border around the box, and
    beside it a card titled `example.org` with `https://example.org/grimoire`, "Scan with a phone's camera", a QR

@@ -3268,10 +3268,17 @@ fn put_weblinks(id: &str, dir: &str, wl: &mut WebLinks, nb: &NotebookInfo, pw: i
         }
         recs.push(WebRecord { src: pid, rect: Rect { x: l.x, y: l.y, w: l.w, h: l.h }, index: l.index, address: l.address.clone() });
     }
-    let capped = c.web_left.capped;
+    let (capped, off, long) = (c.web_left.capped, c.web_left.off as i32, c.web_left.long as i32);
     if recs.is_empty() {
-        if capped > 0 {
-            qlog!("import: %s: %d web link(s) (0 added, 0 already there, 0 refused, %d left out for room)", id, wl.links.len() as i32, capped as i32);
+        if c.web_left != WebLeft::default() {
+            qlog!(
+                "import: %s: %d web link(s) (0 added, 0 already there, 0 refused, %d left out for room); left out: %d off the page, %d over 200 bytes",
+                id,
+                wl.links.len() as i32,
+                capped as i32,
+                off,
+                long
+            );
         }
         return capped;
     }
@@ -3289,13 +3296,15 @@ fn put_weblinks(id: &str, dir: &str, wl: &mut WebLinks, nb: &NotebookInfo, pw: i
     }
     let left = (st.full + water) as u32 + capped;
     qlog!(
-        "import: %s: %d web link(s) (%d added, %d already there, %d refused, %d left out for room)",
+        "import: %s: %d web link(s) (%d added, %d already there, %d refused, %d left out for room); left out: %d off the page, %d over 200 bytes",
         id,
         wl.links.len() as i32,
         st.added as i32,
         st.same as i32,
         st.invalid as i32,
-        left as i32
+        left as i32,
+        off,
+        long
     );
     left
 }

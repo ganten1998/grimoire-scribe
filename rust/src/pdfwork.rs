@@ -41,8 +41,9 @@
 //!                                   bytes). Sent after every page's L and Q records, at most WEBLINKS_PER_PAGE a
 //!                                   page and WEBLINKS_MAX in all (what a notebook keeps), so they never take a
 //!                                   page link's room
-//!   `U <capped>`                    what the walk left out of the web links (2.2): those past those caps or the
-//!                                   records' room
+//!   `U <capped> <off> <long>`       what the walk left out of the web links (2.2): those past those caps or the
+//!                                   records' room, those whose area falls off the page, and (counted in F's
+//!                                   first count too) the http or https addresses longer than 200 bytes
 //!   `F <uri> <other> <dead> <capped>`  what the walk left out: web links whose address the rules refuse, other
 //!                                   actions, links without a place to go or an area, page links past the worker's
 //!                                   cap
@@ -163,6 +164,10 @@ pub struct WireWeb {
 pub struct WebLeft {
     /// past WEBLINKS_PER_PAGE on their page, WEBLINKS_MAX in all, or the walk's room after the page links
     pub capped: u32,
+    /// their area off the page (sent, they would take a page's room in the walk)
+    pub off: u32,
+    /// refused for an http or https address over WEBLINK_ADDRESS_MAX bytes (LeftOut.uri counts them too)
+    pub long: u32,
 }
 
 /// What the link walk left out (F record), for the log.
@@ -261,7 +266,7 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
             }
             Ok(Rec::Web(WireWeb { src: num(1)?, x: sn(2)?, y: sn(3)?, w, h, index: num(6)?, address: t[7].to_string() }))
         }
-        ("U", 2) => Ok(Rec::WebLeft(WebLeft { capped: num(1)? })),
+        ("U", 4) => Ok(Rec::WebLeft(WebLeft { capped: num(1)?, off: num(2)?, long: num(3)? })),
         ("F", 5) => Ok(Rec::Left(LeftOut { uri: num(1)?, other: num(2)?, dead: num(3)?, capped: num(4)? })),
         ("E", 2 | 3) => Ok(Rec::Err(match (t[1], t.get(2)) {
             ("password", None) => ErrCode::Password,
@@ -381,7 +386,8 @@ impl Collected {
             return String::new();
         }
         let mut t: String = self.webs.iter().map(|l| format!("W {} {} {} {} {} {} {}\n", l.src, l.x, l.y, l.w, l.h, l.index, l.address)).collect();
-        t.push_str(&format!("U {}\n", self.web_left.capped));
+        let w = self.web_left;
+        t.push_str(&format!("U {} {} {}\n", w.capped, w.off, w.long));
         t
     }
 
@@ -1040,6 +1046,9 @@ mod links {
                     // (the address as weblinks_address_ok takes it, its ends trimmed; a string the rules refuse, or
                     // none, is a web link left out)
                     let u = act.get::<hayro::hayro_syntax::object::String<'a>>("URI");
+                    if u.as_ref().is_some_and(|u| crate::weblinks::weblinks_address_long(u.as_bytes())) {
+                        return Err(Kind::UriLong);
+                    }
                     return Err(Kind::Uri(u.and_then(|u| crate::weblinks::weblinks_address_from(u.as_bytes()))));
                 }
                 return Err(Kind::Other);
@@ -1054,6 +1063,8 @@ mod links {
     enum Kind {
         /// a web link, with its address when the rules take it
         Uri(Option<String>),
+        /// a web link refused for an http or https address over 200 bytes
+        UriLong,
         Other,
     }
 
@@ -1178,6 +1189,11 @@ mod links {
                         wk.left.uri += 1;
                         continue;
                     }
+                    Err(Kind::UriLong) => {
+                        wk.left.uri += 1;
+                        web_left.long += 1;
+                        continue;
+                    }
                     Err(Kind::Other) => {
                         wk.left.other += 1;
                         continue;
@@ -1249,8 +1265,14 @@ mod links {
                             index += 1;
                             sent += 1;
                         }
-                        // (a web link's area is its quad's box: no polygon; kept for after the page links)
+                        // (a web link's area is its quad's box: no polygon; kept for after the page links, and
+                        // only with something of it on the page, as the writer takes it)
                         Goes::Web(address) => {
+                            let on = (x as i64 + bw as i64).min(w as i64) - (x as i64).max(0) >= 1 && (y as i64 + bh as i64).min(h as i64) - (y as i64).max(0) >= 1;
+                            if !on {
+                                web_left.off += 1;
+                                continue;
+                            }
                             if web_index as usize >= crate::weblinks::WEBLINKS_PER_PAGE || webs.len() >= crate::weblinks::WEBLINKS_MAX || webs.try_reserve(1).is_err() {
                                 web_left.capped += 1;
                                 continue;
@@ -1272,7 +1294,7 @@ mod links {
             sent += 1;
         }
         if !webs.is_empty() || web_left != WebLeft::default() {
-            out.put(&format!("U {}\n", web_left.capped));
+            out.put(&format!("U {} {} {}\n", web_left.capped, web_left.off, web_left.long));
         }
         drop(webs);
         // the outline names pages that have no name: depth first, the first item pointing at a page
