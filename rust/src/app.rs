@@ -797,6 +797,9 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let book = getenv("GRIMOIRE_BOOK");
     book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book,
     );
+    // (a home inside Files waited for the notebook KOReader hands over: when none opened and none is coming, it opens
+    // now, 2.2)
+    crate::library::library_handover_tried(a, a.scr != ScreenId::Library || a.book.state == BookState::Running);
     // Beta.1 could leave the passcode off after a restart: the launcher says so (GRIMOIRE_PASSCODE), and
     // the log notes it, with no toast (the owner, 2026-11-04). Current standalone sessions leave it
     // enabled and yield to the native keypad on sleep.

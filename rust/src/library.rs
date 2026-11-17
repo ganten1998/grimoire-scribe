@@ -8156,8 +8156,9 @@ fn home_due(a: &App, relayout: bool) -> bool {
 /// meanwhile). For What's new, open over the Library at the first start after an update: its closing goes home
 /// (close_modal). And once for a notebook KOReader started Grimoire on (a page to annotate, a book): it opens over
 /// the Library's cards as before (app.rs, book_tick, which opens nothing over Files), and home opens when the main
-/// menu next comes in front. (The hand-over's one wait is taken at the first start even under What's new, so that
-/// the main menu in front after that notebook opens at home.)
+/// menu next comes in front; a hand-over that opens no notebook opens home at once (library_handover_tried). (The
+/// hand-over's one wait is taken at the first start even under What's new, so that the main menu in front after
+/// that notebook opens at home.)
 fn home_waits(a: &mut App) -> bool {
     if a.settings.home_refused || !matches!(home_of(a), Home::Files(_)) {
         return false;
@@ -8169,6 +8170,19 @@ fn home_waits(a: &mut App) -> bool {
         return true;
     }
     held
+}
+
+/// KOReader's hand-over at a start has been tried (app_init, after annotate_at_start and book_start): when it opened
+/// no notebook and none is on its way (`opening` false: the page did not open, no book is being put in), a home
+/// inside Files that waited for that notebook (home_waits) opens now, as at a plain start. (2.2, issue #160)
+pub fn library_handover_tried(a: &mut App, opening: bool) {
+    let waited = a.lib.as_deref().is_some_and(|s| s.home_held && s.home_pending && s.modal == Modal::None && !s.files.open);
+    if opening || a.scr != ScreenId::Library || !waited {
+        return;
+    }
+    home_go(a);
+    redraw(a, RefreshMode::Full);
+    input_touch_context(library_touch_view(a));
 }
 
 /// Goes home (2.2, issue #160) and reads the Library's lists; the caller draws. The Library's top, one of its

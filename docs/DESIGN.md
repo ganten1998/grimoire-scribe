@@ -2981,7 +2981,9 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   (place mode, whether or not the Files card is shown) over the Library's top. A home inside Files waits for What's
   new (open over the Library at the first start after an update: its closing goes home) and, once, for the notebook
   KOReader hands over (`app_handed_over`): that notebook opens over the Library's cards as before, which the PDF
-  hand-over's own opening needs, and home opens when the main menu next comes in front. With no home set the start
+  hand-over's own opening needs, and home opens when the main menu next comes in front. A hand-over that opens no
+  notebook (a page that did not open, a book that failed at once) does not hold it: home opens as the start ends
+  (`library_handover_tried`). With no home set the start
   is the plain reload it was, with the same screens and refreshes.
 - **Gone or refused.** A line that names no home (`Settings.home_refused`, as settings.ini is read), a Library folder
   not in the list, or a folder the walk does not reach as one that can be home: the Library's top shows, with one
