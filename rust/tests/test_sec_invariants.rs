@@ -845,6 +845,10 @@ fn pdfs_as_templates_are_told_as_they_are() {
     gone(&mut fails, TPLPDF, "store_create");
     gone(&mut fails, TPLPDF, "pdf_import_queue");
     gone(&mut fails, TPLPDF, "import_pick_queue");
+    // removals look for a link again right before they list the cache
+    let removals = "looks for a link on the way again right before it lists the cache";
+    told_on(&mut fails, DESIGN, removals, TPLPDF, "fn remove_entries(&self) { if !no_link_below(&store_root(), &self.cache) { return; }");
+    told_on(&mut fails, DESIGN, removals, TEMPLATES, "fn sweep_cache(cache: &str, keep: &[String]) { if !no_link_below(&store_root(), cache) { return; }");
     // the job's rank, and its slices
     told_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "if template_pdf(j) { return 4; }");
     stands_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "BgKind::FilePreviews => 4,");

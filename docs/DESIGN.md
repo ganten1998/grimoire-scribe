@@ -3164,7 +3164,9 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   its `.bad`. These files are written only inside Grimoire's own templates folder, into a cache folder reached with
   no link on the way, as the previews job writes its own (`write_quiet`, `store_write_pgm`, `write_file_atomic`:
   a temporary name, fsync, rename). No file of the user's is written, renamed or replaced, and no name is made from
-  the PDF's: the tiles' names are labels, never files.
+  the PDF's: the tiles' names are labels, never files. What removes entries of the cache (a PDF's own, and the sweep
+  of files that went, the previews job's too) looks for a link on the way again right before it lists the cache, so
+  a link put there since the job began is never followed by a removal: the window is that one listing.
 - **A page is a picture template.** A page's tile has its picture's path, and from there it is a template as any
   picture is: `template_install` takes its key from its `.key` and queues its picture for the notebook's page size,
   made by the picture worker from the page's PNG (`make_template`). Picking a page, drawing it and opening a notebook

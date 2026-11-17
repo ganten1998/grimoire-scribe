@@ -830,8 +830,12 @@ fn make_previews(dir: &str) -> i32 {
 }
 
 // Previews of files that are gone: the entries of the cache folder whose names begin with none of the hashes in
-// keep (each file's, "" for none) go.
+// keep (each file's, "" for none) go. (The folder is looked at for a link again right before the listing its
+// removals follow, whenever its job looked first: the window between the look and the removals is this one listing.)
 fn sweep_cache(cache: &str, keep: &[String]) {
+    if !no_link_below(&store_root(), cache) {
+        return;
+    }
     if let Ok(rd) = std::fs::read_dir(cache) {
         use std::os::unix::ffi::OsStrExt;
         for e in rd {

@@ -484,8 +484,12 @@ impl Run<'_> {
         same(&now, &self.md) && std::fs::symlink_metadata(self.src).is_ok_and(|at| at.is_file() && at.dev() == now.dev() && at.ino() == now.ino() && same(&at, &now))
     }
 
-    /// Removes every cache entry of this PDF's (its count, its pages, its mark).
+    /// Removes every cache entry of this PDF's (its count, its pages, its mark). (The cache is looked at for a link
+    /// again right before the listing its removals follow, as the sweep does: the job's own look was at its start.)
     fn remove_entries(&self) {
+        if !no_link_below(&store_root(), &self.cache) {
+            return;
+        }
         let Ok(rd) = std::fs::read_dir(&self.cache) else { return };
         let (pages, count, bad) = (format!("{}-p", self.hash), format!("{}.pages", self.hash), format!("{}.bad", self.hash));
         for e in rd.flatten() {

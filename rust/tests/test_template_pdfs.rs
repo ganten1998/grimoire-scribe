@@ -374,6 +374,38 @@ fn a_page_that_fails_is_marked_alone() {
     clean_env();
 }
 
+// The cache swapped for a link while a slice runs (after page 1 here, with the PDF changed so the slice removes what it
+// made): the removals look for a link again right before they list the cache, so nothing in the link's target goes,
+// though its names are this PDF's.
+fn no_removal_through_a_link_swapped_in() {
+    clean_env();
+    folder(&[("Swap.pdf", pdffix::planner(3))]);
+    let h = hash("Swap.pdf");
+    let (dir, root) = (tpl(), root());
+    let victim = format!("{root}/victim");
+    let _ = std::fs::remove_dir_all(&victim);
+    std::fs::create_dir_all(&victim).unwrap();
+    let theirs = [format!("{victim}/{h}.pages"), format!("{victim}/{h}-p0009.png")];
+    for f in &theirs {
+        std::fs::write(f, b"theirs").unwrap();
+    }
+    let v = victim.clone();
+    sim_after_page(move |k| {
+        if k == 1 {
+            std::fs::rename(format!("{dir}/.cache"), format!("{dir}/.cache-moved")).unwrap();
+            std::os::unix::fs::symlink(&v, format!("{dir}/.cache")).unwrap();
+            std::fs::write(format!("{dir}/Swap.pdf"), pdffix::planner(4)).unwrap();
+        }
+    });
+    let (rc, log) = with_log("swap-link", || job("Swap.pdf"));
+    sim_after_page_clear();
+    check!(rc == -1 && log.contains("a PDF changed while its pages were made"));
+    check!(theirs.iter().all(|f| std::fs::read(f).ok().as_deref() == Some(&b"theirs"[..])));
+    let _ = std::fs::remove_file(format!("{}/.cache", tpl()));
+    let _ = std::fs::remove_dir_all(&victim);
+    clean_env();
+}
+
 // The writer without memory for a page's pixels (here a page size no memory holds): not the file's doing, so no strike
 // and no mark (two pages so would otherwise refuse the whole PDF for good); the slice stops, and a later look, with the
 // memory there, draws the pages.
@@ -787,6 +819,7 @@ fn test_template_pdfs() {
     run!(a_page_that_fails_is_marked_alone);
     run!(the_writer_out_of_memory_marks_nothing);
     run!(a_pdf_changed_while_its_pages_are_made);
+    run!(no_removal_through_a_link_swapped_in);
     run!(no_room_makes_nothing);
     run!(a_pdf_itself_is_never_a_picture);
     run!(a_removed_pdfs_pages_go);
