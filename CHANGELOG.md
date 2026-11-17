@@ -104,6 +104,10 @@
   drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
   once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
   Deleting `grimoire/fonts/.cache` still has every font checked again.
+- **Darker lines in imported PDFs** (#173). Settings > System > Darker lines in imported PDFs (Off, Medium, Strong)
+  draws the gray pages of a PDF imported from then on darker, for faint planners; pages in colour stay as they are,
+  and a notebook's missing pages added later match the rest. KOReader's Open this book passes the reader's contrast
+  the same way when the reader draws the PDF darker.
 
 ## 2.1.0 (2026-11-13)
 

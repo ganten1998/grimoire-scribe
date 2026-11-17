@@ -42,6 +42,9 @@ const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
 const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
 const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
+const PDFIMPORT: File = ("rust/src/pdfimport.rs", include_str!("../src/pdfimport.rs"));
+const ANNOTATE: File = ("rust/src/annotate.rs", include_str!("../src/annotate.rs"));
+const STORE: File = ("rust/src/store.rs", include_str!("../src/store.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -772,4 +775,34 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
     gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
     none_failed(&fails, "a font added from a file");
+}
+
+// Darker lines in imported PDFs (2.2, issue #173): the rules DESIGN.md and FORMAT.md give, and the code that holds
+// each. A gamma on gray pages only, applied by the writer to the page it holds; Off untouched; a fill at its
+// notebook's level; every value from a file read strictly.
+#[test]
+fn darker_lines_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    // the writer, on the gray page it holds: no new parse, no new decode, the worker as it was
+    present(&mut fails, DESIGN, "The writer applies the gamma to the gray page it already holds");
+    present(&mut fails, DESIGN, "no new parse of the PDF, no new decode, and the worker and its protocol are unchanged");
+    present(&mut fails, PDFIMPORT, "darken(&mut p, state.gamma);");
+    // gray pages only, and nothing at Off
+    present(&mut fails, DESIGN, "A page kept in colour is left exactly as it is, and a page with gray and colour on it is a colour page");
+    present(&mut fails, DESIGN, "At Off nothing is applied");
+    present(&mut fails, PDFWORK, "if g == Gamma::Off || p.ch != 1 {");
+    // a fill draws at its notebook's own level
+    present(&mut fails, DESIGN, "A fill draws the pages it adds at its notebook's own level");
+    present(&mut fails, PDFIMPORT, "st.gamma = p.gamma;");
+    present(&mut fails, PDFIMPORT, "pub fn gamma_among(kept: &[u8]) -> Gamma {");
+    // read strictly: the three values, anything else no gamma, in every file that says a level
+    present(&mut fails, FORMAT, "Each of these lines is read strictly: `1.0`, `1.5` or `2.0`, and any other value is no gamma.");
+    present(&mut fails, FORMAT, "`kind`, `time` and `gamma` comes once at most");
+    present(&mut fails, PDFWORK, "b\"1.5\" => Gamma::Medium, b\"2.0\" => Gamma::Strong, _ => Gamma::Off,");
+    present(&mut fails, STORE, "keep_named(\"pdf_gamma\", v, &crate::pdfwork::Gamma::NAMES)");
+    present(&mut fails, ANNOTATE, "r.gamma = Some(crate::pdfwork::Gamma::parse(v));");
+    present(&mut fails, ANNOTATE, "b\"kind\", b\"time\", b\"gamma\"];");
+    // what the change took away
+    gone(&mut fails, BACKLOG, "A `gamma=` line waits with the darker lines import option");
+    none_failed(&fails, "darker lines in imported PDFs");
 }

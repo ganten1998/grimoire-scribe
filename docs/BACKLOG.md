@@ -406,8 +406,6 @@ call the copy since issue #146 (each its own section, above).
   was opened meanwhile stays in front), but it runs to its end. Putting the Kindle to sleep pauses it and stops
   nothing. A Cancel would need a string of its own and a way to stop a running import job, which the job queue
   does not have.
-- **The reader's contrast is not sent**: a PDF by its path is drawn at its own contrast, where version 1 drew it at
-  the reader's. A `gamma=` line waits with the darker lines import option.
 - **The password question** opens the PDF a second time in KOReader (a MuPDF document of the plugin's own, through
   `ffi/mupdf`'s `openDocument`, `needsPassword` and `close`, as KOReader's own PDF reader calls them): read in
   KOReader's code, never run on a Kindle. Every call is guarded, so it cannot stop KOReader. Where it fails
@@ -424,6 +422,26 @@ call the copy since issue #146 (each its own section, above).
 - **Grimoire stopped while the import runs** (the launcher's watchdog, a crash) leaves the import to its detached
   child, as any import; the reader's page does not open, and the next Open this book finds the notebook.
 - **Not built: a card for the notebook being made**, as for a fill (above).
+
+## Darker lines in imported PDFs (2.2, #173): what waits, and what is for the owner
+
+- **The Scribe check has not run** (docs/TESTING.md, "2.2, Darker lines"): the row, an import at each level and how
+  each reads on the panel, a colour page, Files, a fill at the notebook's level, KOReader with and without a darker
+  contrast, Spanish. Whether 1.5 and 2.0 are the right two levels for faint planners is the owner's to judge there.
+- **A PDF already imported is not drawn again** when the setting changes: the same file is "PDF already imported."
+  at any level. To have a notebook at another level, move it to the trash and import the PDF again (its ink stays
+  with the notebook in the trash). A "draw again at this level" for a notebook would need its PDF again and a choice
+  of what becomes of the ink: not built.
+- **One level for every import**, chosen in Settings; no choice at each import. A per-file choice (on a PDF's card in
+  Files, or a sheet before an import) would add strings and a question to every pick, and the import folder's scan
+  asks nothing.
+- **Files' previews of a PDF are not darkened** (they show the file as it is), nor are the pages KOReader draws by
+  version 1 (Annotate this page, DjVu, comics), which come at KOReader's own contrast.
+- **A lighter level** (KOReader's contrast under 1) is not offered: a reader's contrast under 1.25 sends no line, and
+  the setting decides.
+- **Going back to 2.1 in the middle of an import** that began at 1.5 or 2.0: 2.1 takes the import up (it passes the
+  state's `gamma=` over) and draws the pages it makes as at Off, and the notebook has no `gamma=` line
+  (docs/FORMAT.md, Moving between versions).
 
 ## Hardening round (2026-11), import: what waits
 
