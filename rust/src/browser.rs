@@ -1993,6 +1993,14 @@ impl Browser {
                     // TRANSLATORS: a PDF's card in the file picker: this makes a notebook of its pages (a row of about 800 px at 44 px).
                     rows.push((B_CARD_IMPORT, 0, IconKind::Download, tr("Import as notebook").to_string()));
                 }
+                // (2.2, issue #172: in Files, its copy into Grimoire's templates, where each of its pages is a template;
+                // the copy job takes it as a picture, within the templates folder's 16 MB. The pickers offer only what
+                // they pick)
+                if !self.pick() && importable && !self.is_mirror(r) && self.offers_copy(r, CopyTo::Templates) {
+                    // TRANSLATORS: (also) a PDF's card in Files: this copies the PDF into grimoire/templates, where each of
+                    // its pages becomes a template, to write on as paper (a row of about 800 px at 44 px).
+                    rows.push((B_CARD_TEMPLATE, 0, IconKind::Paper, tr("Use as template").to_string()));
+                }
             }
             // a trash entry's (2.2, issue #144): what it is, its size and date, and Restore alone (no Empty, no delete:
             // the trash is cleaned over USB)
@@ -4096,7 +4104,7 @@ mod tests {
         };
         let (d0, r0) = card(&mut b, 0);
         assert!(d0.starts_with("PDF, 1 KB, "), "{d0}");
-        assert_eq!(r0, ["Import as notebook", "Cancel"]);
+        assert_eq!(r0, ["Import as notebook", "Use as template", "Cancel"]);
         let (d1, r1) = card(&mut b, 1);
         assert!(d1.starts_with("Picture, 2 KB, "), "{d1}");
         assert_eq!(r1, ["Use as template", "Use as photo", "Cancel"]);
@@ -4523,7 +4531,7 @@ mod tests {
         assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
         // read-only places and Grimoire's own folders themselves: no Rename, no Delete
         assert!(b.go(sp("documents")));
-        assert_eq!(card_of(&mut b, 0).1, ["Import as notebook", "Cancel"]);
+        assert_eq!(card_of(&mut b, 0).1, ["Import as notebook", "Use as template", "Cancel"]);
         assert!(b.go(sp("grimoire/import")));
         assert_eq!(card_named(&mut b, "done").1, ["Open", "Set as home", "Cancel"]);
         assert!(b.go(sp("grimoire")));
@@ -5302,6 +5310,48 @@ mod tests {
         assert!(b.unchanged(&c));
         std::fs::write(format!("{base}/documents/Pics/a.png"), b"another picture, a longer one").unwrap();
         assert!(!b.unchanged(&c));
+    }
+
+    // A PDF's card in Files copies it into Grimoire's templates too (2.2, issue #172: there each of its pages is a
+    // template), after Import as notebook; never in a PDF already there, never out of Grimoire's PDF copies, and never in
+    // a picker (the import pick imports, the picture pick lists no PDF). The copy is the pictures' own: refused past the
+    // templates folder's 16 MB, as "Too big (over 16 MB)." says.
+    #[test]
+    fn a_pdfs_card_in_files_offers_its_copy_into_templates() {
+        let (base, _g) = storage("pdfuseas");
+        for d in ["documents/Pics", "grimoire/templates", "grimoire/PDFs"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        for f in ["documents/Pics/a.png", "documents/Pics/b.pdf", "grimoire/templates/t.pdf", "grimoire/PDFs/m.pdf"] {
+            std::fs::write(format!("{base}/{f}"), b"%PDF-1.4\n").unwrap();
+        }
+        let big = std::fs::File::create(format!("{base}/documents/Pics/c.pdf")).unwrap();
+        big.set_len(crate::bgwork_template::TEMPLATE_MAX_BYTES as u64 + 1).unwrap();
+        i18n_set("en");
+        let rows = |b: &mut Browser, name: &str| -> Vec<String> { card_named(b, name).1 };
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("documents/Pics")));
+        assert_eq!(rows(&mut b, "b.pdf"), ["Import as notebook", "Use as template", "Cancel"]);
+        assert_eq!(rows(&mut b, "a.png"), ["Use as template", "Use as photo", "Cancel"]);
+        // the copy asked for a PDF past the folder's limit: refused at the request, with the pictures' sentence
+        b.open_card(row_of(&b, "c.pdf"));
+        let c = b.card.clone().expect("a card");
+        let st = b.storage.as_ref().expect("the storage");
+        assert_eq!(copy_request(st, &c.path, &c.stat.expect("listed"), CopyTo::Templates), Err(FsWriteErr::TooBig));
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooBig), CopyTo::Templates), "Too big (over 16 MB).");
+        assert!(b.go(sp("grimoire/templates")));
+        assert_eq!(rows(&mut b, "t.pdf"), ["Import as notebook", "Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/PDFs")));
+        assert_eq!(rows(&mut b, "m.pdf"), ["Cancel"]);
+        let mut p = Browser::default();
+        assert!(p.open(PickSpec::import(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(p.go(sp("documents/Pics")));
+        assert_eq!(rows(&mut p, "b.pdf"), ["Import as notebook", "Cancel"]);
+        let mut p = Browser::default();
+        assert!(p.open(PickSpec::picture(CopyTo::Templates), FilesPrefs { card: true, ..Default::default() }));
+        assert!(p.go(sp("documents/Pics")));
+        assert_eq!(row_names(&p), ["a.png"]);
     }
 
     // The picture pick (2.2, #146): its root has no Import (that place is the imports', with their statuses and Look

@@ -6,7 +6,8 @@
 # Files' item cards (2.2): a tap on a picture, a font or another file (or its "...") opens its card, which says what
 # the file is with its size and date; a picture's offers Use as template and Use as photo (#146; files_8_use_as
 # copies), a font's Add to fonts (#161; files_19_add_to_fonts copies), another file's nothing but Cancel; a PDF's card
-# imports it as the picker's does; a PDF of the PDF copies opens the notebook it was written from; a link has no card; the trash
+# imports it as the picker's does, and copies it into the templates (#172); a PDF of the PDF copies opens the notebook it
+# was written from; a link has no card; the trash
 # lists its entries, a notebook by its own name, whose card offers Restore alone (issue #144).
 # rust-only
 wait 300
@@ -50,7 +51,7 @@ tap library files.item.a.pdf
 wait 300
 expect files.card is pdf
 expect files.card.details has PDF, 1 KB,
-expect files.card.rows is Import as notebook|Cancel
+expect files.card.rows is Import as notebook|Use as template|Cancel
 tap library files.card.cancel
 wait 200
 tap library files.crumb.1
