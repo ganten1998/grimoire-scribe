@@ -3159,13 +3159,13 @@ KOReader plugin carry the reader's contrast.
   holds (`darken`, after `Session::render` has settled the page gray or colour): no new parse of the PDF, no new
   decode, and the worker and its protocol are unchanged. A page kept in colour is left exactly as it is, and a page
   with gray and colour on it is a colour page. At Off nothing is applied: the pages, the card's thumbnail, the
-  notebook's files and the import's screens and refreshes are those of an import before 2.2, byte for byte (Settings
-  > System has one row more). Blank pages (a page whose worker
-  died twice) are white at every level.
+  notebook's files and the import's screens and refreshes are those of an import before 2.2, byte for byte
+  (Settings > System has one row more). Blank pages (a page whose worker died twice) are white at every level.
 - **Where it lives**: one setting, settings.ini `pdf_gamma`, the last row of Settings > System, "Darker lines in
-  imported PDFs: %s", which opens a list of the three levels as the eraser's row does, in one column so that they
-  read in their order, Off, Medium, Strong (`draw_pick_cards`). It is the smallest place every way in can follow: the import folder's scan (which asks nothing), Files' Import and New notebook's From a file...,
-  and KOReader's hand-over. The app gives it to `pdfimport` at the start and when it is picked (`set_darker`).
+  imported PDFs: %s", which opens a list of the three levels as the eraser's row does, in one column so that they read
+  in their order, Off, Medium, Strong (`draw_pick_cards`). It is the smallest place every way in can follow: the
+  import folder's scan (which asks nothing), Files' Import and New notebook's From a file..., and KOReader's
+  hand-over. The app gives it to `pdfimport` at the start and when it is picked (`set_darker`).
 - **The level travels with the file.** The UI decides it as it queues a file and writes it into the file's mark
   (`gamma=`): the setting, or a level of the caller's own through `pdf_import_queue_at` (KOReader's request). A pick
   that waits for the lock keeps its level until a later scan queues it, and a file whose mark is lost is drawn at the
