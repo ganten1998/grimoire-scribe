@@ -2496,6 +2496,7 @@ pub fn httpd_upload_answer(serial: u32, import: bool) -> Option<Result<String, i
         Ok(_) => {
             qlog!("httpd: an upload was kept: it waits in import/ for the import");
             upload_reply(c, 200, "imported", false);
+            crate::pdfimport::rescan_soon(); // (taken as soon as the Library is in front again)
         }
         Err(e) => {
             qlog!("httpd: an upload could not go into import/ (%s); nothing kept", &strerror(*e));

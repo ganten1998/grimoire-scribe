@@ -1802,6 +1802,12 @@ pub fn rescan_clear() {
     ui(|u| u.rescan_at = None);
 }
 
+/// Grimoire itself put a PDF into import/ (one sent from the Share page, issue #175): the scan is due at once, the
+/// next time the Library is in front, however recently it last looked.
+pub fn rescan_soon() {
+    ui(|u| u.rescan_at = Some(now_ms()));
+}
+
 /// The scan is due now: at most every 10 s, or sooner when a file was waiting to be stable.
 pub fn scan_due(now: u32, entering: bool) -> bool {
     ui(|u| {
