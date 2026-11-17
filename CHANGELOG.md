@@ -51,9 +51,11 @@
   at the Library's top. A home that is gone shows the Library with "Home folder not found." and is Notebooks again;
   a home folder renamed in Grimoire stays home, and one deleted in Grimoire puts home back to Notebooks.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
-  on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
-  read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
-  `photos/` or `import/` that is a link is no longer taken: copy the file in.
+  on the small text files, and makes its temporary files afresh each time. A small text file whose read fails
+  partway through counts as one that was not read, so a cut-short `settings.ini` or `notebook.ini` is never
+  parsed as a shorter file and written back so. A `settings.ini` it cannot read is kept as
+  `settings.ini.unread` rather than written over. A picture or folder in `templates/`, `photos/` or `import/`
+  that is a link is no longer taken: copy the file in.
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
 - Housekeeping: a platform kept in another crate whose system runs a Linux kernel under another name can

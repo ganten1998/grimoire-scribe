@@ -250,8 +250,8 @@ struct State {
     /// unknown lines past the bound, logged once per load
     g_set_dropped: i32,
     g_kept: Vec<Kept>,
-    /// settings_load found a settings.ini that it could not read (no plain file, too long, or it did not open):
-    /// settings_save moves that entry aside before it writes, and never writes over it.
+    /// settings_load found a settings.ini that it could not read (no plain file, too long, it did not open,
+    /// or a read failed partway): settings_save moves that entry aside before it writes, and never writes over it.
     g_set_unread: bool,
     /// how many notebook.ini files store_load_info has read (store_info_reads)
     g_info_reads: u32,
@@ -5116,7 +5116,7 @@ pub fn settings_load(s: &mut Settings) -> i32 {
     with(|st| st.g_set_unread = unread);
     if unread {
         qlog_once!(
-            "settings: settings.ini is there but was not read (no plain file of at most %d bytes, or it did not open); the defaults are used",
+            "settings: settings.ini is there but was not read (no plain file of at most %d bytes, or it did not open or read whole); the defaults are used",
             STORE_INI_MAX
         );
     }

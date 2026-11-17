@@ -86,9 +86,9 @@ fn list_text(path: &str, err: &mut i32) -> Option<Vec<u8>> {
         }
     };
     // (bounded as util::read_file_max bounds a small text file: the size on the open file, then one byte past
-    // the limit asked for, so a list that grew since is told from one that fits; EINTR is tried again. Unlike
-    // read_file_max, a read that fails midway is a list that does not read, never the part that was read: a
-    // list written from that part would forget the pages after it.)
+    // the limit asked for, so a list that grew since is told from one that fits; EINTR is tried again. As there,
+    // a read that fails midway is a list that does not read, never the part that was read: a list written from
+    // that part would forget the pages after it.)
     let mut t: Vec<u8> = Vec::new();
     if md.len() > LIST_FILE_MAX as u64
         || t.try_reserve_exact(md.len() as usize).is_err()

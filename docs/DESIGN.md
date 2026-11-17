@@ -591,9 +591,10 @@ platform's folders, a test's folder): only the last name is held to this. The sm
 a limit (`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB;
 an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes and names.part
 406,000, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
-picture and a header; and, by the same bound in its own reader, a compaction list 64 KiB, which a read that
-fails midway leaves unread rather than cut short); page files and pictures have none of `read_file`'s own. A
-settings.ini that is there but was not read is moved to `settings.ini.unread` before the next save.
+picture and a header; and, by the same bound in its own reader, a compaction list 64 KiB). A read that fails
+midway leaves any of them unread rather than cut short, so a settings.ini or notebook.ini cut short by a read
+error is never parsed as a shorter file and saved back so; page files and pictures have none of `read_file`'s
+own. A settings.ini that is there but was not read is moved to `settings.ini.unread` before the next save.
 An entry at a page's name that is no plain file is set
 aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are read with
 `util::read_system_file`, which follows links. The scans of `import/`, `templates/` and `photos/` take only

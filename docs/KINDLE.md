@@ -960,7 +960,7 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   - `store: skipping unreadable notebook <id>`: also a notebook whose `notebook.ini` is no plain file or
     is longer than 1 MiB. Nothing in its folder is touched; it is back in the Library once the file reads.
   - `settings: settings.ini is there but was not read (no plain file of at most 1048576 bytes, or it did
-    not open); the defaults are used`: at the start. Nothing is written over it:
+    not open or read whole); the defaults are used`: at the start. Nothing is written over it:
   - `settings: the settings.ini that was not read is kept as settings.ini.unread`: at the first save,
     the entry was moved aside as it was. With Grimoire closed, look at it, and copy it back over
     `settings.ini` if it is the file wanted (as a plain file under 1 MiB); else delete it.
