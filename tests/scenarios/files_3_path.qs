@@ -33,7 +33,7 @@ tap library files.crumb.2
 wait 300
 expect files.card is goto
 expect files.card.details is Go to
-expect files.card.rows is Import|Documents|Downloads|Templates|Photos|Fonts|Kindle fonts|PDF copies|Trash|All storage|Notes|Cancel
+expect files.card.rows is Home: Notebooks|Import|Documents|Downloads|Templates|Photos|Fonts|Kindle fonts|PDF copies|Trash|All storage|Notes|Set as home|Cancel
 shot 02-go-to
 tap library files.goto.11
 wait 300

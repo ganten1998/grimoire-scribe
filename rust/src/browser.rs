@@ -64,6 +64,12 @@ const B_DELETE_YES: i32 = B_WRITE + 3;
 // taken moves its own).
 const B_COVERS: i32 = 60;
 const B_VIEW: i32 = B_COVERS;
+// Home (2.2, issue #160): the Go to sheet's Home row; Set as home (the Go to sheet's is for the folder shown, a
+// folder's card's for that folder); Reset home to Notebooks. A block of their own, from 80.
+const B_HOME: i32 = 80;
+const B_HOME_GO: i32 = B_HOME;
+const B_HOME_SET: i32 = B_HOME + 1;
+const B_HOME_RESET: i32 = B_HOME + 2;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,6 +178,12 @@ pub enum BrowserResult {
     Copying(CopyTo),
     /// Files' Restore put this notebook (its id) back: the host reads the Library again at once
     NotebookBack(String),
+    /// Home (2.2, issue #160), each for the host to do, which keeps the setting: the Go to sheet's Home row (go
+    /// home, wherever it is); Set as home on this folder (the folder shown, from the Go to sheet, or a folder's
+    /// card's); Reset home to Notebooks
+    GoHome,
+    SetHome(StoragePath),
+    ResetHome,
 }
 
 /// What follows a refused act of a card (its toast said why): the keyboard stays up with the name, to be put right;
@@ -439,6 +451,9 @@ struct Card {
     stat: Option<FsStat>,
     /// Files' Go to sheet (2.2) in place of a row's card
     goto: bool,
+    /// Set as home is offered (2.2, issue #160): as the card or the sheet opened, its folder (the card's, or the
+    /// folder shown) was one that can be home, by the walk (`home_folder_ok`)
+    home_ok: bool,
     /// the Delete question in place of the row's card (issue #144): `Delete "name"?`, asked as the Library asks it
     /// of a notebook, after the card's Delete and before anything is moved
     confirm: bool,
@@ -553,7 +568,8 @@ pub struct Browser {
     /// them refreshes them with its own rect)
     tiles_stale: Rect,
     /// Home (2.2, issue #160) as settings.ini has it, given by the host once Files is open and whenever it changes
-    /// (`set_home`)
+    /// (`set_home`): the folder that is home has no Back button and nothing further up for Back, and the Go to
+    /// sheet and a folder's card offer Set as home and Reset home to Notebooks by it
     home: Home,
 }
 
@@ -746,14 +762,23 @@ impl Browser {
         }
     }
 
-    /// Whether the folder shown is the home folder.
+    /// Whether the folder shown is the home folder: the screen then has no Back button, and where Back or Esc would
+    /// go further up the host asks "Exit Grimoire?" (`at_home_root`), as at the Library's top. The path bar's parts
+    /// still open the folders above.
     pub fn at_home(&self) -> bool {
         self.at.is_some() && self.at.as_ref() == self.home_path()
     }
 
-    /// Enters the folder `p` that is home (the host's, as Grimoire starts), from wherever Files is: checked first as a
-    /// home is (`home_folder_ok`: Files' own walk, never the trash), then entered as a tap on it would be. False, with
-    /// nothing changed and nothing said, when it is refused or gone: the host then goes to Notebooks, and says so.
+    /// At the home folder with nothing over its rows (no card, no keyboard): Back and Esc have nothing to close and
+    /// nowhere to go up to.
+    pub fn at_home_root(&self) -> bool {
+        self.at_home() && self.card.is_none() && !self.kb.open
+    }
+
+    /// Enters the folder `p` that is home (the host's: as Grimoire starts, the `home` action, the Go to sheet's Home
+    /// row), from wherever Files is: checked first as a home is (`home_folder_ok`: Files' own walk, never the
+    /// trash), then entered as a tap on it would be. False, with nothing changed and nothing said, when it is
+    /// refused or gone: the host then goes to Notebooks, and says so.
     pub fn enter_home(&mut self, p: &StoragePath) -> bool {
         if !self.storage.as_ref().is_some_and(|st| home_folder_ok(st, p)) {
             return false;
@@ -767,6 +792,45 @@ impl Browser {
         keyboard_close(&mut self.kb);
         self.renaming = None;
         true
+    }
+
+    /// What the Go to sheet's Home row names: Notebooks, a Library folder by its own name, a folder of the storage
+    /// by its own (a place of the root by the place's).
+    fn home_name(&self) -> String {
+        match &self.home {
+            Home::Notebooks => tr("Notebooks").to_string(),
+            Home::Library(f) => store_folder_leaf(f).to_string(),
+            Home::Files(p) => match self.mode_places().iter().find(|&&k| self.place_path(k).as_ref() == Some(p)) {
+                Some(&k) => Self::place_label(k).to_string(),
+                None => p.split_last().map_or_else(String::new, |(_, n)| String::from_utf8_lossy(n).into_owned()),
+            },
+        }
+    }
+
+    /// The home rows of the Go to sheet (for the folder shown) and of a folder's card (for that folder), 2.2, issue
+    /// #160. Set as home, unless the folder is home already or cannot be (`Card.home_ok`). Reset home to Notebooks:
+    /// in the Go to sheet while home is anything else; on a card only on the folder that is home, where Set as home
+    /// would be. None in a picker.
+    fn home_rows(&self, card: &Card, rows: &mut Vec<(i32, i32, IconKind, String)>) {
+        if self.mode != BrowseMode::Place {
+            return;
+        }
+        let folder = if card.goto { self.at.as_ref() } else { Some(&card.path) };
+        let is_home = folder.is_some() && folder == self.home_path();
+        if card.home_ok && !is_home {
+            // TRANSLATORS: a row of Files' Go to sheet (for the folder shown) and of a folder's card there, and of a
+            // folder's menu in the Library: Grimoire opens at this folder from now on, each time it starts (a row
+            // of about 800 px at 44 px in bold, on two lines at 34 px if it must).
+            rows.push((B_HOME_SET, 0, IconKind::Home, tr("Set as home").to_string()));
+        }
+        let reset = if card.goto { self.home != Home::Notebooks } else { is_home };
+        if reset {
+            // TRANSLATORS: a row of Files' Go to sheet while a folder is set as home, and of the home folder's own
+            // card or menu: Grimoire opens at the Library's top level again, as before a home was set (Notebooks as
+            // translated in the notebook picker; a row of about 800 px at 44 px in bold, on two lines at 34 px if it
+            // must).
+            rows.push((B_HOME_RESET, 0, IconKind::Library, tr("Reset home to Notebooks").to_string()));
+        }
     }
 
     fn pick(&self) -> bool {
@@ -1755,11 +1819,14 @@ impl Browser {
             }
         }
         let r = &self.rows[row];
-        self.card = Some(Card { row, path: r.path.clone(), stat: r.stat, ..Default::default() });
+        // (a folder's card in Files offers Set as home when the walk reaches the folder as one that can be home)
+        let home_ok = self.mode == BrowseMode::Place && r.kind == RowKind::Dir && self.storage.as_ref().is_some_and(|st| home_folder_ok(st, &r.path));
+        self.card = Some(Card { row, path: r.path.clone(), stat: r.stat, home_ok, ..Default::default() });
     }
 
-    /// Files' Go to sheet (2.2): every place of the root that is there, then the storage's other top folders, by
-    /// name (each a row that opens it), then Cancel.
+    /// Files' Go to sheet (2.2): Home (a row that goes there), every place of the root that is there, then the
+    /// storage's other top folders, by name (each a row that opens it), then the folder shown as home, home back
+    /// to Notebooks (`home_rows`), and Cancel.
     fn open_goto(&mut self) {
         let mut rows: Vec<(String, StoragePath, IconKind, bool)> = Vec::new();
         let pick = self.pick();
@@ -1791,7 +1858,8 @@ impl Browser {
             rows.extend(tops.into_iter().map(|(n, p)| (n, p, IconKind::Folder, false)));
         }
         self.goto = rows;
-        self.card = Some(Card { goto: true, ..Default::default() });
+        let home_ok = self.mode == BrowseMode::Place && self.at.as_ref().is_some_and(|p| home_folder_ok(st, p));
+        self.card = Some(Card { goto: true, home_ok, ..Default::default() });
     }
 
     fn place_icon(k: PlaceKind) -> IconKind {
@@ -1810,7 +1878,12 @@ impl Browser {
     /// The card's lines: details (the Go to sheet's title), then its rows (hit id, its arg, icon, label).
     fn card_lines(&self, card: &Card) -> (String, Vec<(i32, i32, IconKind, String)>) {
         if card.goto {
-            let mut rows: Vec<(i32, i32, IconKind, String)> = self.goto.iter().enumerate().map(|(i, g)| (B_GOTO, i as i32, g.2, g.0.clone())).collect();
+            // TRANSLATORS: the first row of Files' Go to sheet: it goes to the home folder, the place Grimoire opens
+            // at when it starts (%s: Notebooks, or the name of the folder set as home; a row of about 800 px at
+            // 44 px in bold, a long name cut short).
+            let mut rows = vec![(B_HOME_GO, 0, IconKind::Home, cformat!(tr("Home: %s"), self.home_name().as_str()))];
+            rows.extend(self.goto.iter().enumerate().map(|(i, g)| (B_GOTO, i as i32, g.2, g.0.clone())));
+            self.home_rows(card, &mut rows);
             rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Cancel").to_string()));
             // TRANSLATORS: the title of Files' Go to sheet, which a tap on the folder shown in its path bar opens: its
             // places and the Kindle's top folders, one a row (34 px, at the sheet's top).
@@ -1890,6 +1963,8 @@ impl Browser {
                     // in their order (a row of about 800 px at 44 px).
                     rows.push((B_CARD_PICTURES, 0, IconKind::Download, cformat!(ng_("Import %d picture as notebook", "Import %d pictures as notebook", n as i64), n as i32)));
                 }
+                // (Files, 2.2, issue #160: the folder as home, or on the folder that is home, home back to Notebooks)
+                self.home_rows(card, &mut rows);
             }
         }
         // inside Grimoire's folders for the user's files (2.2, issue #144): Rename, and Delete into the trash
@@ -2302,10 +2377,15 @@ impl Browser {
         let bh = u(150.0);
         let by = (th - bh) / 2;
         let back = Rect::new(m, by, bh, bh);
-        ui_button(c, back, IconKind::Back, "", ButtonStyle::Plain);
-        hits_add(&mut self.hits, back, B_BACK, 0);
+        // (no Back at the folder that is home, 2.2, issue #160: nothing is further up for it, as at the Library's
+        // top, and the title stands where the Library's does; the path bar's parts still open the folders above)
+        let home = self.at_home();
+        if !home {
+            ui_button(c, back, IconKind::Back, "", ButtonStyle::Plain);
+            hits_add(&mut self.hits, back, B_BACK, 0);
+        }
         let title = self.title;
-        let tx = back.x + back.w + u(40.0);
+        let tx = if home { m } else { back.x + back.w + u(40.0) };
         ui_text(c, FontFace::Title, ui_title_size() * 1.2, ui_small_size(), Rect::new(tx, 0, aw - tx - m, th), title, 2, false, 0);
         ui_rule(c, 0, aw, th, u(4.0), 0);
         ui_frieze(c, 0, aw, th + u(9.0), u(28.0), 0);
@@ -2742,12 +2822,14 @@ impl Browser {
         let cw = (aw - 2 * u(40.0)).min(u(980.0));
         let rh = u(130.0);
         let gap = u(12.0);
-        // (the Go to sheet's rows that do not fit the screen are left out, Cancel kept: All storage reaches them)
+        // (the Go to sheet's folders that do not fit the screen are left out, from their end: Files' root lists
+        // every place, and All storage every folder. The rows after them are kept: Set as home, Reset home to
+        // Notebooks and Cancel)
         let fit = ((ah - 2 * u(40.0) - 2 * u(24.0) - u(80.0) + gap) / (rh + gap)).max(2) as usize;
         if lines.len() > fit {
-            let cancel = lines.pop();
-            lines.truncate(fit - 1);
-            lines.extend(cancel);
+            let tail = lines.iter().rev().take_while(|l| l.0 != B_GOTO).count();
+            let keep = fit.saturating_sub(tail).min(lines.len() - tail);
+            lines.drain(keep..lines.len() - tail);
         }
         let ch = u(24.0) * 2 + u(80.0) + lines.len() as i32 * (rh + gap) - gap;
         let anchor = if card.goto {
@@ -2770,7 +2852,13 @@ impl Browser {
             ui_frame(c, r, u(16.0), 255, true, 0);
             ui_frame(c, r, u(16.0), 0, false, if primary { u(6.0) } else { u(3.0) });
             ui_icon(c, *icon, Rect::new(r.x + u(20.0), r.y + u(15.0), rh - u(30.0), rh - u(30.0)), 0);
-            ui_text(c, FontFace::Bold, ui_text_size(), ui_small_size(), Rect::new(r.x + rh + u(10.0), r.y, r.w - rh - u(30.0), r.h), label, 2, false, 0);
+            let text = Rect::new(r.x + rh + u(10.0), r.y, r.w - rh - u(30.0), r.h);
+            if *id == B_HOME_GO {
+                // (it ends in a folder's name, which is cut short as names are)
+                ui_text_name(c, FontFace::Bold, ui_text_size(), ui_small_size(), text, label, 2, 0);
+            } else {
+                ui_text(c, FontFace::Bold, ui_text_size(), ui_small_size(), text, label, 2, false, 0);
+            }
             hits_add(&mut hits, r, *id, *arg);
             y += rh + gap;
         }
@@ -3097,6 +3185,18 @@ impl Browser {
                     Err((msg, then)) => self.refused(a, &msg, then),
                 }
                 BrowserResult::None
+            }
+            // Home (2.2, issue #160), each the host's to do and to draw: go home (the Go to sheet's first row); the
+            // folder shown (the sheet's) or the card's folder as home, the card's checked again first; home back to
+            // Notebooks
+            B_HOME_GO | B_HOME_SET | B_HOME_RESET => {
+                let Some(c) = self.card.take() else { return BrowserResult::None };
+                match h.id {
+                    B_HOME_GO => BrowserResult::GoHome,
+                    B_HOME_RESET => BrowserResult::ResetHome,
+                    _ if !c.goto && !self.unchanged(&c) => self.changed_since(a),
+                    _ => BrowserResult::SetHome(if c.goto { self.at.clone().unwrap_or_default() } else { path }),
+                }
             }
             B_CARD_RESTORE => match self.restore_card() {
                 Ok((msg, nb)) => {
@@ -3514,7 +3614,7 @@ impl Browser {
             }
             "making" => out.push_str(if self.covers.making() { "1" } else { "0" }),
             // Home (2.2, issue #160): home as Files was told it (the settings.ini value, empty for Notebooks), and
-            // whether the folder shown is the home folder
+            // whether the folder shown is the home folder (no Back button there)
             "home" => out.push_str(&self.home.value()),
             "at_home" => out.push_str(if self.at_home() { "1" } else { "0" }),
             "asked" => out.push_str(&self.covers.asked().to_string()),
@@ -3567,7 +3667,8 @@ impl Browser {
     /// The point a runner tap on a control named so lands on (docs/SIM.md): back, prev, next, row.N, more.N,
     /// item.NAME, and the card's import, open, pictures, notebook, template, photo, rename, trash, restore and
     /// cancel; the Delete question's delete (its Keep it is cancel) and, while the question is up, opener: where the
-    /// card's Delete that opened it was tapped (a second tap at the first's place).
+    /// card's Delete that opened it was tapped (a second tap at the first's place). Home's rows: the Go to sheet's
+    /// goto.home, and card.sethome and card.resethome (the sheet's and a folder's card's).
     pub fn point(&self, name: &str) -> Option<(f32, f32)> {
         let centre = |h: &Hit| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32);
         if let Some(c) = &self.card {
@@ -3586,6 +3687,9 @@ impl Browser {
                 "card.trash" => B_CARD_TRASH,
                 "card.delete" => B_DELETE_YES,
                 "card.restore" => B_CARD_RESTORE,
+                "card.sethome" => B_HOME_SET,
+                "card.resethome" => B_HOME_RESET,
+                "goto.home" => B_HOME_GO,
                 _ => 0,
             };
             if id != 0 {
@@ -4316,12 +4420,12 @@ mod tests {
         assert!(b.go(sp("documents")));
         assert_eq!(card_of(&mut b, 0).1, ["Import as notebook", "Cancel"]);
         assert!(b.go(sp("grimoire/import")));
-        assert_eq!(card_named(&mut b, "done").1, ["Open", "Cancel"]);
+        assert_eq!(card_named(&mut b, "done").1, ["Open", "Set as home", "Cancel"]);
         assert!(b.go(sp("grimoire")));
-        assert_eq!(card_named(&mut b, "import").1, ["Open", "Cancel"]);
+        assert_eq!(card_named(&mut b, "import").1, ["Open", "Set as home", "Cancel"]);
         // a template's card (a picture's: its copy into photos first, #146), and a folder's in templates
         assert!(b.go(sp("grimoire/templates")));
-        assert_eq!(card_named(&mut b, "Sub").1, ["Open", "Rename", "Delete", "Cancel"]);
+        assert_eq!(card_named(&mut b, "Sub").1, ["Open", "Set as home", "Rename", "Delete", "Cancel"]);
         assert_eq!(card_named(&mut b, "Grid.png").1, ["Use as photo", "Rename", "Delete", "Cancel"]);
         assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
         assert_eq!(b.rename_to(b"Grid.png"), Ok(None), "Done with nothing typed renames nothing");
@@ -4884,7 +4988,7 @@ mod tests {
         let there = |p: &str| std::path::Path::new(p).exists();
         let up = |b: &Browser| b.card.as_ref().is_some_and(|c| c.confirm);
         for (folder, name, rows) in [
-            ("grimoire/photos", "Atlas", &["Open", "Import 1 picture as notebook", "Rename", "Delete", "Cancel"][..]),
+            ("grimoire/photos", "Atlas", &["Open", "Import 1 picture as notebook", "Set as home", "Rename", "Delete", "Cancel"][..]),
             ("grimoire/photos/Atlas", "p1.png", &["Use as template", "Use as photo", "Rename", "Delete", "Cancel"][..]),
             ("grimoire/templates", "Grid.png", &["Use as photo", "Rename", "Delete", "Cancel"][..]),
             ("grimoire/fonts", "Plain.ttf", &["Rename", "Delete", "Cancel"][..]),
@@ -5023,16 +5127,15 @@ mod tests {
             }
             canvas_free(&mut a.screen);
         }
-        assert_eq!(heights.into_iter().collect::<Vec<_>>(), [3, 4, 5], "cards of three, four and five rows were asked");
-        // (where it moves today: upright, for the cards of the first two rows of fonts, of a first row's picture and
-        // of a first row's folder with nothing to import, which lie over the Library's place for it; sideways, for a
-        // first row's font, whose card's Delete ends within the slop of it, and for a fifth row's picture with both
-        // copies, whose card is drawn above its row)
+        assert_eq!(heights.into_iter().collect::<Vec<_>>(), [3, 4, 5, 6], "cards of three to six rows were asked");
+        // (where it moves today: upright, for the cards of the first two rows of fonts and of a first row's picture,
+        // which lie over the Library's place for it (a first row's folder no longer: Set as home, 2.2, puts its
+        // Delete a row lower); sideways, for a first row's font, whose card's Delete ends within the slop of it, and
+        // for a fifth row's picture with both copies, whose card is drawn above its row)
         let today = [
             (1860, "grimoire/fonts", 0),
             (1860, "grimoire/fonts", 1),
             (1860, "grimoire/templates", 0),
-            (1860, "grimoire/photos", 0),
             (2480, "grimoire/fonts", 0),
             (2480, "grimoire/photos/Birds", 4),
         ];
@@ -5137,6 +5240,92 @@ mod tests {
         Home::Files(sp(p))
     }
 
+    fn goto_rows(b: &mut Browser) -> Vec<String> {
+        b.open_goto();
+        let c = b.card.clone().expect("the Go to sheet");
+        b.card_lines(&c).1.into_iter().map(|r| r.3).collect()
+    }
+
+    // The Go to sheet names home in its first row and offers the folder shown as home after its folders, unless that
+    // folder is home already or can never be (the storage's root, the trash); Reset home to Notebooks is there while
+    // home is anything else. A folder's card offers Set as home, and on the folder that is home Reset home to
+    // Notebooks in its place. A picker offers none of it.
+    #[test]
+    fn the_go_to_sheet_and_a_folders_card_set_and_reset_home() {
+        let (base, _g) = storage("homerows");
+        for d in ["documents/Planners/2026", "grimoire/photos/Trip", "grimoire/trash", "Notes"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("documents/Planners")));
+        assert!(!b.at_home());
+        assert_eq!(goto_rows(&mut b), ["Home: Notebooks", "Import", "Documents", "Photos", "Trash", "All storage", "Notes", "Set as home", "Cancel"]);
+        assert_eq!(card_named(&mut b, "2026").1, ["Open", "Set as home", "Cancel"]);
+        // home is a Library folder: named by its own name, and the sheet can put home back
+        b.set_home(Home::Library("School/Maths".into()));
+        let rows = goto_rows(&mut b);
+        assert_eq!(rows[0], "Home: Maths");
+        assert_eq!(rows[rows.len() - 3..], ["Set as home", "Reset home to Notebooks", "Cancel"]);
+        assert_eq!(card_named(&mut b, "2026").1, ["Open", "Set as home", "Cancel"]);
+        // home is the folder shown: no Set as home there, and its card (in the folder above) resets
+        b.set_home(files_home("documents/Planners"));
+        b.card = None;
+        assert!(b.at_home() && b.at_home_root());
+        let rows = goto_rows(&mut b);
+        assert_eq!(rows[0], "Home: Planners");
+        assert_eq!(rows[rows.len() - 2..], ["Reset home to Notebooks", "Cancel"]);
+        assert!(!rows.contains(&"Set as home".to_string()));
+        assert!(b.at_home() && !b.at_home_root(), "the sheet is over its rows");
+        assert_eq!(card_named(&mut b, "2026").1, ["Open", "Set as home", "Cancel"]);
+        assert!(b.go(sp("documents")));
+        assert!(!b.at_home());
+        assert_eq!(card_named(&mut b, "Planners").1, ["Open", "Reset home to Notebooks", "Cancel"]);
+        // a place of the root that is home is named as the place
+        b.set_home(files_home("documents"));
+        assert_eq!(goto_rows(&mut b)[0], "Home: Documents");
+        // where nothing can be home: the storage's root (All storage) and the trash
+        b.set_home(Home::Notebooks);
+        for at in ["", "grimoire/trash"] {
+            assert!(b.go(sp(at)));
+            let rows = goto_rows(&mut b);
+            assert!(!rows.contains(&"Set as home".to_string()) && !rows.contains(&"Reset home to Notebooks".to_string()), "{at}: {rows:?}");
+        }
+        // inside Grimoire's folders the card keeps its Rename and Delete after it
+        assert!(b.go(sp("grimoire/photos")));
+        assert_eq!(card_named(&mut b, "Trip").1, ["Open", "Set as home", "Rename", "Delete", "Cancel"]);
+        // a picker has no home, whatever it is told
+        let mut p = Browser::default();
+        assert!(p.open(PickSpec::import(), FilesPrefs { card: true, ..Default::default() }));
+        p.set_home(files_home("documents/Planners"));
+        assert!(p.go(sp("documents/Planners")));
+        assert!(!p.at_home());
+        assert_eq!(card_named(&mut p, "2026").1, ["Open", "Cancel"]);
+    }
+
+    // A folder whose path settings.ini could not keep as it is (a control character in a name) is not offered as
+    // home; nor is one the walk does not reach as a folder (a link is no row with a card at all).
+    #[test]
+    fn a_folder_home_cannot_keep_is_not_offered() {
+        let (base, _g) = storage("homeodd");
+        std::fs::create_dir_all(format!("{base}/documents/Plain")).unwrap();
+        // (a storage that takes no tab in a name has no such folder to offer)
+        let odd = std::fs::create_dir_all(format!("{base}/documents/Ta\tb")).is_ok();
+        std::os::unix::fs::symlink("Plain", format!("{base}/documents/Linked")).unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, show: 1, ..Default::default() }));
+        assert!(b.go(sp("documents")));
+        assert_eq!(card_named(&mut b, "Plain").1, ["Open", "Set as home", "Cancel"]);
+        if odd {
+            assert_eq!(card_named(&mut b, "Ta\tb").1, ["Open", "Cancel"]);
+        }
+        let link = row_of(&b, "Linked");
+        assert!(b.rows[link].kind == RowKind::Link && !b.has_card(link));
+        assert!(!b.enter_home(&sp("documents/Linked")), "a link is never entered as home");
+    }
+
     // Files goes to the folder that is home only through the walk, and only to a folder that can be home: a folder
     // gone, a file where it was, a link, the trash and the storage's root leave Files where it was, with nothing said
     // (the host says "Home folder not found." and goes to Notebooks).
@@ -5164,5 +5353,64 @@ mod tests {
         assert!(b.enter_home(&sp("documents/Planners")));
         assert!(b.at_home());
         assert_eq!(b.crumbs(), "Files > Documents > Planners");
+    }
+
+    // The folder that is home has no Back button (nothing is further up for it, as at the Library's top), its title
+    // stands at the margin, and a folder inside it has Back again, which leads to it.
+    #[test]
+    fn the_home_folder_has_no_back_button() {
+        let (base, _g) = storage("homeback");
+        std::fs::create_dir_all(format!("{base}/documents/Planners/2026")).unwrap();
+        i18n_set("en");
+        let mut a = screen_app();
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        b.set_home(files_home("documents/Planners"));
+        assert!(b.enter_home(&sp("documents/Planners")));
+        b.list_now();
+        b.draw(&mut a);
+        assert!(b.point("back").is_none() && b.hits.h.iter().all(|h| h.id != B_BACK));
+        assert!(b.point("crumb.1").is_some() && b.point("crumb.2").is_some(), "the path bar still leads up");
+        assert!(b.go(sp("documents/Planners/2026")));
+        b.draw(&mut a);
+        assert!(b.point("back").is_some());
+        assert!(b.up(now_ms()));
+        assert_eq!(b.at, Some(sp("documents/Planners")));
+        // home elsewhere, or none: Back as ever
+        b.set_home(Home::Notebooks);
+        b.draw(&mut a);
+        assert!(b.point("back").is_some());
+        canvas_free(&mut a.screen);
+    }
+
+    // Sideways the Go to sheet has room for fewer rows than it has folders: the folders are left out from their end,
+    // and the rows after them stay, Set as home, Reset home to Notebooks and Cancel, with Home first.
+    #[test]
+    fn the_go_to_sheet_keeps_its_home_rows_when_folders_are_left_out() {
+        let (base, _g) = storage("homefit");
+        for d in ["documents/Planners", "Downloads", "grimoire/templates", "grimoire/photos", "grimoire/fonts", "fonts", "grimoire/PDFs", "grimoire/trash", "Notes", "Music", "Zines"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        i18n_set("en");
+        let mut a = screen_app();
+        (a.w, a.h) = (2480, 1860);
+        canvas_free(&mut a.screen);
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        b.set_home(files_home("Notes"));
+        assert!(b.go(sp("documents/Planners")));
+        b.draw(&mut a);
+        let all = goto_rows(&mut b);
+        assert_eq!(all.len(), 17, "Home, ten places, three folders, Set as home, Reset and Cancel: {all:?}");
+        b.draw(&mut a);
+        let c = b.card.as_ref().unwrap();
+        let ids: Vec<i32> = c.hits.h.iter().map(|h| h.id).collect();
+        assert!(ids.len() < all.len() && ids.len() >= 8, "{ids:?}");
+        assert_eq!(ids[0], B_HOME_GO);
+        assert_eq!(ids[ids.len() - 3..], [B_HOME_SET, B_HOME_RESET, B_CARD_CANCEL]);
+        assert!(ids[1..ids.len() - 3].iter().all(|&i| i == B_GOTO));
+        assert!(c.rect.y >= 0 && c.rect.y + c.rect.h <= a.h, "the sheet is on the screen: {:?}", c.rect);
+        canvas_free(&mut a.screen);
     }
 }

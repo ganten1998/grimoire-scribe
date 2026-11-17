@@ -16,7 +16,7 @@ expect files.order is Other|Trip|beach.jpg
 tap library files.more.2
 wait 300
 expect files.card is folder
-expect files.card.rows is Open|Import 1 picture as notebook|Rename|Delete|Cancel
+expect files.card.rows is Open|Import 1 picture as notebook|Set as home|Rename|Delete|Cancel
 storage move grimoire/photos/Trip grimoire/photos/Was
 storage move grimoire/photos/Other grimoire/photos/Trip
 tap library files.card.rename
