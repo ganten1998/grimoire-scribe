@@ -3139,6 +3139,12 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     } else if key == "settings.home" {
         // the home folder as settings.ini keeps it (2.2): empty for Notebooks, notebooks/<folder>, files/<path>
         csnprintf!(out, cap, "%s", st.home.as_str());
+    } else if key == "settings.saved.home" {
+        // the home= line settings.ini has on disk now (empty without one), what a start would read: a change saved
+        // when it was made, before quit saves everything (2.2)
+        let text = read_file_max(&format!("{}/settings.ini", store_root()), 1 << 20).unwrap_or_default();
+        let line = text.split(|&c| c == b'\n').find_map(|l| l.strip_prefix(b"home=")).unwrap_or_default();
+        csnprintf!(out, cap, "%s", String::from_utf8_lossy(line).as_ref());
     } else if key == "font" {
         // Classic's font in use: a family's id, or file:<path> while a font of the owner's own draws
         if font_own() && crate::userfonts::userfonts_in_use(st.font_file.as_str()) {
