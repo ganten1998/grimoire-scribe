@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 21:19-0600\n"
+"POT-Creation-Date: 2026-11-16 23:07-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -585,8 +585,8 @@ msgstr "Tamaños de la herramienta en uso"
 msgid "Files"
 msgstr "Archivos"
 
-#. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
-#. out of any folder (and out of Files).
+#. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: to the home
+#. folder, where Grimoire opens (the Library's top until one is set).
 #: rust/src/actions.rs
 msgid "Home"
 msgstr "Inicio"
@@ -1273,6 +1273,25 @@ msgstr "%.1f GB"
 msgid "Free: %s of %s"
 msgstr "Libre: %s de %s"
 
+#: rust/src/browser.rs rust/src/notebookpicker.rs
+msgid "Notebooks"
+msgstr "Cuadernos"
+
+#. TRANSLATORS: a row of Files' Go to sheet (for the folder shown) and of a folder's card there, and of a
+#. folder's menu in the Library: Grimoire opens at this folder from now on, each time it starts (a row
+#. of about 800 px at 44 px in bold, on two lines at 34 px if it must).
+#: rust/src/browser.rs rust/src/library.rs
+msgid "Set as home"
+msgstr "Usar como inicio"
+
+#. TRANSLATORS: a row of Files' Go to sheet while a folder is set as home, and of the home folder's own
+#. card or menu: Grimoire opens at the Library's top level again, as before a home was set (Notebooks as
+#. translated in the notebook picker; a row of about 800 px at 44 px in bold, on two lines at 34 px if it
+#. must).
+#: rust/src/browser.rs rust/src/library.rs
+msgid "Reset home to Notebooks"
+msgstr "Restablecer el inicio a Cuadernos"
+
 #. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
 #. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
 #: rust/src/browser.rs rust/src/editor.rs rust/src/library.rs
@@ -1345,6 +1364,14 @@ msgstr "En espera"
 #: rust/src/browser.rs
 msgid "Imported"
 msgstr "Importado"
+
+#. TRANSLATORS: the first row of Files' Go to sheet: it goes to the home folder, the place Grimoire opens
+#. at when it starts (%s: Notebooks, or the name of the folder set as home; a row of about 800 px at
+#. 44 px in bold, a long name cut short).
+#: rust/src/browser.rs
+#, c-format
+msgid "Home: %s"
+msgstr "Inicio: %s"
 
 #. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
 #. the main one), or at 34 px, or two lines of that.
@@ -1479,10 +1506,6 @@ msgstr "Movido a %s"
 #, c-format
 msgid "Restored to %s."
 msgstr "Restaurado en %s."
-
-#: rust/src/browser.rs rust/src/notebookpicker.rs
-msgid "Notebooks"
-msgstr "Cuadernos"
 
 #. TRANSLATORS: the file picker's top line when the Kindle has under 200 MB free (one line, about 800 px at 44 px).
 #: rust/src/browser.rs
@@ -4340,6 +4363,13 @@ msgstr "No se pudo guardar el cambio."
 #: rust/src/library.rs
 msgid "Another import is still going. This one starts after it."
 msgstr "Hay otra importación en curso. Esta empezará cuando termine."
+
+#. TRANSLATORS: a toast as Grimoire starts (or goes home): the folder set as home is not there any more, or is
+#. not one Grimoire opens, so the Library's top level shows and home is Notebooks again. One line of about
+#. 1000 px at 44 px in bold.
+#: rust/src/library.rs
+msgid "Home folder not found."
+msgstr "No se encontró la carpeta de inicio."
 
 #. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
 #. Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.

@@ -173,6 +173,51 @@ fn grimoires_folders_by_identity() {
     check!(other.open_dir(&sp(b"PDFs"), false).is_ok());
 }
 
+// The refused folders by identity as well as by name, and a path part that ends in a dot or a space refused (no
+// name on the Kindle's storage ends so). Grimoire's own refused folders by identity alone: a storage whose root is
+// Grimoire's folder, where no name rule applies to them. The system's folders by another spelling the storage takes
+// for theirs: on a case-insensitive storage that folds Unicode case (the Mac's), a long s or a Kelvin sign; a
+// storage that does not take them has no such folder to find.
+fn refused_folders_by_identity_and_odd_ends() {
+    use std::os::unix::fs::MetadataExt;
+    let (root, g) = tree();
+    std::fs::create_dir_all(format!("{root}/documents/Trail.")).unwrap();
+    std::fs::write(format!("{root}/documents/Space "), b"%PDF-1.4\n").unwrap();
+    let st = FsStorage::open(&root, &g).unwrap();
+    for p in [&b"documents."[..], b"documents ", b"system.", b"koreader ", b"grimoire./app", b"grimoire/app.", b"documents/Trail.", b"documents/Books."] {
+        check!(st.zone(&sp(p), false) == FsZone::Refused);
+        check!(st.open_dir(&sp(p), false).err() == Some(FsErr::Refused));
+    }
+    check!(st.open_file(&sp(b"documents/a.pdf."), true).err() == Some(FsErr::Refused));
+    check!(st.open_file(&sp(b"documents/Space "), true).err() == Some(FsErr::Refused));
+    let l = list_all(&st, b"documents", false);
+    check!(!names(&l).iter().any(|n| n == "Trail." || n == "Space "));
+    check!(names(&l).contains(&"Books".to_string()));
+    // Grimoire's own, by identity alone
+    let other = FsStorage::open(&g, &g).unwrap();
+    for p in [&b"app"[..], b"bluetooth", b"app/x"] {
+        check!(other.zone(&sp(p), false) == FsZone::ReadOnly);
+        check!(other.open_dir(&sp(p), false).is_err());
+    }
+    check!(other.open_dir(&sp(b"app"), false).err() == Some(FsErr::Refused));
+    check!(other.open_dir(&sp(b"bluetooth"), false).err() == Some(FsErr::Refused));
+    check!(other.open_dir(&sp(b"import/Planner"), false).is_ok());
+    // the system's, by another spelling
+    let ino = |p: &str| std::fs::metadata(format!("{root}/{p}")).map(|m| m.ino()).ok();
+    for (alias, name) in [("\u{17f}ystem", "system"), ("\u{212a}oreader", "koreader")] {
+        let p = sp(alias.as_bytes());
+        check!(st.zone(&p, false) == FsZone::ReadOnly);
+        if ino(alias).is_some() && ino(alias) == ino(name) {
+            check!(st.open_dir(&p, false).err() == Some(FsErr::Refused));
+            check!(st.open_dir(&sp(format!("{alias}/x").as_bytes()), false).is_err());
+        } else {
+            eprintln!("  (this storage does not take {alias:?} for {name}: nothing to refuse)");
+            check!(st.open_dir(&p, false).err() == Some(FsErr::NotFound));
+        }
+    }
+    check!(st.open_dir(&sp(b"documents/Books"), false).is_ok());
+}
+
 // A listing: names and kinds only, links and the deny-list's entries left out (counted), a FIFO and odd
 // names kept; Grimoire's folder lists only the user's places; stats only for the rows asked, links unfollowed.
 fn a_listing_never_enters_a_link() {
@@ -298,6 +343,7 @@ fn test_fsview() {
     run!(zones_by_name_in_any_case);
     run!(the_walk_follows_no_link);
     run!(grimoires_folders_by_identity);
+    run!(refused_folders_by_identity_and_odd_ends);
     run!(a_listing_never_enters_a_link);
     run!(slices_keep_to_their_budget);
     run!(free_space);

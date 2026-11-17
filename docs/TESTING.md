@@ -3259,3 +3259,60 @@ floor and a failing write simulated; `make l10n-check`'s `fonts-add` runs (Class
    (two abreast sideways), and Back at the picker's root returns to the sheet.
 10. **Over a notebook**: open a notebook, Settings from its panel > Display > Font: the sheet has no Add a font...
     row, and is otherwise as it was.
+
+## 2.2, Home (issue #160): device checks
+
+Not run on a Scribe yet. Automated: `home.rs`'s, `browser.rs`'s and `library.rs`'s unit tests, `test_store.rs`
+`home_key`, and the scenarios `files_*_home_*` from `files_19_home_set` (docs/DESIGN.md, Files: home).
+What only the Scribe can tell: the walk to a home on its storage (vfat under the FUSE proxy), a start at home after a
+reboot and after KOReader's hand-over, and what a USB connection does to a home inside Files. With Grimoire open and
+Files' card shown (New > From a file... > Show Files in Library), on a folder made over USB first
+(`/mnt/us/documents/Home probe`, with one PDF in it):
+
+1. **Set from Files**: Files > Documents > Home probe, tap the path's last part: the Go to sheet's first row reads
+   "Home: Notebooks", and Set as home is after the folders. Tap it: no toast, the Back button goes, and the sheet
+   opened again reads "Home: Home probe" with Reset home to Notebooks. Over SSH
+   `grep '^home=' /mnt/us/grimoire/settings.ini` shows `home=files/documents/Home probe`.
+2. **A start at home**: Exit, start Grimoire from the Kindle's home screen: Files opens at Home probe with no Back
+   button, within the start's usual time (grimoire.log's `first frame presented` against an earlier start's), and
+   with no toast. Esc on a paired keyboard (or a key bound to back) asks "Exit Grimoire?"; No leaves Files as it was.
+   The path bar's Documents and Files lead up; Files' root's Back reaches the Library, and the Go to sheet's Home
+   row comes back.
+3. **A notebook closed**: from the Library open a notebook and close it: the Library, where it was left, not Files.
+   With a keyboard paired, Settings > Shortcuts > Enable shortcuts on and a key bound to `home` (shortcuts.ini
+   `key.h=home`), H goes back to Home probe.
+4. **KOReader**: with home set, open a page with Annotate this page in Grimoire: the page opens, as without a home;
+   closing it shows Files at Home probe. Then Open this book in Grimoire on a PDF KOReader hands over by its path:
+   the import's notice counts, and the book's page opens by itself as without a home (Files does not open over the
+   Library first); closing it shows Files at Home probe.
+5. **Gone**: with Grimoire closed, rename the folder over USB to `Home probe 2`; start Grimoire: the Library's top,
+   one toast "Home folder not found.", and `grep '^home=' /mnt/us/grimoire/settings.ini` shows nothing. The next
+   start says nothing.
+6. **A link**: with Grimoire closed, `ln -s "Home probe 2" "/mnt/us/documents/Home link"` and write
+   `home=files/documents/Home link` into settings.ini by hand: the start shows the Library's top and the toast, and
+   grimoire.log has `home: the home folder was not found` (and no name). Remove the link. If `ln -s` is refused,
+   the storage takes no links, and none can be there: skip this step.
+7. **Renamed in Grimoire**: make an empty folder over USB, `/mnt/us/grimoire/photos/Home probe 3` (Documents is read
+   only, so Rename is offered in Grimoire's own folders). Files > Photos > its card > Set as home, then its card >
+   Rename to `Home probe 4`: settings.ini names `files/grimoire/photos/Home probe 4`, and a restart opens Files
+   there. Delete it from its card in Photos: only "Moved to grimoire/trash" is said, settings.ini has no home line
+   at once, and the next start opens at the Library's top with no toast. Restore in Files > Trash puts the folder
+   back, not as home (set it again to make it home).
+8. **A Library folder**: a folder's menu in the Library > Set as home; restart: the Library opens in it, with its
+   Back button; Esc goes up to the Library's top, as that button does. Rename it from its menu: the next start opens
+   in it under its new name. Its menu > Reset home to Notebooks: the next start opens at the top.
+9. **USB while running** (Esc and H on a paired keyboard, with Settings > Shortcuts > Enable shortcuts on and
+   `key.h=home` in shortcuts.ini): set `Home probe 2` as home again and have Files open at it; connect USB and, from
+   the computer, rename it to `Home probe 5`; disconnect. Press Esc: no "Exit Grimoire?"; Files goes to the nearest
+   folder above that opens (Documents, with its Back button), with no crash and no stuck screen. H (the `home`
+   action) shows the Library's top with "Home folder not found.". Set `Home probe 5` as home, open it, rename it over
+   USB to `Home probe 6`, then tap its PDF > Import as notebook: "File changed. Try again.", and Files goes up to
+   Documents the same way.
+10. **Spanish**: Settings > Language > Español: the Go to sheet's "Inicio: ...", "Usar como inicio" and "Restablecer
+    el inicio a Cuadernos", the folder's card and the Library folder's menu read whole, upright and sideways.
+11. **Other spellings of a refused folder** (with Grimoire closed, over SSH): the walk refuses a path part ending in
+    a dot or a space, and knows the refused folders by identity as well as by name. Write in turn into settings.ini
+    `home=files/documents.` and `home=files/documents ` (a space at its end), then, for a refused folder with a long
+    name that is there (Grimoire's `bluetooth`, `extensions` at the storage's top), its short name on the storage:
+    `home=files/grimoire/BLUETO~1`, `home=files/EXTENS~1` (`ls -d /mnt/us/grimoire/BLUETO~1` shows that the storage
+    takes it). Each start shows the Library's top with "Home folder not found.", and the line is gone afterwards.

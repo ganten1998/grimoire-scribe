@@ -40,6 +40,8 @@ const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tool
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
 const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
+const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
+const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -563,6 +565,44 @@ fn files_rename_delete_and_restore_are_told_as_they_are() {
     none_failed(&fails, "Files' rename, delete and restore");
 }
 
+// Files' home folder (issue #160): the safety sentences of DESIGN.md and FORMAT.md name what the code has (the value
+// read strictly, what it names reached one way only, nothing opened at a home that fails, the refused folders known
+// by identity as well as by name), the figure of the value's limit is the constant's, and the sentences the change
+// replaced, and a label of the private plan, are gone.
+#[test]
+fn files_home_is_told_as_it_is() {
+    let mut fails = Vec::new();
+    // the value's limit, as DESIGN.md and FORMAT.md give it
+    let max = grimoire::home::HOME_MAX.to_string();
+    beside(&mut fails, DESIGN, "`HOME_MAX`", &max);
+    present(&mut fails, FORMAT, &format!("under {max} bytes"));
+    // the names the sentences give, and the code that has them
+    present(&mut fails, DESIGN, "`Home::parse`");
+    present(&mut fails, HOME, "pub fn parse(v: &[u8]) -> Option<Home>");
+    present(&mut fails, DESIGN, "`FsStorage::folder`");
+    present(&mut fails, FSVIEW, "pub fn folder(&self, p: &StoragePath) -> Result<FsStat, FsErr>");
+    present(&mut fails, DESIGN, "`Browser::enter_home`");
+    present(&mut fails, BROWSER, "pub fn enter_home(&mut self, p: &StoragePath) -> bool");
+    present(&mut fails, DESIGN, "`home_folder_ok`");
+    present(&mut fails, HOME, "pub fn home_folder_ok(st: &FsStorage, p: &StoragePath) -> bool");
+    // nothing opened at a home that fails: home_files walks to it first
+    present(&mut fails, DESIGN, "`home_files` walks to it (`home_folder_there`) before Files is opened");
+    present(&mut fails, LIBRARY, "home_folder_there(p)?;");
+    // the refused folders by identity as well as by name, and a path part ending in a dot or a space refused
+    present(&mut fails, DESIGN, "`FsStorage.refused`");
+    present(&mut fails, FSVIEW, "refused: Vec<(u64, u64)>,");
+    present(&mut fails, FSVIEW, "self.refused.iter().any(|&o| Some(o) == id)");
+    present(&mut fails, DESIGN, "a name ending in a dot or a space");
+    present(&mut fails, FSVIEW, "matches!(n.last(), Some(b'.' | b' '))");
+    // what the change replaced: the action's old place, Esc at a Library home, a delete that left home set
+    gone(&mut fails, DESIGN, "`home` is the Library's top for now.");
+    gone(&mut fails, BACKLOG, "Today `home` (the action) goes to the Library's top");
+    gone(&mut fails, DESIGN, "At a Library folder that is home Esc asks \"Exit Grimoire?\" too");
+    gone(&mut fails, DESIGN, "home folder moved to the trash in Files is gone until Restore puts it back");
+    gone(&mut fails, DESIGN, "the owner's D31");
+    none_failed(&fails, "Files' home folder");
+}
+
 #[test]
 fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();
@@ -701,7 +741,7 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     // write_zone (the allow-list, inside Grimoire's folder only), which asks zone_of (writable only below Grimoire's
     // own folder, never at the storage's root): both held whole. The copy job writes only into Grimoire's folder of
     // its kind, and only where zone_of says writable.
-    const ZONE_OF: &str = r#"fn zone_of(grimoire: Option<&StoragePath>, p: &StoragePath, pick: bool) -> FsZone { let comps: Vec<&[u8]> = p.components().collect(); if comps.iter().any(|n| n.first() == Some(&b'.') || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) { return FsZone::Refused; } if comps.first().is_some_and(|n| SYSTEM.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if let Some(g) = grimoire { let gc: Vec<&[u8]> = g.components().collect(); if !gc.is_empty() && comps.len() > gc.len() && gc.iter().zip(&comps).all(|(a, b)| eq_nocase(a, b)) { let n = comps[gc.len()]; if OWN_REFUSED.iter().any(|s| eq_nocase(n, s)) || (pick && OWN_NOT_PICKED.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if OWN_WRITABLE.iter().any(|s| eq_nocase(n, s)) { return FsZone::Writable; } if comps.len() == gc.len() + 1 && n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".ini") { return FsZone::Refused; } } } FsZone::ReadOnly }"#;
+    const ZONE_OF: &str = r#"fn zone_of(grimoire: Option<&StoragePath>, p: &StoragePath, pick: bool) -> FsZone { let comps: Vec<&[u8]> = p.components().collect(); let odd_end = |n: &[u8]| matches!(n.last(), Some(b'.' | b' ')); if comps.iter().any(|n| n.first() == Some(&b'.') || odd_end(n) || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) { return FsZone::Refused; } if comps.first().is_some_and(|n| SYSTEM.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if let Some(g) = grimoire { let gc: Vec<&[u8]> = g.components().collect(); if !gc.is_empty() && comps.len() > gc.len() && gc.iter().zip(&comps).all(|(a, b)| eq_nocase(a, b)) { let n = comps[gc.len()]; if OWN_REFUSED.iter().any(|s| eq_nocase(n, s)) || (pick && OWN_NOT_PICKED.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if OWN_WRITABLE.iter().any(|s| eq_nocase(n, s)) { return FsZone::Writable; } if comps.len() == gc.len() + 1 && n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".ini") { return FsZone::Refused; } } } FsZone::ReadOnly }"#;
     const WRITE_ZONE: &str = r#"fn write_zone(&self, p: &StoragePath) -> Option<&'static str> { let g = self.grimoire.as_ref()?; if zone_of(Some(g), p, false) != FsZone::Writable { return None; } let gl = g.components().count(); let comps: Vec<&[u8]> = p.components().collect(); if comps.len() < gl + 2 || (comps.len() == gl + 2 && eq_nocase(comps[gl], b"import") && eq_nocase(comps[gl + 1], b"done")) { return None; } ["import", "templates", "photos", "fonts"].into_iter().find(|w| eq_nocase(comps[gl], w.as_bytes())) }"#;
     let read_only = "**The Kindle's fonts folder is read only**, as every folder outside Grimoire's own is";
     told_on_code(&mut fails, DESIGN, read_only, FSVIEW, "fn zone_of(", ZONE_OF);

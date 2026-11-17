@@ -642,22 +642,26 @@ fn the_copy_request() {
         check!(copy_request(&st, &sp(&long), &l, CopyTo::Templates) == Err(FsWriteErr::TooLong));
     }
     // a name Files' Rename would refuse (issue #161): the copy keeps the source's name, so no copy of it is made in
-    // Grimoire's folders, into any of them, with room or without, and the refusal carries the rule broken
+    // Grimoire's folders, into any of them, with room or without, and the refusal carries the rule broken. A name
+    // that ends in a space or a dot (None) breaks a rule too, but the walk refuses such a part before the rule is
+    // looked at (issue #160: no name on the Kindle's storage ends so, and the part would name another entry): its
+    // request is refused as a place a pick never takes from, and no copy of it is made either.
     for (name, rule) in [
-        ("a:b.ttf", NameRule::Char(b':')),
-        ("what?.png", NameRule::Char(b'?')),
-        (" lead.ttf", NameRule::LeadingSpace),
-        ("trail.ttf ", NameRule::TrailingSpace),
-        ("dot.ttf.", NameRule::TrailingDot),
-        ("tab\there.ttf", NameRule::Control),
+        ("a:b.ttf", Some(NameRule::Char(b':'))),
+        ("what?.png", Some(NameRule::Char(b'?'))),
+        (" lead.ttf", Some(NameRule::LeadingSpace)),
+        ("trail.ttf ", None),
+        ("dot.ttf.", None),
+        ("tab\there.ttf", Some(NameRule::Control)),
     ] {
         let p = format!("documents/{name}");
         std::fs::write(format!("{root}/{p}"), b"some bytes").unwrap();
         let listed = stat_of(&st, &p);
+        let want = rule.map_or(Err(FsWriteErr::Refused), |rule| Err(FsWriteErr::Name(rule)));
         for free in [None, Some(1 << 20)] {
             copy_seams(free, None);
             for to in [CopyTo::Templates, CopyTo::Photos, CopyTo::Fonts] {
-                check!(copy_request(&st, &sp(&p), &listed, to) == Err(FsWriteErr::Name(rule)));
+                check!(copy_request(&st, &sp(&p), &listed, to) == want);
             }
         }
     }

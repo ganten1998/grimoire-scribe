@@ -444,6 +444,13 @@ fn app_host() -> &'static str {
     }
 }
 
+/// Whether KOReader started this session on a page to annotate or on a book (the launcher's GRIMOIRE_ANNOTATE or
+/// GRIMOIRE_BOOK, with GRIMOIRE_HOST): its notebook opens by itself over the Library's cards (annotate_at_start,
+/// book_tick), so a home inside Files does not open over them first (library.rs, home_waits).
+pub fn app_handed_over() -> bool {
+    !app_host().is_empty() && ["GRIMOIRE_ANNOTATE", "GRIMOIRE_BOOK"].iter().any(|k| getenv(k).as_deref() == Some("1"))
+}
+
 // The sleep screen to use. Hosted, KOReader keeps the Kindle UI paused for its whole session and
 // the launcher never wakes it, so the Kindle's own screensaver (mode 2) cannot show: the page
 // does instead.
@@ -790,6 +797,9 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let book = getenv("GRIMOIRE_BOOK");
     book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book,
     );
+    // (a home inside Files waited for the notebook KOReader hands over: when none opened and none is coming, it opens
+    // now, 2.2)
+    crate::library::library_handover_tried(a, a.scr != ScreenId::Library || a.book.state == BookState::Running);
     // Beta.1 could leave the passcode off after a restart: the launcher says so (GRIMOIRE_PASSCODE), and
     // the log notes it, with no toast (the owner, 2026-11-04). Current standalone sessions leave it
     // enabled and yield to the native keypad on sleep.
@@ -798,7 +808,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     if passcode.as_deref() == Some("left-off") {
         qlog!("device passcode: left off by an earlier session");
     }
-    if annotate_failed {
+    if crate::library::library_home_said(a) {
+        // (the start said "Home folder not found." as it went home: that toast stays, as it says why the main menu
+        // is not at home; none of the ones below is put over it, 2.2)
+    } else if annotate_failed {
         app_toast(a, &note, 8000);
     } else if a.book.state == BookState::Failed {
         book_failed(a);
@@ -3137,6 +3150,15 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
     } else if key == "settings.font_bold" {
         csnprintf!(out, cap, "%s", st.font_bold.as_str());
+    } else if key == "settings.home" {
+        // the home folder as settings.ini keeps it (2.2): empty for Notebooks, notebooks/<folder>, files/<path>
+        csnprintf!(out, cap, "%s", st.home.as_str());
+    } else if key == "settings.saved.home" {
+        // the home= line settings.ini has on disk now (empty without one), what a start would read: a change saved
+        // when it was made, before quit saves everything (2.2)
+        let text = read_file_max(&format!("{}/settings.ini", store_root()), 1 << 20).unwrap_or_default();
+        let line = text.split(|&c| c == b'\n').find_map(|l| l.strip_prefix(b"home=")).unwrap_or_default();
+        csnprintf!(out, cap, "%s", String::from_utf8_lossy(line).as_ref());
     } else if key == "font" {
         // Classic's font in use: a family's id, or file:<path> while a font of the owner's own draws
         if font_own() && crate::userfonts::userfonts_in_use(st.font_file.as_str()) {
