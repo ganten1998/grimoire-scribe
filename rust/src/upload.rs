@@ -4,12 +4,12 @@
 //!
 //! The request is `POST /upload` with the PDF's bytes as its body (a Content-Length, never chunked), the file's name
 //! percent-encoded in `X-Grimoire-Name` and the Share page's token in `X-Grimoire-Token`. Before the user's yes nothing
-//! of the body is read but its first five bytes (`%PDF-`), and nothing is written but the temporary file
-//! (`grimoire/.cache/share-upload.part`, made afresh with O_CREAT|O_EXCL|O_NOFOLLOW in a folder reached without
-//! following a link). A `Part` dropped without `commit` removes that file, so every way out leaves nothing; one a
-//! crash left is removed at the next start (`upload_sweep`). Import renames it into `grimoire/import/` under the
-//! cleaned name with fsview's rename that never replaces (" 2", " 3"... where the name is taken), where the import
-//! takes it as any PDF copied in. The name the client sends is never a path: it is shown, and names that file.
+//! of the body is looked at but its first five bytes (`%PDF-`), the rest is written unread, and nothing is written but
+//! the temporary file (`grimoire/.cache/share-upload.part`, made afresh with O_CREAT|O_EXCL|O_NOFOLLOW in a folder
+//! reached without following a link). A `Part` dropped without `commit` removes that file, so every way out leaves
+//! nothing; one a crash left is removed at the next start (`upload_sweep`). Import renames it into `grimoire/import/`
+//! under the cleaned name with fsview's rename that never replaces (" 2", " 3"... where the name is taken), where the
+//! import takes it as any PDF copied in. The name the client sends is never a path: it is shown, and names that file.
 
 use crate::fsview::{fsview_name_check, numbered, rename_noreplace, sync_dir, FS_NAME_MAX};
 use crate::prelude::*;

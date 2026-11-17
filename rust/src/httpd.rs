@@ -2233,16 +2233,16 @@ fn host_ok(req: &[u8]) -> bool {
 //
 // One upload at a time, only while Share keeps the server. The request is held to upload.rs's rules in this order:
 // Share open, the Host header (host_ok), the Origin and Sec-Fetch-Site headers (same_origin), the page's token
-// (same_token), a Content-Length (no chunked body) of at least five bytes and at most UPLOAD_MAX, no other upload
-// under way (a second one ends the first: neither is kept), none ended moments ago without Import (UPLOAD_QUIET_MS),
-// and room for it above the storage's floor. Nothing of the head past these headers, and nothing of the body but its
-// first five bytes, is read before the user's yes. The body goes into the one temporary file (upload::Part) as it
-// comes; once it is all in, the Kindle asks (the Share screen, httpd_upload_question), the reply's head and the send's
+// (same_token), a Content-Length (no chunked body) of at least five bytes and at most UPLOAD_MAX, no other upload under
+// way (a second one ends the first: neither is kept), none ended moments ago without Import (UPLOAD_QUIET_MS), and room
+// for it above the storage's floor. Nothing of the head past these headers, and nothing of the body but its first five
+// bytes, is looked at before the user's yes: the body goes into the one temporary file (upload::Part) as it comes,
+// unread; once it is all in, the Kindle asks (the Share screen, httpd_upload_question), the reply's head and the send's
 // code (upload::new_code) go to the browser, and the reply's last line waits for the user's answer. Import renames the
 // file into import/ (Part::commit); every other way out drops the Part, which removes the file: Cancel, no answer in
 // UPLOAD_ASK_MS, a body that stalls for UPLOAD_STALL_MS or is not whole after UPLOAD_BODY_MS, a browser that hangs up,
-// Share left, sleep, a second upload, the server stopping. The log says what came and how it ended, never the name,
-// the token or the code.
+// Share left, sleep, a second upload, the server stopping. The log says what came and how it ended, never the name, the
+// token or the code.
 
 /// Every value of a header in a request's head, as header_get reads the first (its name in any case, then a colon;
 /// the spaces and tabs before the value left out; the value to its line's end), however long.

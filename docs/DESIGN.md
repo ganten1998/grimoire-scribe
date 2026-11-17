@@ -3157,7 +3157,8 @@ gate, and everything before it is built so that a PDF nobody said yes to leaves 
 **The request** (upload.rs; httpd.rs's `route_upload`). `POST /upload` with the PDF's bytes as the body and a
 Content-Length, the file's name percent-encoded in `X-Grimoire-Name`, the page's token in `X-Grimoire-Token`. A raw
 body, no multipart form: the server reads the request line and the headers as it does for every request, a
-Content-Length, and the body's first five bytes. Headers are looked for in the head alone, never in the body. A
+Content-Length, and looks at the body's first five bytes; the rest of the body is written, unread. Headers are looked
+for in the head alone, never in the body. A
 refusal before the Kindle asks is a status of its own with one short line. Once the Kindle asks, the reply opens:
 200, no Content-Length (the close ends it), and its first line, `code 4821`, the send's code; its last line, sent
 with the answer, says how it ended: `imported`, `declined on the Kindle`, `no answer on the Kindle`, `another PDF was
@@ -3198,7 +3199,7 @@ Kindle`). The head within a connection's 4096 bytes, and 16 connections, as for 
 the body may still come is followed by reading and dropping what still comes for `UPLOAD_DRAIN_MS` (5 s) or until the
 browser closes, so that the close does not reset the connection under the answer.
 
-**Before the yes.** Nothing of the body but its first five bytes is read before the user's yes: they must be `%PDF-`,
+**Before the yes.** Of the body only its first five bytes are looked at before the user's yes: they must be `%PDF-`,
 checked before any byte is written and refused at the first byte that differs (415). The body is written to one file
 only, `grimoire/.cache/share-upload.part` (`.cache` is a folder Files never lists or enters), made afresh: what is at
 its name is removed first (the entry, never what it points at), then O_CREAT|O_EXCL|O_NOFOLLOW, mode 0600, in a

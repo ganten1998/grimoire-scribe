@@ -106,10 +106,13 @@
   Deleting `grimoire/fonts/.cache` still has every font checked again.
 - **Send a PDF from the Share page** (#175). While Share is open, its page in a phone's or a computer's browser has
   a Send a PDF to the Kindle button. Once the PDF has arrived, the Kindle asks "Import "2027 Planner.pdf" (12.3 MB)?"
-  and keeps it only if you tap Import: it goes into `grimoire/import` and becomes a notebook as a PDF copied there
-  does. Cancel, no answer for two minutes, closing Share, sleep, or two PDFs sent at once keep nothing. PDFs up to
-  64 MB; the page says why one was not taken. Share still has no password: anyone on your Wi-Fi can open its page
-  while it is open, so only send, and only tap Import, when you expect it.
+  with a code of four digits under it, which the page that sent it shows too, and keeps it only if you tap Import:
+  it goes into `grimoire/import` and becomes a notebook as a PDF copied there does. Cancel, Share's X, no answer for
+  two minutes, closing Share, sleep, or two PDFs sent at once keep nothing, and after a PDF that was not imported the
+  next is taken 5 seconds later. PDFs up to 64 MB. The page says when a PDF is too big, when another is being sent,
+  when to wait, when the storage is full, or when the page must be reloaded; otherwise "Not imported.". Share still
+  has no password: anyone on your Wi-Fi can open its page while it is open, so only send, and only tap Import, when
+  you expect it and the two codes are the same.
 
 ## 2.1.0 (2026-11-13)
 

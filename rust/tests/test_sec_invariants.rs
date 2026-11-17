@@ -780,7 +780,7 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
 // Send a PDF from the Share page (2.2, issue #175): the server takes a PDF from the network, as root, kept only after
 // the user's yes on the Kindle. Each sentence of DESIGN.md (and KINDLE.md) that states one of its safety rules is held
 // with the code that makes it true: Share alone, the Origin check and the token compared in constant time (whole
-// functions), a token new each time Share opens, nothing read past the first five bytes before the yes, the one
+// functions), a token new each time Share opens, nothing looked at past the first five bytes before the yes, the one
 // temporary file made afresh and removed whenever its Part drops (and when its connection closes), two senders keeping
 // neither, the name never a path (whole functions), never a rename over a file, the question answered only once shown,
 // the log's refusal line, and the size limit with its figure. A changed line, or a reworded sentence, fails here until
@@ -800,7 +800,7 @@ fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
     told_on(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", HTTPD, "Ok(Some(t)) if same_token(&t, page.as_bytes()) => {}");
     told_on(&mut fails, DESIGN, "new each time Share opens (`httpd_acquire`)", HTTPD, "let token = crate::upload::new_token();");
     // before the yes: the first five bytes, one temporary file made afresh, removed on every way out
-    told_on(&mut fails, DESIGN, "Nothing of the body but its first five bytes is read before the user's yes", HTTPD, "if !PDF_MAGIC.starts_with(&held) {");
+    told_on(&mut fails, DESIGN, "Of the body only its first five bytes are looked at before the user's yes", HTTPD, "if !PDF_MAGIC.starts_with(&held) {");
     told_on(&mut fails, DESIGN, "then O_CREAT|O_EXCL|O_NOFOLLOW, mode 0600", UPLOAD, "libc::openat(dir.as_raw_fd(), name.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint)");
     let removed = "The temporary file is removed whenever its `Part` is dropped without `commit`";
     told_on(&mut fails, DESIGN, removed, UPLOAD, "if !self.kept {");
