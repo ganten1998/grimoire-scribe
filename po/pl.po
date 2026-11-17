@@ -514,13 +514,13 @@ msgstr "Nowy folder"
 #. Share screen, as the top bar's Share button.
 #: rust/src/actions.rs rust/src/library.rs
 msgid "Share"
-msgstr "Udostępnij"
+msgstr "Podziel"
 
 #. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) O in the Library: the
 #. Settings sheet, as the top bar's Settings button.
 #: rust/src/actions.rs rust/src/library.rs
 msgid "Settings"
-msgstr "Ustawienia"
+msgstr "Opcje"
 
 #. TRANSLATORS: (the Keyboard shortcuts list, about 1100 px at 44 px in bold) ticks every page in the Pages
 #. view (and selects every node in the Graph): the same words as the Pages view's Select all button.

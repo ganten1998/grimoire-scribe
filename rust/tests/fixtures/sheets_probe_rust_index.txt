@@ -41,6 +41,10 @@ pages lang ja pg 4b5a0b30faa8a2c8
 pages lang ja pc 43f8c6b3d0b411e0
 pages lang ja lg 58cfc70fe534893d
 pages lang ja lc faaaba3275d22b91
+pages lang pl pg 2d9166885b97ad5d
+pages lang pl pc bace302dbda7d0b7
+pages lang pl lg 15d251feaf0a5731
+pages lang pl lc 92d26d97a3f7fa36
 # The number pad (Go to page) has the text line's keys and caret (2.1.0-beta.2): its screens' pixels, not its results.
 pages pg jump 6dd9ee8a8ae1f6ce
 pages pc jump a7178e41e97a8d3b
