@@ -1,5 +1,23 @@
 [English](Contributing) | **日本語** | [Polski](Contributing-pl)
 
-English is required to contribute. All issues, pull requests, and discussions must be written in English.
+# コントリビュート
 
-本プロジェクトにコントリビュートするには、英語でのコミュニケーションが必要です。Issue・Pull Request・レビューは英語でお願いします。
+Grimoire へのコントリビュートを検討してくださりありがとうございます。Grimoire は GPL-3.0 の
+オープンソースプロジェクトです。コントリビュートには英語が必要ですが、Issue と機能要望は
+対応言語で書けます。
+
+## 言語要件
+
+コントリビュートするには、英語でコミュニケーションできる必要があります。Pull Request、コード、
+ドキュメント、翻訳、コミットメッセージ、レビューでのやり取りは、すべて英語で書いてください。
+
+- **Pull Request は英語で書いてください。** タイトル、説明、コードのコメント、レビューへの返信も
+  英語です。
+- **翻訳も例外ではありません。** 英語の原文を先に作成するか更新します。Pull Request、レビュー、
+  議論も英語で行ってください。
+- **Issue と機能要望は、Grimoire が対応している言語（英語、スペイン語、日本語、ポーランド語）で
+  書けます。**
+- 英語でやり取りできない場合でも、Issue や機能要望は送れます。ただし、Pull Request や翻訳での
+  コントリビュートはできません。
+
+詳細なガイドは英語版の [Contributing](Contributing) を参照してください。

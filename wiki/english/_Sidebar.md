@@ -1,6 +1,7 @@
 ### Grimoire
 
 - [Home](Home)
+- [About](About)
 - [Install](Install)
 - [Using Grimoire](Using-Grimoire)
 - [Fonts and Language](Fonts-and-Language)

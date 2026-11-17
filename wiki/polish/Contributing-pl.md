@@ -2,8 +2,22 @@
 
 # Współtworzenie
 
-Dziękujemy za rozważenie wkładu w Grimoire! To projekt otwartoźródłowy na licencji GPL-3.0; wkład
-każdego rodzaju jest mile widziany.
+Dziękujemy za rozważenie wkładu w Grimoire! To projekt otwartoźródłowy na licencji GPL-3.0.
+Współtworzenie wymaga komunikowania się po angielsku; wyjątkiem są zgłoszenia i propozycje funkcji.
+
+## Wymagania językowe
+
+Aby współtworzyć Grimoire, musisz umieć komunikować się po angielsku. Pull requesty, kod,
+dokumentacja, tłumaczenia, opisy commitów i dyskusje w recenzjach muszą być po angielsku.
+
+- **Pull requesty muszą być po angielsku**, łącznie z tytułem, opisem, komentarzami w kodzie i
+  odpowiedziami na recenzję.
+- **Tłumaczenia nie są wyjątkiem.** Najpierw trzeba napisać lub zaktualizować angielski tekst
+  źródłowy. Pull request, recenzja i dyskusja również muszą być po angielsku.
+- **Zgłoszenia i propozycje funkcji** można pisać w dowolnym obsługiwanym języku: angielskim,
+  hiszpańskim, japońskim lub polskim.
+- Jeśli nie umiesz komunikować się po angielsku, nadal możesz zgłosić problem lub zaproponować
+  funkcję w obsługiwanym języku, ale nie możesz wysłać pull requesta.
 
 ## Sposoby współtworzenia
 
@@ -24,8 +38,9 @@ czego chcesz i dlaczego. Nie musisz pytać najpierw; jeśli to dobre dla projekt
 ### Tłumaczenie
 
 Grimoire jest dostępny po angielsku, hiszpańsku, japońsku i polsku. Zobacz
-[Tłumaczenie](Translating-pl), aby ulepszyć tłumaczenie lub dodać język. Wszystkie tłumaczenia są na
-licencji projektu GPL-3.0-or-later.
+[Tłumaczenie](Translating-pl), aby ulepszyć tłumaczenie lub dodać język. Zmiany w tłumaczeniach
+podlegają wymaganiom językowym powyżej: najpierw aktualizujemy angielski tekst źródłowy, a pull
+request i recenzja są po angielsku. Wszystkie tłumaczenia są na licencji projektu GPL-3.0-or-later.
 
 ### Wkład w kod
 

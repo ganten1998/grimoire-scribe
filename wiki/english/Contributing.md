@@ -3,7 +3,22 @@
 # Contributing
 
 Thank you for considering contributing to Grimoire! This is an open source project under the
-GPL-3.0 license, and contributions of all kinds are welcome.
+GPL-3.0 license. Contributions are welcome, but English is required for everything except issues
+and feature requests.
+
+## Language requirements
+
+You must be able to communicate in English to contribute. Pull requests, code, documentation,
+translations, commit messages and review discussions must all be written in English.
+
+- **Pull requests must be in English**, including the title, description, code comments and review
+  replies.
+- **Translations are no exception.** The English source must be written or updated first. The pull
+  request, review and discussion must also be in English.
+- **Issues and feature requests may be written in any supported language:** English, Spanish,
+  Japanese or Polish.
+- If you cannot communicate in English, you can still file an issue or feature request in a supported
+  language, but you cannot submit a pull request or translation.
 
 ## Ways to contribute
 
@@ -24,7 +39,9 @@ want and why. No need to ask first; if it's a good fit for the project we'll dis
 ### Translating
 
 Grimoire is available in English, Spanish, Japanese and Polish. See [Translating](Translating) to
-improve a translation or add a language. All translations are under the project's GPL-3.0-or-later license.
+improve a translation or add a language. Translation changes follow the language rules above: the
+English source comes first, and the pull request and review must be in English. All translations are
+under the project's GPL-3.0-or-later license.
 
 ### Code contributions
 

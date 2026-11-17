@@ -1,6 +1,7 @@
 ### Polski
 
 - [Strona główna](Home-pl)
+- [O Grimoire](About-pl)
 - [Instalacja](Install-pl)
 - [Korzystanie z Grimoire](Using-Grimoire-pl)
 - [Czcionki i język](Fonts-and-Language-pl)

@@ -1,6 +1,7 @@
 ### 日本語
 
 - [ホーム](Home-ja)
+- [Grimoire について](About-ja)
 - [インストール](Install-ja)
 - [Grimoire の使い方](Using-Grimoire-ja)
 - [フォントと言語](Fonts-and-Language-ja)

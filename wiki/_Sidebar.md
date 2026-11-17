@@ -1,6 +1,7 @@
 ### Grimoire
 
 - [Home](Home)
+- [About](About)
 - [Install](Install)
 - [Using Grimoire](Using-Grimoire)
 - [Fonts and Language](Fonts-and-Language)
@@ -17,6 +18,7 @@
 ### 日本語
 
 - [ホーム](Home-ja)
+- [Grimoire について](About-ja)
 - [インストール](Install-ja)
 - [Grimoire の使い方](Using-Grimoire-ja)
 - [フォントと言語](Fonts-and-Language-ja)
@@ -33,6 +35,7 @@
 ### Polski
 
 - [Strona główna](Home-pl)
+- [O Grimoire](About-pl)
 - [Instalacja](Install-pl)
 - [Korzystanie z Grimoire](Using-Grimoire-pl)
 - [Czcionki i język](Fonts-and-Language-pl)
