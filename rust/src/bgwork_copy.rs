@@ -54,6 +54,15 @@ impl CopyTo {
             CopyTo::Fonts => crate::fontcheck::FONT_FILE_MAX as u64,
         }
     }
+    /// The longest name a copy may have in the folder, " 2" and the like included: what the storage takes, and for
+    /// fonts what the fonts folder's scan takes of a font's path there (settings.ini keeps it). A longer name would
+    /// be copied and never listed, so it is refused as "Path too long.".
+    pub fn name_max(self) -> usize {
+        match self {
+            CopyTo::Templates | CopyTo::Photos => FS_NAME_MAX,
+            CopyTo::Fonts => crate::userfonts::USERFONT_REL_MAX.min(FS_NAME_MAX),
+        }
+    }
 }
 
 /// Why a copy was not made, as far as a sentence the screens have says it: at the request (`of_request`) or in the
@@ -193,8 +202,9 @@ fn fail_after() -> u64 {
 /// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, has a
 /// name the rules for a name in Grimoire's folders refuse (`Name`, with the rule: the copy keeps the source's
 /// name), is bigger than the folder takes (`to.max_bytes()`), or would leave less than the floor free (100 MB
-/// after it); or when its path is too long for a job (`TooLong`; one that is not text, which no listing shows, is
-/// `Refused`). What can never be copied is said before the room is looked at.
+/// after it); or when its path is too long for a job or its name longer than the folder takes (`TooLong`,
+/// `to.name_max()`; a path that is not text, which no listing shows, is `Refused`). What can never be copied is
+/// said before the room is looked at.
 pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: CopyTo) -> Result<(), FsWriteErr> {
     if src.is_root() || st.zone(src, true) == FsZone::Refused {
         return Err(FsWriteErr::Refused);
@@ -213,6 +223,10 @@ pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: Copy
     // (said before the room: a file too big is refused however much room there is)
     if now.size > to.max_bytes() {
         return Err(FsWriteErr::TooBig);
+    }
+    // (a name longer than the folder takes: copied, it would never be listed there)
+    if src.split_last().is_some_and(|(_, name)| name.len() > to.name_max()) {
+        return Err(FsWriteErr::TooLong);
     }
     let text = std::str::from_utf8(src.as_bytes()).is_ok();
     let path = job_path(src, &now).ok_or(if text { FsWriteErr::TooLong } else { FsWriteErr::Refused })?;
@@ -292,6 +306,9 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
     if name_rule(name).is_some() {
         return Err("its name is not one a file in Grimoire's folders can have".into());
     }
+    if name.len() > to.name_max() {
+        return Err(long("a name longer than the folder takes"));
+    }
     // the source: the walk again, a plain file, the one listed, no bigger than the folder takes
     let file = st.open_file(&src, true).map_err(|e| if e == FsErr::NotFound { changed(&walk_why(e)) } else { walk_why(e).into() })?;
     let mut f = std::fs::File::from(file);
@@ -325,7 +342,7 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
         // the source's name, or " 2", " 3"... before its extension where taken (a file: never a folder's form)
         for k in 1..=99u32 {
             let want = if k == 1 { name.to_vec() } else { numbered(name, k, false) };
-            if want.len() > FS_NAME_MAX || dest.join(&want).is_none() {
+            if want.len() > to.name_max() || dest.join(&want).is_none() {
                 return Err(long("a name too long"));
             }
             let cw = CString::new(want).map_err(|_| "a name")?;

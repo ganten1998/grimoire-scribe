@@ -694,6 +694,9 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     }
     // the limit a font over is refused at, before a byte is copied
     beside(&mut fails, DESIGN, "`FONT_FILE_MAX`", &format!("{} MB", grimoire::fontcheck::FONT_FILE_MAX >> 20));
+    // and the longest name a copy may have there, which is what the scan takes of a font's path
+    beside(&mut fails, DESIGN, "`USERFONT_REL_MAX`", &format!("{} bytes", grimoire::userfonts::USERFONT_REL_MAX));
+    stands_on(&mut fails, DESIGN, "so it is refused as \"Path too long.\"", BGWORK_COPY, "CopyTo::Fonts => crate::userfonts::USERFONT_REL_MAX.min(FS_NAME_MAX),");
     // the Kindle's fonts folder: a write is allowed only inside Grimoire's own folders. A rename or a delete asks
     // write_zone (the allow-list, inside Grimoire's folder only), which asks zone_of (writable only below Grimoire's
     // own folder, never at the storage's root): both held whole. The copy job writes only into Grimoire's folder of

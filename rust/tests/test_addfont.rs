@@ -17,6 +17,7 @@
 //  - the source is the plain file that was listed: no link, and not another file put in its place meanwhile
 //  - a file over the font check's limit is refused before the room is looked at; the free-space floor holds
 //  - a name taken in grimoire/fonts is never replaced; a name the rules refuse is not copied
+//  - a name longer than the fonts folder's scan takes is not copied ("Path too long."), " 2" included
 //  - the Kindle's own fonts folder is as it was after all of it
 //  - the folder is looked at for a copied font once the file is as old as the check asks of any file
 #![cfg(feature = "sim")]
@@ -447,6 +448,60 @@ fn a_name_taken_and_a_name_the_rules_refuse() {
     canvas_free(&mut a.screen);
 }
 
+// A name longer than the fonts folder's scan takes of a font's path there (USERFONT_REL_MAX, 200 bytes) would be
+// copied into grimoire/fonts and never listed nor checked, so it is not copied: the pick says "Path too long." and asks
+// no job, and the job refuses one asked anyway. A name of 200 bytes is copied, listed and checked. One of 199 bytes
+// whose name is taken there would be 201 bytes with " 2": the job refuses it with the same words, and leaves nothing.
+fn a_name_longer_than_the_fonts_folder_takes() {
+    let (root, g) = tree("long");
+    let fonts = format!("{g}/fonts");
+    let d = format!("{root}/documents/Type");
+    let name = |n: usize| format!("{}.ttf", "L".repeat(n - 4));
+    let arg = |s: &FsStat, p: &str| format!("{}.{}.{}.{}:{}", s.dev, s.ino, s.size, s.mtime, p);
+    let st = FsStorage::open(&root, &g).unwrap();
+    let mut a = screen();
+    for n in [USERFONT_REL_MAX + 1, FS_NAME_MAX] {
+        let long = name(n);
+        std::fs::write(format!("{d}/{long}"), good()).unwrap();
+        let mut b = pick_in(&mut a, "documents/Type");
+        let (said, toast) = add(&mut b, &mut a, &long);
+        check!(said == BrowserResult::None && toast == "Path too long.");
+        check!(!bg_busy());
+        b.close();
+        // (the job too, and before it looks at the room or writes a byte: with no room at all it says the name)
+        let s = st.stat(&sp(&format!("documents/Type/{long}")), true).unwrap();
+        for free in [None, Some(0)] {
+            copy_seams(free, None);
+            check!(bg_copy_file("fonts", &arg(&s, &format!("documents/Type/{long}"))) == CopyFail::TooLong as i32);
+        }
+        copy_seams(None, None);
+        std::fs::remove_file(format!("{d}/{long}")).unwrap();
+    }
+    check!(names(&fonts).is_empty());
+    // the longest name the folder takes
+    let most = name(USERFONT_REL_MAX);
+    std::fs::write(format!("{d}/{most}"), good()).unwrap();
+    let mut b = pick_in(&mut a, "documents/Type");
+    check!(add(&mut b, &mut a, &most).0 == BrowserResult::Copying(CopyTo::Fonts));
+    check!(settle() == 1);
+    b.close();
+    check!(names(&fonts) == [most.clone()]);
+    check!(job() == 0);
+    check!(state_of(&listed(), &most) == "ready");
+    // one byte shorter, its name taken: " 2" would not fit
+    let less = name(USERFONT_REL_MAX - 1);
+    std::fs::write(format!("{d}/{less}"), good()).unwrap();
+    std::fs::write(format!("{fonts}/{less}"), b"the owner's own file of that name").unwrap();
+    let mut b = pick_in(&mut a, "documents/Type");
+    check!(add(&mut b, &mut a, &less).0 == BrowserResult::Copying(CopyTo::Fonts));
+    check!(settle() == -1);
+    check!(copy_refusal(CopyFail::of_exit(bg_last_exit()), CopyTo::Fonts) == "Path too long.");
+    b.close();
+    check!(names(&fonts) == [".cache".to_string(), less.clone(), most]);
+    check!(std::fs::read(format!("{fonts}/{less}")).unwrap() == b"the owner's own file of that name");
+    canvas_free(&mut a.screen);
+}
+
 // The Kindle's own fonts folder is read only: the storage layer renames and trashes nothing there, a copy out of it
 // leaves it as it was, and nothing of Grimoire's is ever written into it (no cache, no mark, no temporary file).
 fn the_kindles_fonts_folder_is_read_only() {
@@ -529,10 +584,11 @@ fn test_addfont() {
     run!(the_source_is_the_file_that_was_listed);
     run!(too_big_and_no_room);
     run!(a_name_taken_and_a_name_the_rules_refuse);
+    run!(a_name_longer_than_the_fonts_folder_takes);
     run!(the_kindles_fonts_folder_is_read_only);
     run!(the_folder_is_looked_at_once_the_copy_is_old_enough);
     std::env::remove_var("GRIMOIRE_STORAGE");
-    for n in ["pick", "covers", "refused", "cut", "source", "room", "names", "kindle", "age"] {
+    for n in ["pick", "covers", "refused", "cut", "source", "room", "names", "long", "kindle", "age"] {
         let _ = std::fs::remove_dir_all(format!("{}/addfont-{}-{n}", tl_tmp(), std::process::id()));
     }
     done();

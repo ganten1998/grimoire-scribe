@@ -2739,7 +2739,9 @@ A font file from anywhere on the Kindle, its own fonts folder too, is copied int
   mark or a cache: what the check keeps is kept for `grimoire/fonts`.
 - **The copy gives a font nothing.** The job reads the source as bytes and writes them under the copy job's rules:
   the walk (no link, one device), the file the user saw (its `FsStat` identity, at the request and in the job,
-  and again at the end of the read), a name the rules allow, no more than the font check's own limit (refused
+  and again at the end of the read), a name the rules allow and no longer than the fonts folder's scan takes of a
+  font's path there (`USERFONT_REL_MAX`, 200 bytes, " 2" included: a longer one would be copied and never listed,
+  so it is refused as "Path too long."), no more than the font check's own limit (refused
   before a byte is copied: "Too big (over 24 MB)."), the floor, and a rename that never replaces a file (" 2"
   for a name taken). While it is written the copy is `.grimoire-copy-<pid>.part`, a dot-name, which no listing
   shows and which the fonts folder's scan takes for no font (`name_kind`), so a copy cut short is never taken for
