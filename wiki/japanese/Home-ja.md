@@ -1,4 +1,4 @@
-[English](../english/Home.md) | **日本語**
+[English](../english/Home.md) | **日本語** | [Polski](../polish/Home-pl.md)
 
 # Grimoire
 
@@ -37,7 +37,7 @@ GPL-3.0 の自由ソフトウェアです。Amazon とは提携しておらず�
 |---|---|
 | [インストール](Install-ja) | 必要なもの、リリース ZIP、KPM、更新とアンインストール |
 | [Grimoire の使い方](Using-Grimoire-ja) | ライブラリ、用紙、ペン、ツールバー、インデックス、リンク、ライブビュー、Wi-Fi、スリープ、パスコード |
-| [フォントと言語](Fonts-and-Language-ja) | 英語・スペイン語・日本語、Classic のフォント、自分のフォント |
+| [フォントと言語](Fonts-and-Language-ja) | 英語・スペイン語・日本語・ポーランド語、Classic のフォント、自分のフォント |
 | [取り込み](Importing-ja) | テンプレート、写真、PDF、すでにあるページ |
 | [Kindle からページを取り出す](Exporting-ja) | Wi-Fi 共有、エフェクト、USB の PDF、SSH |
 | [KOReader](KOReader-ja) | KOReader から Grimoire を開く、本への書き込み、任意のプラグイン |
@@ -46,7 +46,7 @@ GPL-3.0 の自由ソフトウェアです。Amazon とは提携しておらず�
 | [プライバシー](Privacy-ja) | Kindle 内に留まるもの、共有が公開するもの |
 | [コントリビュート](Contributing-ja) | バグ、機能要望、プルリクエスト、LLM の使用、wiki |
 | [ソースからビルド](Building-from-Source-ja) | ツールチェーン、make のターゲット、テスト |
-| [翻訳](Translating-ja) | スペイン語・日本語の改善、言語の追加 |
+| [翻訳](Translating-ja) | スペイン語・日本語・ポーランド語の改善、言語の追加 |
 
 ## Grimoire を支援する
 

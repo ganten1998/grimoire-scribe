@@ -1,22 +1,23 @@
-**English** | [日本語](../japanese/Fonts-and-Language-ja.md)
+**English** | [日本語](../japanese/Fonts-and-Language-ja.md) | [Polski](../polish/Fonts-and-Language-pl.md)
 
 # Fonts and Language
 
 ## Language
 
-Grimoire speaks English, Spanish and Japanese. **Settings > Language** offers **Automatic**,
-**English**, **Español** and **日本語**. Automatic, the default, follows the language set in the
-Kindle's own Settings, and gives English for a language Grimoire does not speak yet; its row names
-the language it gives ("Automatic (English)"). So if your Kindle is set to Spanish or Japanese,
-Grimoire is in that language from the first start after you update; **Ajustes > Idioma > English**
-(Settings > Language, in Spanish) or **設定 > 言語 > English** (in Japanese) switches it back. A
-choice applies at once and stays chosen.
+Grimoire speaks English, Spanish, Japanese and Polish. **Settings > Language** offers **Automatic**,
+**English**, **Español**, **日本語** and **Polski**. Automatic, the default, follows the language set
+in the Kindle's own Settings, and gives English for a language Grimoire does not speak yet; its row
+names the language it gives ("Automatic (English)"). So if your Kindle is set to Spanish, Japanese
+or Polish, Grimoire is in that language from the first start after you update; **Ajustes > Idioma >
+English** (Settings > Language, in Spanish), **設定 > 言語 > English** (in Japanese) or
+**Ustawienia > Język > English** (in Polish) switches it back. A choice applies at once and stays
+chosen.
 
 All of Grimoire follows it: every screen, the share pages and the Effects studio, and the name a
-new notebook gets ("Notebook Oct 20", "Cuaderno 20 oct", "ノート 10月20日"). Your pages never
-change with the language: paper is drawn the same everywhere (Cornell notes keep their English
-headings), and the names you give notebooks and folders stay as you typed them. The KOReader
-plugin follows KOReader's own language.
+new notebook gets ("Notebook Oct 20", "Cuaderno 20 oct", "ノート 10月20日", "Notatnik 20 paź").
+Your pages never change with the language: paper is drawn the same everywhere (Cornell notes keep
+their English headings), and the names you give notebooks and folders stay as you typed them. The
+KOReader plugin follows KOReader's own language.
 
 Corrections and new languages are welcome; see [Translating](Translating). Translations are under
 Grimoire's license, GPL-3.0-or-later.

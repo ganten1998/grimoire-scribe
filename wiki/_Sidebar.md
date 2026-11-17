@@ -29,3 +29,19 @@
 - [コントリビュート](Contributing-ja)
 - [ソースからビルド](Building-from-Source-ja)
 - [翻訳](Translating-ja)
+
+### Polski
+
+- [Strona główna](Home-pl)
+- [Instalacja](Install-pl)
+- [Korzystanie z Grimoire](Using-Grimoire-pl)
+- [Czcionki i język](Fonts-and-Language-pl)
+- [Importowanie](Importing-pl)
+- [Przenoszenie stron z Kindla](Exporting-pl)
+- [KOReader](KOReader-pl)
+- [Skróty](Shortcuts-pl)
+- [Rozwiązywanie problemów](Troubleshooting-pl)
+- [Prywatność](Privacy-pl)
+- [Współtworzenie](Contributing-pl)
+- [Budowanie ze źródeł](Building-from-Source-pl)
+- [Tłumaczenie](Translating-pl)

@@ -1,9 +1,9 @@
-**English** | [日本語](../japanese/Translating-ja.md)
+**English** | [日本語](../japanese/Translating-ja.md) | [Polski](../polish/Translating-pl.md)
 
 # Translating Grimoire
 
-Grimoire speaks English, Spanish and Japanese. This page says how to improve a translation and how
-to add a language. The full rules are in `docs/TRANSLATING.md` in the repository.
+Grimoire speaks English, Spanish, Japanese and Polish. This page says how to improve a translation
+and how to add a language. The full rules are in `docs/TRANSLATING.md` in the repository.
 
 ## What there is
 
@@ -39,6 +39,12 @@ The Japanese is one `ja`, speaking to the reader in the polite です・ます f
 noun labels for buttons. `po/ja-glossary.md` lists the main choices and the date and counter
 conventions: start there. Its kana and kanji come from DotGothic16, a pixel font embedded as the
 Japanese fallback (subset to the kana and the common kanji), so the Gothic style survives.
+
+## Improving the Polish
+
+The Polish is one `pl`, speaking to the reader in the second person singular. It has three plural
+forms: the first for 1, the second for 2–4 (but not 12–14), and the third for the rest. The
+interface's terms are in `po/pl.po`; new strings should match them.
 
 ## The rules of a translation
 

@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/KOReader-ja.md)
+**English** | [日本語](../japanese/KOReader-ja.md) | [Polski](../polish/KOReader-pl.md)
 
 # KOReader
 
@@ -12,9 +12,10 @@ KOReader. That adds **Tools > Grimoire** to its menu. A fresh Grimoire installat
 KOReader untouched.
 
 Open Grimoire is also an action for KOReader's gestures (**Settings > Taps and gestures**). The
-menu speaks KOReader's language, English, Spanish or Japanese (**Abrir Grimoire**, **PDF de los
-cuadernos**, **Restablecer la calibración del lápiz**; **Grimoireを開く**, **ノートのPDF**,
-**ペンのキャリブレーションをリセット**). Only a start from the Library updates the plugin, so
+menu speaks KOReader's language, English, Spanish, Japanese or Polish (**Abrir Grimoire**, **PDF de
+los cuadernos**, **Restablecer la calibración del lápiz**; **Grimoireを開く**, **ノートのPDF**,
+**ペンのキャリブレーションをリセット**; **Otwórz Grimoire**, **PDF-y notatników**, **Przywróć
+kalibrację rysika**). Only a start from the Library updates the plugin, so
 after you update Grimoire, tap it in the Library once.
 
 This needs a KOReader started from its Library item or from KUAL (KOReader's `koreader.sh`

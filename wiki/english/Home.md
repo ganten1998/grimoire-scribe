@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Home-ja.md)
+**English** | [日本語](../japanese/Home-ja.md) | [Polski](../polish/Home-pl.md)
 
 # Grimoire
 
@@ -36,7 +36,7 @@ updating; most people keep OTA updates blocked.
 |---|---|
 | [Install](Install) | Requirements, the release zip, KPM, updating and uninstalling |
 | [Using Grimoire](Using-Grimoire) | The Library, paper, pens, the toolbar, the Index, links, Live view, Wi-Fi, sleep and the passcode |
-| [Fonts and Language](Fonts-and-Language) | English, Spanish and Japanese, the Classic fonts, and your own fonts |
+| [Fonts and Language](Fonts-and-Language) | English, Spanish, Japanese and Polish, the Classic fonts, and your own fonts |
 | [Importing](Importing) | Templates, pictures, PDFs and pages you already have |
 | [Getting Pages Off the Kindle](Exporting) | Wi-Fi Share, Effects, USB PDFs and SSH |
 | [KOReader](KOReader) | Opening Grimoire from KOReader, annotating books, and the optional plugin |
@@ -45,7 +45,7 @@ updating; most people keep OTA updates blocked.
 | [Privacy](Privacy) | What stays on the Kindle, and what Share exposes |
 | [Contributing](Contributing) | Bugs, feature requests, pull requests, LLM use and the wiki |
 | [Building from Source](Building-from-Source) | Toolchains, make targets and tests |
-| [Translating](Translating) | Improving Spanish or Japanese, and adding a language |
+| [Translating](Translating) | Improving the Spanish, Japanese and Polish translations, and adding a language |
 
 ## Support Grimoire
 

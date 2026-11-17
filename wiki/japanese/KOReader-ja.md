@@ -1,4 +1,4 @@
-[English](../english/KOReader.md) | **日本語**
+[English](../english/KOReader.md) | **日本語** | [Polski](../polish/KOReader-pl.md)
 
 # KOReader
 
@@ -13,9 +13,10 @@ KOReader がインストールされている状態（Kindle の `koreader`、`e
 加えません。
 
 Grimoire を開くは KOReader のジェスチャーにも割り当てられます（**設定 > タップとジェスチャー**）。
-メニューは KOReader の言語（英語、スペイン語、日本語）で表示されます（**Abrir Grimoire**、
-**PDF de los cuadernos**、**Restablecer la calibración del lápiz**、**Grimoireを開く**、
-**ノートのPDF**、**ペンのキャリブレーションをリセット**）。プラグインが更新されるのはライブラリ
+メニューは KOReader の言語（英語、スペイン語、日本語、ポーランド語）で表示されます（**Abrir
+Grimoire**、**PDF de los cuadernos**、**Restablecer la calibración del lápiz**、**Grimoireを開く**、
+**ノートのPDF**、**ペンのキャリブレーションをリセット**、**Otwórz Grimoire**、**PDF-y notatników**、
+**Przywróć kalibrację rysika**）。プラグインが更新されるのはライブラリ
 からの起動時だけなので、Grimoire を更新したらライブラリで一度タップしてください。
 
 これには、ライブラリの項目または KUAL から起動した KOReader（KOReader の `koreader.sh` 起動）が

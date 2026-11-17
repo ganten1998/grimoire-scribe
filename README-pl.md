@@ -78,9 +78,9 @@ Grimoire możesz otworzyć przez KOReader (patrz tabela).
 | Kindle | Stan |
 |---|---|
 | Kindle Scribe (2024, 2. generacja), firmware 5.17–5.20.1 | **Działa.** Używany codziennie na 5.20.1.0.2; działa też na 5.20.1 (Vera) |
-| Kindle Scribe (2022, 1. generacja), firmware 5.16.3 lub nowszy | **Działa.** Używany codziennie na 5.20.1.0.2; działa też na 5.20.1 (Vera). Jeśli ekran jest do góry nogami, zobacz [Rozwiązywanie problemów](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting). |
-| Kindle Scribe (2022) z firmwarem starszym niż 5.16.3 | Powinien działać, ale dla tych starszych jailbreaków nie ma jeszcze launchera w Bibliotece. Z KOReaderem powinien otwierać się z Tools > Grimoire po ręcznym skopiowaniu wtyczki (zobacz [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader)). |
-| Kindle Scribe 3 i Scribe Colorsoft (2025) | **Nietestowane.** Nie ma jeszcze publicznego jailbreaka. Grimoire zna już ich większy ekran (1986x2648): notatniki zachowują rozmiar strony między nimi a starszymi modelami Scribe (zobacz [Przenoszenie między wersjami](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting#moving-between-versions)). Na kolorowym ekranie Colorsoft, po każdym szybkim odświeżeniu, Grimoire czeka, aż sterownik je odczyta; wyjątkiem jest tusz samego pióra (pisanie nigdy nie czeka), więc przyciski nie powinny wyglądać na prążkowane. |
+| Kindle Scribe (2022, 1. generacja), firmware 5.16.3 lub nowszy | **Działa.** Używany codziennie na 5.20.1.0.2; działa też na 5.20.1 (Vera). Jeśli ekran jest do góry nogami, zobacz [Rozwiązywanie problemów](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting-pl). |
+| Kindle Scribe (2022) z firmwarem starszym niż 5.16.3 | Powinien działać, ale dla tych starszych jailbreaków nie ma jeszcze launchera w Bibliotece. Z KOReaderem powinien otwierać się z Tools > Grimoire po ręcznym skopiowaniu wtyczki (zobacz [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader-pl)). |
+| Kindle Scribe 3 i Scribe Colorsoft (2025) | **Nietestowane.** Nie ma jeszcze publicznego jailbreaka. Grimoire zna już ich większy ekran (1986x2648): notatniki zachowują rozmiar strony między nimi a starszymi modelami Scribe (zobacz [Przenoszenie między wersjami](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting-pl#przenoszenie-między-wersjami)). Na kolorowym ekranie Colorsoft, po każdym szybkim odświeżeniu, Grimoire czeka, aż sterownik je odczyta; wyjątkiem jest tusz samego pióra (pisanie nigdy nie czeka), więc przyciski nie powinny wyglądać na prążkowane. |
 | Paperwhite, Oasis, Basic i inne Kindle bez rysika | Nieprzydatny: bez rysika nie da się pisać. |
 
 Najnowszy firmware to 5.20.1 (stan na październik 2026). Przed aktualizacją sprawdź, czy twój
@@ -88,27 +88,28 @@ jailbreak go przetrwa; większość osób blokuje aktualizacje OTA.
 
 ## Dokumentacja
 
-Pełny podręcznik znajduje się w wiki, po **angielsku** i **japońsku**:
+Pełny podręcznik znajduje się w wiki, po **angielsku**, **japońsku** i **polsku**:
 
 - [Angielska wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home)
 - [Japońska wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-ja)
+- [Polska wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-pl)
 
 | Strona | Czego dotyczy |
 |---|---|
-| [Instalacja](https://github.com/ganten1998/grimoire-scribe/wiki/Install) | Wymagania, archiwum ZIP wydania, KPM, aktualizacja i odinstalowanie |
-| [Korzystanie z Grimoire](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire) | Biblioteka, papier, pióra, pasek narzędzi, Indeks, linki, Podgląd na żywo, Wi-Fi, uśpienie i kod dostępu |
-| [Czcionki i język](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language) | Angielski, hiszpański, japoński i polski, czcionki Classic oraz własne czcionki |
-| [Importowanie](https://github.com/ganten1998/grimoire-scribe/wiki/Importing) | Szablony, zdjęcia, PDF-y i strony, które już masz |
-| [Przenoszenie stron z Kindla](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting) | Udostępnianie przez Wi-Fi, Efekty, PDF-y przez USB i SSH |
-| [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader) | Otwieranie Grimoire z KOReadera, robienie notatek w książkach i opcjonalna wtyczka |
-| [Skróty](https://github.com/ganten1998/grimoire-scribe/wiki/Shortcuts) | Klawiatury i kontrolery oraz `shortcuts.ini` |
-| [Rozwiązywanie problemów](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting) | Znane problemy, typowe poprawki i przenoszenie między wersjami |
-| [Prywatność](https://github.com/ganten1998/grimoire-scribe/wiki/Privacy) | Co zostaje na Kindle i co ujawnia Udostępnianie |
-| [Współtworzenie](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing) | Błędy, propozycje funkcji, pull requesty, korzystanie z LLM i wiki |
-| [Budowanie ze źródeł](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source) | Zestawy narzędzi, cele make i testy |
-| [Tłumaczenie](https://github.com/ganten1998/grimoire-scribe/wiki/Translating) | Ulepszanie hiszpańskiego, japońskiego i polskiego oraz dodawanie nowego języka |
+| [Instalacja](https://github.com/ganten1998/grimoire-scribe/wiki/Install-pl) | Wymagania, archiwum ZIP wydania, KPM, aktualizacja i odinstalowanie |
+| [Korzystanie z Grimoire](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire-pl) | Biblioteka, papier, pióra, pasek narzędzi, Indeks, linki, Podgląd na żywo, Wi-Fi, uśpienie i kod dostępu |
+| [Czcionki i język](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language-pl) | Angielski, hiszpański, japoński i polski, czcionki Classic oraz własne czcionki |
+| [Importowanie](https://github.com/ganten1998/grimoire-scribe/wiki/Importing-pl) | Szablony, zdjęcia, PDF-y i strony, które już masz |
+| [Przenoszenie stron z Kindla](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting-pl) | Udostępnianie przez Wi-Fi, Efekty, PDF-y przez USB i SSH |
+| [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader-pl) | Otwieranie Grimoire z KOReadera, robienie notatek w książkach i opcjonalna wtyczka |
+| [Skróty](https://github.com/ganten1998/grimoire-scribe/wiki/Shortcuts-pl) | Klawiatury i kontrolery oraz `shortcuts.ini` |
+| [Rozwiązywanie problemów](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting-pl) | Znane problemy, typowe poprawki i przenoszenie między wersjami |
+| [Prywatność](https://github.com/ganten1998/grimoire-scribe/wiki/Privacy-pl) | Co zostaje na Kindle i co ujawnia Udostępnianie |
+| [Współtworzenie](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing-pl) | Błędy, propozycje funkcji, pull requesty, korzystanie z LLM i wiki |
+| [Budowanie ze źródeł](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source-pl) | Zestawy narzędzi, cele make i testy |
+| [Tłumaczenie](https://github.com/ganten1998/grimoire-scribe/wiki/Translating-pl) | Ulepszanie hiszpańskiego, japońskiego i polskiego oraz dodawanie nowego języka |
 
-Źródła stron wiki znajdują się w [`docs/wiki/`](docs/wiki).
+Źródła stron wiki znajdują się w [`wiki/`](wiki).
 
 ## Licencja i podziękowania
 
@@ -138,5 +139,5 @@ i codeberg.org/ganten1998/grimoire-scribe oraz z kanałów KPM projektu. Wbudowa
 Grimoire śledzi te kanały.
 
 Wkład jest mile widziany: zobacz stronę
-[Współtworzenie](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing), a przy
+[Współtworzenie](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing-pl), a przy
 większej zmianie najpierw otwórz zgłoszenie, abyśmy mogli uzgodnić jej kształt.

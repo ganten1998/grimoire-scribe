@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Contributing-ja.md)
+**English** | [日本語](../japanese/Contributing-ja.md) | [Polski](../polish/Contributing-pl.md)
 
 # Contributing
 
@@ -23,8 +23,8 @@ want and why. No need to ask first; if it's a good fit for the project we'll dis
 
 ### Translating
 
-Grimoire is available in English, Spanish and Japanese. See [Translating](Translating) to improve a
-translation or add a language. All translations are under the project's GPL-3.0-or-later license.
+Grimoire is available in English, Spanish, Japanese and Polish. See [Translating](Translating) to
+improve a translation or add a language. All translations are under the project's GPL-3.0-or-later license.
 
 ### Code contributions
 

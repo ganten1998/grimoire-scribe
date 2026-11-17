@@ -1,4 +1,4 @@
-[English](../english/Troubleshooting.md) | **日本語**
+[English](../english/Troubleshooting.md) | **日本語** | [Polski](../polish/Troubleshooting-pl.md)
 
 # 困ったときは
 

@@ -1,4 +1,4 @@
-**English** | [日本語](../japanese/Exporting-ja.md)
+**English** | [日本語](../japanese/Exporting-ja.md) | [Polski](../polish/Exporting-pl.md)
 
 # Getting Pages Off the Kindle
 

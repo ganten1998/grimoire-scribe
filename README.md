@@ -80,10 +80,11 @@ updating; most people keep OTA updates blocked.
 
 ## Documentation
 
-The full manual lives in the wiki, in **English** and **日本語**:
+The full manual lives in the wiki, in **English**, **日本語** and **Polski**:
 
 - [English wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home)
 - [日本語の wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-ja)
+- [Polska wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-pl)
 
 | Page | What it covers |
 |---|---|
@@ -100,7 +101,7 @@ The full manual lives in the wiki, in **English** and **日本語**:
 | [Building from Source](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source) | Toolchains, make targets and tests |
 | [Translating](https://github.com/ganten1998/grimoire-scribe/wiki/Translating) | Improving the Spanish, Japanese and Polish translations, and adding a language |
 
-The wiki's source pages live in [`docs/wiki/`](docs/wiki).
+The wiki's source pages live in [`wiki/`](wiki).
 
 ## License and credits
 

@@ -1,4 +1,4 @@
-[English](../english/Install.md) | **日本語**
+[English](../english/Install.md) | **日本語** | [Polski](../polish/Install-pl.md)
 
 # インストール
 

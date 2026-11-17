@@ -1,18 +1,19 @@
-[English](../english/Fonts-and-Language.md) | **日本語**
+[English](../english/Fonts-and-Language.md) | **日本語** | [Polski](../polish/Fonts-and-Language-pl.md)
 
 # フォントと言語
 
 ## 言語
 
-Grimoire は英語、スペイン語、日本語に対応しています。**設定 > 言語** には **自動**、
-**English**、**Español**、**日本語** があります。初期状態の「自動」は Kindle 本体の設定言語に
-従い、Grimoire がまだ対応していない言語の場合は英語になります。その行には実際に使われる言語が
-表示されます（「自動 (English)」）。Kindle がスペイン語や日本語に設定されていれば、更新後の
-初回起動からその言語になり、**Ajustes > Idioma > English**（スペイン語の設定 > 言語）または
-**設定 > 言語 > English** で英語に戻せます。選択はすぐに反映され、そのまま保存されます。
+Grimoire は英語、スペイン語、日本語、ポーランド語に対応しています。**設定 > 言語** には
+**自動**、**English**、**Español**、**日本語**、**Polski** があります。初期状態の「自動」は
+Kindle 本体の設定言語に従い、Grimoire がまだ対応していない言語の場合は英語になります。その行には
+実際に使われる言語が表示されます（「自動 (English)」）。Kindle がスペイン語、日本語、ポーランド語に
+設定されていれば、更新後の初回起動からその言語になり、**Ajustes > Idioma > English**（スペイン語の
+設定 > 言語）、**設定 > 言語 > English**、または **Ustawienia > Język > English**（ポーランド語）で
+英語に戻せます。選択はすぐに反映され、そのまま保存されます。
 
 Grimoire のすべてがこの言語に従います。すべての画面、共有ページ、エフェクトスタジオ、新しい
-ノートの名前（「Notebook Oct 20」「Cuaderno 20 oct」「ノート 10月20日」）が変わります。
+ノートの名前（「Notebook Oct 20」「Cuaderno 20 oct」「ノート 10月20日」「Notatnik 20 paź」）が変わります。
 ページ自体は言語で変わりません。用紙はどこでも同じように描かれ（コーネル用紙の見出しは英語の
 まま）、ノートやフォルダに付けた名前は入力したまま残ります。KOReader プラグインは KOReader 自身の
 言語に従います。

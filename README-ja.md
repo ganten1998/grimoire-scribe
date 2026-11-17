@@ -85,10 +85,11 @@ Ko-fi で開発を支援できます。
 
 ## ドキュメント
 
-マニュアル全文は wiki に **English** と **日本語** でそろっています：
+マニュアル全文は wiki に **English**、**日本語**、**Polski** でそろっています：
 
 - [English wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home)
 - [日本語の wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-ja)
+- [Polska wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-pl)
 
 | ページ | 内容 |
 |---|---|
@@ -105,7 +106,7 @@ Ko-fi で開発を支援できます。
 | [ソースからビルド](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source-ja) | ツールチェーン、make のターゲット、テスト |
 | [翻訳](https://github.com/ganten1998/grimoire-scribe/wiki/Translating-ja) | スペイン語・日本語・ポーランド語の改善、言語の追加 |
 
-wiki のソースページは [`docs/wiki/`](docs/wiki) にあります。
+wiki のソースページは [`wiki/`](wiki) にあります。
 
 ## ライセンスとクレジット
 
