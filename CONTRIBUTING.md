@@ -29,7 +29,7 @@ Thank you for considering contributing to Grimoire! This is an open source proje
 - Code is built with Rust 1.97.1, Zig 0.16.0, and `cargo-zigbuild 0.23.0` for the Kindle target
 
 ### LLM Use
-- Using LLMs to write code is fine — we don't ban it and we won't ask you to declare it
+- Using LLMs to write code is fine
 - But your output is yours: anything you put in a PR is **yours**, and it's your fault if it does something wrong
 - "The model wrote it" is not an excuse. You're responsible for reviewing, understanding, and testing every line you submit
 - Don't dump unreviewed generated code into a PR and expect us to catch its bugs for you
@@ -73,9 +73,3 @@ Thank you for considering contributing to Grimoire! This is an open source proje
 - Keep it civil in issues and PRs
 - Maintainers decide what gets merged; a PR being open doesn't mean it will be accepted
 - Don't expect us to fix your branches, conflicts, or failing CI for you
-
----
-
-**Questions?** Open an issue or reach out on the project's discussion forum.
-
-*Generated with Codebuff 🤖*
