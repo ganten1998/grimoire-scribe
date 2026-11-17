@@ -2542,9 +2542,10 @@ Photos sheets' From a file... tile (issue #146, "From a file... and Use as templ
   by the time in each name); a row's record is read only for the rows on screen (`FsStorage::trash_record`).
   docs/FORMAT.md, The trash, has the names and the record.
 - **The copy job, `BgKind::CopyFile = 10`** (`bgwork_copy.rs`; 9 is the file previews', below). The request
-  (`copy_request`, UI thread) refuses a source in a place a pick never takes from, one no longer the plain file
-  listed, one whose name Files' Rename would not give a file in Grimoire's folders (`fsview_name_check`, as the
-  copy keeps the source's name: said with that rule's words, issue #161), one bigger than its folder takes
+  (`copy_request`, UI thread) refuses a source in a place a pick never takes from (a name ending in a dot or a
+  space among them: the walk refuses such a part, issue #160), one no longer the plain file listed, one whose name
+  Files' Rename would not give a file in Grimoire's folders (`fsview_name_check`, as the copy keeps the source's
+  name: said with that rule's words, issue #161), one bigger than its folder takes
   (`CopyTo::max_bytes`: the template job's own `TEMPLATE_MAX_BYTES`, 16 MB, for templates and photos, the font
   check's `FONT_FILE_MAX`, 24 MB, for fonts), one whose path does not fit a job's,
   and one that would leave less than the floor (100 MB after it, `fsview_room_for`; looked at last, since what can
