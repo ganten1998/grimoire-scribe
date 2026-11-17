@@ -622,6 +622,17 @@ def l10n(args, hooks):
                          [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'), ('GRIMOIRE_IMPORT_STABLE', 'fast')] + extra,
                          ini, weight)
                 t.copies, t.generate = h['copies'], h['generate']
+        # Add a font... (2.2, issue #161): Settings > Font with its row, the font pick it opens over a fixture
+        # storage root with the Kindle's own fonts folder, a font's card there and in Files, in every language and
+        # in each Classic style (the sheet is Classic's): files_card=1 for the Files card, each job held back.
+        h = header('tests/l10n/fonts-add.qs')
+        for lang in langs:
+            for style in [st for st in styles_for(lang) if st != 'gothic']:
+                n = f'fonts-add-{lang}-{style}'
+                t = task(n, 'tests/l10n/fonts-add.qs', f'{b}/scen/l10n/{n}',
+                         [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'), ('GRIMOIRE_IMPORT_STABLE', 'fast'),
+                          ('GRIMOIRE_BG_DELAY_MS', '800')], inis[style] + ['files_card=1'], 5.0)
+                t.copies, t.storage = h['copies'], True
         # The file picker (2.1.0-beta.2) over a fixture storage root, in every language and style.
         fcopies = header('tests/l10n/files.qs')['copies']
         for lang in langs:
