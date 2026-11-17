@@ -3316,3 +3316,209 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
     name that is there (Grimoire's `bluetooth`, `extensions` at the storage's top), its short name on the storage:
     `home=files/grimoire/BLUETO~1`, `home=files/EXTENS~1` (`ls -d /mnt/us/grimoire/BLUETO~1` shows that the storage
     takes it). Each start shows the Library's top with "Home folder not found.", and the line is gone afterwards.
+
+## 2.2, Darker lines (issue #173): device checks
+
+Settings > System > Darker lines in imported PDFs (Off, Medium, Strong; settings.ini `pdf_gamma`, `1.5` or `2.0`) is
+the gamma a PDF queued from then on draws its gray pages at, for faint planners on e-ink. A page kept in colour is
+left exactly as it is. The notebook keeps its level in its `source.ini` (`gamma=`), and a fill draws the pages it
+adds at it. KOReader's Open this book on a PDF by its path sends the reader's contrast as `gamma=` when the reader
+draws the PDF darker (a contrast from 1.25: 1.5; from 1.75: 2.0); otherwise the setting decides.
+
+Automated: `rust/src/pdfwork.rs`'s unit tests (each level against the formula, Off byte for byte, a colour page and a
+mixed page untouched, only `1.0`, `1.5` and `2.0` read), `rust/src/pdfimport.rs`'s (the mark's and the state's
+`gamma=`), `rust/tests/test_pdf_darker.rs` (each level's pages are the pages at Off through the level's table, a colour
+page's picture the same file at every level, the level a pick, a pick at a level of its own, a pick waiting for the lock
+and one waiting for a copy of its PDF were queued at, a fill at its notebook's level both ways, the same PDF again
+"already imported", the notebook's line read strictly), `rust/tests/test_store.rs` (`pdf_gamma_key`),
+`rust/src/library.rs`'s row test, `rust/tests/test_annotate.rs` and `rust/tests/test_koreader_pdf.rs` (the request's
+`gamma=`), `tests/koplugin_test.lua` (each contrast's line, the file browser's, an older KOReader's book and default for
+books, none for version 1), and the scenarios `tests/scenarios/z_pdf_darker_1_row.qs` (the row, its list, a pick at
+Medium), `z_pdf_darker_2_colour.qs` (Strong: the colour page as Off makes it), `z_pdf_darker_3_off.qs` (each page's
+level at Off), `z_pdf_darker_4_fill.qs` (a notebook made at Off filled at Off with the setting at Strong),
+`z_pdf_darker_5_es_fit.qs` and `z_pdf_darker_6_es_fit_classic.qs` (Spanish, both styles, upright and sideways),
+`y_koreader_pdf_darker_1_gamma.qs` (a request with `gamma=2.0`, the setting at Off) and
+`y_koreader_pdf_darker_2_no_gamma.qs` (no line, the setting at Medium).
+
+**Not run on a Scribe.** The owner's check, on a build of this branch (a faint planner PDF, gray only; a PDF with a
+coloured page among gray ones; KOReader with the Grimoire plugin):
+
+1. **The row.** Settings > System: the last row reads "Darker lines in imported PDFs: Off". Tap it: a list of Off,
+   Medium and Strong, one under the other in that order, Off marked. Back: nothing changes. Tap the row, then
+   Medium: the list closes and the row reads "...: Medium"; `grep pdf_gamma /mnt/us/grimoire/settings.ini` shows
+   `pdf_gamma=1.5` at once.
+2. **An import at each level.** On the computer, make three copies of the faint planner, "Planner A.pdf", "Planner
+   B.pdf" and "Planner C.pdf", and append one byte to B and two to C (`printf ' ' >> "Planner B.pdf"` once, and twice
+   for "Planner C.pdf"), so each is another file before it reaches the Kindle (the import takes a file of
+   `grimoire/import/` once it has held still for 5 s, so a byte appended there afterwards comes too late). Copy them
+   over USB into `grimoire/import/` one at a time, A, B, C: first with the row at Off, then at Medium, then at Strong,
+   each after the last import ended. Open the three notebooks on the same page: Off is the planner as before, Medium
+   darker, Strong darker still; white stays white. `grimoire.log` has `import: <id>: darker lines: its gray pages are
+   drawn at gamma 1.5 (the import's)` for the second and `gamma 2.0` for the third, and nothing of the kind for the
+   first. Each notebook's `source.ini` (`/mnt/us/grimoire/notebooks/<id>/source.ini`) has `gamma=1.5`, `gamma=2.0`,
+   and no `gamma` line.
+3. **A colour page.** With the row at Strong, import the PDF with a coloured page: its gray pages are darker than at
+   Off and its coloured page shows as at Off (copy the notebook's PDF from `grimoire/PDFs` to a computer: that page
+   is in colour, as before).
+4. **From Files.** Show Files in the Library, open Files > Documents (or wherever a PDF is) and import a PDF with the
+   row at Medium: its notebook is darker, `gamma=1.5` in its `source.ini`.
+5. **A fill keeps the notebook's level.** In the Medium notebook of step 2, delete two pages (the Pages view). Set the
+   row to Strong, copy the same file ("Planner B.pdf", byte for byte) into `grimoire/import/` again: "Added 2 book
+   pages.", and the two pages are as dark as the rest (Medium), not darker. Its `source.ini` still says
+   `gamma=1.5`; `grimoire.log` has `darker lines: its gray pages are drawn at gamma 1.5 (its notebook's)`.
+6. **The same PDF again.** Copy the Strong planner of step 2 ("Planner C.pdf") into `grimoire/import/` once more with
+   the row at Off: "PDF already imported.", and its notebook is as it was.
+7. **KOReader, darker.** Update the plugin (Settings > KOReader > Install / update Grimoire plugin, restart KOReader).
+   Set Grimoire's row to Off. In KOReader open a PDF Grimoire never saw, set the bottom menu's Contrast to 2 (or
+   more), and use Tools > Grimoire > Open this book in Grimoire: the notebook opens at the reader's page, its gray
+   pages darker. `koreader/crash.log` has `Grimoire: a PDF of M pages sent by its path, to open at page N with
+   gamma=2.0`; `grimoire.log` has `book: the request asks for darker lines at gamma 2.0`; the notebook's `source.ini`
+   has `gamma=2.0`.
+8. **KOReader at its own contrast.** Set Grimoire's row to Medium. In KOReader open another new PDF with Contrast at
+   1 (its default) and use Open this book in Grimoire: crash.log's line ends at the page number (no `gamma=`), and
+   the notebook is at Medium (`gamma=1.5` in its `source.ini`). With Contrast at 1.5 on a third new PDF, the line
+   ends `with gamma=1.5`.
+9. **Spanish.** Settings > Language > Español: Ajustes > Sistema's last row reads "Líneas más oscuras en los PDF
+   importados: No", and its list "No", "Medio", "Fuerte", whole, upright and sideways, in Gothic and Classic.
+10. **Back to Off.** Set the row to Off: `grep pdf_gamma /mnt/us/grimoire/settings.ini` shows nothing, and a new
+    import is drawn as before.
+
+## 2.2, PDFs as templates (issue #172): device checks
+
+Not run on a Scribe yet. Automated: `test_template_pdfs.rs`, `bgwork_tplpdf.rs`'s and `browser.rs`'s unit tests, and
+the scenarios `z_tpl_h_pdf_pages`, `z_tpl_i_pdf_refused`, `z_tpl_j_pdf_cap` and `z_tpl_k_pdf_use_as` (docs/DESIGN.md,
+PDFs as templates). What only the Scribe can tell: how long a page takes to draw and store at the Scribe's page size,
+that the pen stays quick meanwhile, and that the worker runs in the sandbox there. Over SSH, with Grimoire closed,
+copy into `/mnt/us/grimoire/templates/` a PDF of a few pages (a planner's day pages, or any paper design sold as a
+PDF), here `Planner.pdf`, and start Grimoire:
+
+1. **The tiles**: open a notebook, Paper > More layouts...: one tile named Planner waits, then (seconds later) the
+   sheet shows a tile a page, "Planner p. 1" and on, each filling in. grimoire.log has `templates: a PDF of N
+   page(s)`, `templates: a PDF's pages are done`, a `work: sandboxed (...)` line (one a slice), and no file name.
+   Note the time from the first line to the last, and N.
+2. **The pen meanwhile**: open the sheet on a new PDF of 20 pages or more, close it at once and write on the page
+   while the pages are drawn (grimoire.log shows `bg: template of a file` lines, a slice each): the ink keeps up as
+   it does with no job running.
+3. **A page as paper**: tap "Planner p. 2": the page goes onto it, white for a moment, then the page's picture behind
+   the ink. Write over it, open Paper > More layouts... again: "Planner p. 2" is selected. A new notebook on
+   "Planner p. 3" (New > More layouts...) starts on it.
+4. **The PDF gone**: delete `Planner.pdf` over SSH while Grimoire runs; the pages already on paper keep their
+   picture, and a restart still shows them. The tiles go at the next look, and `grimoire/templates/.cache` no
+   longer has its entries once that look's job has run (grimoire.log: `templates: 0 preview(s) made`).
+5. **Colour**: a PDF with a coloured page: its page is kept in colour, as a colour picture template is
+   (grimoire.log: `templates: <notebook>: bg/<id>.png made (1860x2480, colour)` once it is a page's paper), and it
+   draws behind the ink as such a template does.
+6. **Refusals**: copy in a PDF of more than 50 pages, a PDF with a password and a file renamed to `.pdf` that is no
+   PDF: at the first opening each shows a waiting tile until its job has looked at it. With no other template the
+   sheet then says "Grimoire cannot use 3 files there (see grimoire.log).", at this opening and the next; with a
+   picture template beside them, their three tiles are crossed out beside it, at every opening, and none can be
+   picked. The log says `51 pages, more than the 50` (or the count), `it needs a password` and `no PDF Grimoire can
+   read`.
+7. **Files**: Files > Documents > a PDF's card offers Import as notebook, Use as template and Cancel; Use as template
+   says "Copied to Templates.", and More layouts... then shows its pages. A PDF over 16 MB says "Too big (over 16
+   MB)." and nothing is copied.
+8. **Never imported by itself**: after the steps above (Import as notebook never tapped) the Library has no new
+   notebook, and `grimoire/import` is as it was.
+9. **Changed while drawn**: copy in a PDF of 30 pages, open the sheet, and while its pages come replace it over SSH
+   with another PDF of the same name (`cp other.pdf /mnt/us/grimoire/templates/Planner.pdf`): grimoire.log may say `a
+   PDF changed while its pages were made` (only when the copy lands while a slice is drawing its pages), and opening
+   the sheet again shows the new file's pages only.
+10. **Full storage** (optional, only with a storage to spare that can be filled and emptied safely): with under 100 MB
+    free, a new PDF's tile waits and grimoire.log says `not enough room on the storage`; nothing is added to
+    `grimoire/templates/.cache`. Free some room and open the sheet again: its pages come.
+
+## 2.2, Web links as a QR card (issue #174): device checks
+
+Not run on a Scribe yet. Automated: `weblinks.rs`'s unit tests, `test_weblinks.rs`, `test_pdflinks_import.rs` (the
+web links' tests), `test_pdf_fill.rs` (the two web links fills), `test_qr.rs`, `test_linkcard.rs`, and the scenarios
+`z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill`, `z_weblinks_4_wide`, `z_weblinks_5_overlap` and
+`z_weblinks_6_hold` (docs/DESIGN.md, Web links as a QR card). The codes
+of `z_weblinks_1_card`'s two shots were read back with `tools/qrdecode.swift` (macOS Vision) as their addresses.
+What only the Scribe and a phone can tell: that the code scans from arm's length, on e-ink, under the room's light.
+The test PDF is `tests/fixtures/pdf/weblinks/Links.pdf` (three pages: a web link on page 1, an address on two lines
+on page 2, one on page 3; a `javascript:` and a `mailto:` link, which are refused); any PDF with web links will do.
+
+1. **Import**: copy `Links.pdf` into `/mnt/us/grimoire/import/` over USB; the Library makes the notebook "Links".
+   grimoire.log has `import: <id>: 4 web link(s) (4 added, 0 already there, 0 refused, 0 left out for room); left
+   out: 0 off the page, 0 over 200 bytes` and `left out: 2 web` on the document links' line (the two refused). Over SSH,
+   `cat /mnt/us/grimoire/notebooks/<id>/weblinks.ini` shows four `web.` lines, each address as the PDF has it.
+2. **The card**: open the notebook and tap the box near the top of page 1: the heavy border around the box, and
+   beside it a card titled `example.org` with `https://example.org/grimoire`, "Scan with a phone's camera", a QR
+   code and Done. No page opens and nothing else happens. Done closes it; a tap outside the card closes it too.
+3. **Scan it**: hold a phone at arm's length (about 50 cm) in the room's ordinary light and point its camera app at
+   the code: it offers to open `https://example.org/grimoire`. Then the same with Invert colors on (the code stays
+   dark on light on the panel), and on page 2 (a longer address, a denser code): both scan.
+4. **What is refused**: tap the box labelled "a script: refused" on page 1 and "mail: refused" on page 2: nothing
+   happens. The tab at the top right of page 1 still goes to page 3, whose address the PDF wrote with spaces around
+   it: its card shows `http://example.com/notes` without them.
+5. **Link areas**: the Links bar's Areas on: the boxes of the two web links of page 2 are drawn, dotted, as the tab's.
+6. **Copy page and Copy to notebook**: in the Pages view copy page 1: the copy's box opens the same card. Copy page
+   2 to another notebook: there too.
+7. **Spanish**: Settings > Language > Español: the card reads "Escanea con la cámara de un teléfono" and "Listo",
+   whole, upright and sideways.
+8. **2.1.0**, if the tester has it: with Grimoire closed, install 2.1.0, open the notebook "Links": its three pages,
+   the tab to page 3 works, a tap on a web link does nothing, and nothing is said. Copy page 1 there, then close it.
+   `cat weblinks.ini` shows the four lines unchanged (the copy has none). Install 2.2 again: the web links work, the
+   copy made in 2.1.0 has the tab and no web link.
+
+## 2.2, Send a PDF from the Share page (issue #175): device checks
+
+Not run on a Scribe yet. Automated: upload.rs's unit tests, `test_share_upload.rs`, `test_share.rs`'s question,
+tests/upload_ui_check.js and the scenarios `share_upload_*` (docs/DESIGN.md, Send a PDF from the Share page). What only
+the Scribe and real browsers can tell: a phone's and a computer's browser sending over the Kindle's Wi-Fi, the code on
+both screens, the question's taps on the panel, the rename into `grimoire/import` on its storage, and that the log
+names nothing. You need the Kindle Scribe, a phone and a computer on the same Wi-Fi, and two PDFs on the phone: a small
+one (a few MB, `2027 Planner.pdf` say) and one over 64 MB. Every step is checked on the Kindle and in the browser; the
+lines marked "Over SSH, optional" look at the files themselves and can be left out.
+
+1. **Sent and imported**: on the Kindle, Library > Share. On the phone, open the address it shows (or scan its code):
+   the page has a Send a PDF to the Kindle button under Download everything (zip). Tap it, pick the small PDF: the
+   page counts "Sending PDF: N%", then says "Confirm on the Kindle." with "Code NNNN" in big type under it, the two
+   together (a page that stays at "Sending PDF: 100%" while the Kindle asks was not given its code: note the browser
+   and the network, and tap Cancel). The Kindle shows `Import "2027 Planner.pdf" (N MB)?` over the Share screen, the
+   same "Code NNNN" in big type under it, then Import and Cancel; the size is the file's. Both codes read easily at
+   arm's length, and they are the same. Tap Import: the toast "Copied to grimoire/import.", the page says the same
+   and its code goes. Tap X: back in the Library the import's notice counts its pages, and the notebook "2027
+   Planner" is a card. Over SSH, optional: before Import `ls -a /mnt/us/grimoire/.cache` shows `share-upload.part`
+   and `grimoire/import` has nothing new; after it the part is gone.
+2. **Cancelled**: send the small PDF again; on the Kindle tap Cancel: no toast, the page says "Not imported." and its
+   code goes, and back in the Library no new notebook appears (Files > All storage > grimoire > import shows nothing
+   new).
+3. **A few seconds after**: right after that Cancel, send again at once: the page says "Wait 5 seconds, then send
+   again." and the Kindle asks nothing. Wait 5 seconds and send: the Kindle asks, with a new code, the one the page
+   now shows. Tap Import, and send again at once: the same "Wait 5 seconds, then send again.", and no question over
+   the toast "Copied to grimoire/import.".
+4. **A quick double tap**: send, and tap twice quickly where Import will be as the question appears (the first tap
+   before it is drawn): the question stays until a tap after it is shown. Then Cancel.
+5. **X during a question**: send, and while the Kindle asks tap Share's X: the question goes, Share closes at once,
+   and the page says "Not imported.". With a keyboard paired, open Share, reload the page, send, and press Esc while
+   it asks: the same.
+6. **No answer**: send, and leave the question for two minutes: it goes with the toast "Not imported.", and the page
+   says "Not imported.".
+7. **A phone that locks while the Kindle asks**: send from the phone and, as soon as the Kindle asks, lock the phone.
+   After 30 seconds unlock it and look at the page and at the Kindle; if the question is still up, tap Import. Note
+   what each says (a browser that drops its connection ends the send: the question goes with "Not imported."). Do it
+   again switching the phone to another app instead of locking it. This tells the owner how phones keep a send.
+8. **Too big**: pick the PDF over 64 MB: the page says "PDF too big: over 64 MB." at once, and the Kindle asks
+   nothing.
+9. **Share closed**: with the page still open on the phone, tap X on the Kindle's Share screen, then send from the
+   page: the page says "Not imported." (the server is not running), and the Kindle shows nothing. Open Share again
+   and send from the old page without reloading it: "Open Share on the Kindle, then reload this page.". Reload: the
+   send is asked about again (Cancel it).
+10. **Two at once**: open the page on the phone and on the computer; send from one, and while the Kindle asks, send
+    from the other: both pages say "Another PDF is being sent. Try again.", the question goes with "Not imported.",
+    and nothing is kept. Send again at once from either: "Wait 5 seconds, then send again.".
+11. **The code is the send's own**: with the page open on both, send from the phone: only the phone's page shows a
+    code, and it is the Kindle's; the computer's page shows none. Cancel.
+12. **Sleep and a turn**: send, and turn the Kindle while it asks: the question and its code are drawn at the new
+    place, and a tap counts there. Send again and press the power button: the sleep screen comes, and after the wake
+    Share shows no question; the page says "Not imported.".
+13. **Over a stalling Wi-Fi**: send the small PDF and walk the phone out of the Wi-Fi's reach halfway: within a minute
+    the page fails and the Kindle asks nothing. Over SSH, optional: no `share-upload.part` is left.
+14. **A big send**: send a PDF of close to 64 MB and time it from the pick to the question (it tells the owner whether
+    the size limit fits).
+15. **Spanish**: Settings > Language > Español: the page's button reads "Enviar un PDF al Kindle", the question
+    "¿Importar «2027 Planner.pdf» (N MB)?" with "Código NNNN" under it and Importar and Cancelar, whole upright and
+    sideways; the page shows the same "Código NNNN", and "Espera 5 segundos y vuelve a enviarlo." for step 3.
+16. **The log**: over USB (or SSH), search `grimoire/grimoire.log` for `upload`: lines `httpd: an upload ...` for each
+    step, and no file name, no 32-hex token and no send's code anywhere in it.

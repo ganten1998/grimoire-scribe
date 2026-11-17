@@ -50,9 +50,26 @@ pub fn pdflinks_seed(src: u32, index: u32) -> u32 {
 }
 
 /// Whether two areas are the same link's, within the tolerance on each edge.
-fn same_area(a: Rect, b: Rect) -> bool {
+pub(crate) fn same_area(a: Rect, b: Rect) -> bool {
     let t = PDFLINKS_TOLERANCE_PX;
     (a.x - b.x).abs() <= t && (a.y - b.y).abs() <= t && ((a.x + a.w) - (b.x + b.w)).abs() <= t && ((a.y + a.h) - (b.y + b.h)).abs() <= t
+}
+
+/// A link's rectangle clamped to the page (pw x ph, each at most NAV_AREA_MAX), None when less than 1 px a side
+/// is left of it.
+pub(crate) fn page_area(r: Rect, pw: i32, ph: i32) -> Option<Rect> {
+    let (pw, ph) = (pw.min(NAV_AREA_MAX), ph.min(NAV_AREA_MAX));
+    if pw < 1 || ph < 1 {
+        return None;
+    }
+    let x0 = (r.x as i64).clamp(0, pw as i64) as i32;
+    let y0 = (r.y as i64).clamp(0, ph as i64) as i32;
+    let x1 = (r.x as i64 + r.w as i64).clamp(0, pw as i64) as i32;
+    let y1 = (r.y as i64 + r.h as i64).clamp(0, ph as i64) as i32;
+    if x1 - x0 < 1 || y1 - y0 < 1 {
+        return None;
+    }
+    Some(Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })
 }
 
 /// Validation: both pages in the notebook, not a link to its own page, the area clamped to the page (pw x ph)
@@ -62,19 +79,8 @@ pub fn pdflinks_valid(rec: &DocRecord, pw: i32, ph: i32, exists: &dyn Fn(u32) ->
     if rec.src == 0 || rec.dst == 0 || rec.src == rec.dst || !exists(rec.src) || !exists(rec.dst) {
         return None;
     }
+    let area = page_area(rec.rect, pw, ph)?;
     let (pw, ph) = (pw.min(NAV_AREA_MAX), ph.min(NAV_AREA_MAX));
-    if pw < 1 || ph < 1 {
-        return None;
-    }
-    let r = rec.rect;
-    let x0 = (r.x as i64).clamp(0, pw as i64) as i32;
-    let y0 = (r.y as i64).clamp(0, ph as i64) as i32;
-    let x1 = (r.x as i64 + r.w as i64).clamp(0, pw as i64) as i32;
-    let y1 = (r.y as i64 + r.h as i64).clamp(0, ph as i64) as i32;
-    if x1 - x0 < 1 || y1 - y0 < 1 {
-        return None;
-    }
-    let area = Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     let outline = rec.quad.and_then(|q| {
         let mut pts = q.to_vec();
         pts.push(q[0]);

@@ -441,7 +441,7 @@ pub fn doclinks_targets(dl: &DocLinks, p: &Page, pid: u32) -> Vec<(u32, Rect)> {
 }
 
 /// A box made at least min_px a side around its centre, rounded outward (nav's padding).
-fn grown(r: Rect, min_px: f32) -> Rect {
+pub(crate) fn grown(r: Rect, min_px: f32) -> Rect {
     let (mut x0, mut y0, mut x1, mut y1) = (r.x as f32, r.y as f32, (r.x + r.w) as f32, (r.y + r.h) as f32);
     let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
     if x1 - x0 < min_px {
@@ -456,7 +456,7 @@ fn grown(r: Rect, min_px: f32) -> Rect {
     Rect { x: ix, y: iy, w: x1.ceil() as i32 - ix, h: y1.ceil() as i32 - iy }
 }
 
-fn holds(b: Rect, x: f32, y: f32) -> bool {
+pub(crate) fn holds(b: Rect, x: f32, y: f32) -> bool {
     x >= b.x as f32 && x < (b.x + b.w) as f32 && y >= b.y as f32 && y < (b.y + b.h) as f32
 }
 

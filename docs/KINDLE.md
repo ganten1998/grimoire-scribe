@@ -492,6 +492,16 @@ shows from the next reading on. With neither, the corner shows the time alone, w
 The screen guard leaves the corner's box out of its checks, so it is not taken for something else
 drawing over Grimoire.
 
+## Auto brightness
+
+The Display page's Brightness row is followed by **Auto brightness** on a Kindle with an
+ambient-light sensor (the Scribe's two sit in its wide bezel): ticked, it turns on the Kindle's own
+auto brightness (`com.lab126.powerd flAuto`) and the power service sets the front light from the
+room's light, as the stock reader does. Ticking it moves the Brightness slider to the level the
+Kindle has picked; the slider still works by hand, and opening Display while auto is on shows the
+level at that moment. A Kindle without a sensor has no such row (the simulator has one under
+`GRIMOIRE_SIM_LIGHT_SENSOR=1`, docs/SIM.md).
+
 ## Links on a page (2.0.0-beta.6)
 
 A link is an invisible area of a page that a finger's tap follows; making one leaves no ink. In the
@@ -1012,6 +1022,16 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   none; if one appears, it is worth reporting with the orientation and style. Only the simulator
   also logs `share: (simulator) the code holds http://...`, which tests/share_check.sh compares
   with the decoded code.
+- **A PDF sent from the Share page** (2.2) is logged as `httpd: an upload of N KB is coming in`, then `httpd:
+  an upload of N KB is in; the Kindle asks`, and how it ended: `httpd: an upload was kept: it waits in import/
+  for the import` (Import), `httpd: an upload was not kept (<why>)` (Cancel on the Kindle, no answer on the
+  Kindle, Share closed, the Kindle went to sleep, a second upload came, the server stopped, more bytes than
+  its length came), `httpd: an upload was cut short; nothing kept`, `httpd: the browser that sent an upload
+  left; nothing kept`, or `httpd: an upload was refused (<why>)` (no token, a wrong token, another site,
+  another host, too big, not a PDF, no room, too soon after the last one ended, more bytes than its length, a
+  Content-Length twice or too long, ...). Never the file's name, the page's token, the send's code or a header.
+  `share: a sent PDF the last run left unanswered was removed` at a start means Grimoire ended while the Kindle
+  asked: its temporary file (`grimoire/.cache/share-upload.part`) went.
 - **Live view** logs `live: on` and `live: off`, `live: a browser paired` or
   `live: a pairing was refused (wrong code)` / `(locked)`, and `live: a viewer started (N
   watching)`. Its requests are logged without their query (`httpd: GET /live/pair`): no code or

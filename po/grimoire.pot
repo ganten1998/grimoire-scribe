@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 23:07-0600\n"
+"POT-Creation-Date: 2026-11-17 14:38-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -790,20 +790,20 @@ msgid "PDF too long: notebooks hold %d pages."
 msgstr ""
 
 #. TRANSLATORS: a toast: the PDF's file is bigger than Grimoire reads; %d is the size in MB (512).
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/httpd.rs
 #, c-format
 msgid "PDF too big: over %d MB."
 msgstr ""
 
 #. TRANSLATORS: a toast: the PDF could not be imported because the Kindle's storage is full.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/httpd.rs rust/src/share.rs
 msgid "Couldn't import PDF. Is the storage full?"
 msgstr ""
 
 #. TRANSLATORS: a toast: the PDF could not become a notebook; %s is the log file that says why.
 #. The PDF stays where it was.
 #. TRANSLATORS: a row of the Import place: this PDF could not become a notebook; %s is the log that says why.
-#: rust/src/app.rs rust/src/browser.rs rust/src/library.rs
+#: rust/src/app.rs rust/src/browser.rs rust/src/library.rs rust/src/share.rs
 #, c-format
 msgid "Couldn't import PDF (see %s)."
 msgstr ""
@@ -842,7 +842,7 @@ msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders,
 #. or a font file into its fonts; %s is that folder's name as Files shows it (Templates, Photos, Fonts).
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/httpd.rs rust/src/share.rs
 #, c-format
 msgid "Copied to %s."
 msgstr ""
@@ -1261,7 +1261,7 @@ msgstr ""
 
 #. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
 #. dropped in it become notebooks. Also the first word of its path line (a row of 150 px at 44 px).
-#: rust/src/browser.rs
+#: rust/src/browser.rs rust/src/share.rs
 msgid "Import"
 msgstr ""
 
@@ -1338,7 +1338,7 @@ msgstr ""
 #. the main one), or at 34 px, or two lines of that.
 #: rust/src/browser.rs rust/src/calibrate.rs rust/src/editor.rs
 #: rust/src/keyboard.rs rust/src/library.rs rust/src/linkbar.rs
-#: rust/src/musicbuild.rs rust/src/pagesview.rs
+#: rust/src/musicbuild.rs rust/src/pagesview.rs rust/src/share.rs
 msgid "Cancel"
 msgstr ""
 
@@ -1370,6 +1370,8 @@ msgstr ""
 #. TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
 #. file... opens): this copies it into grimoire/templates, to write on as paper (a row of
 #. about 800 px at 44 px).
+#. TRANSLATORS: (also) a PDF's card in Files: this copies the PDF into grimoire/templates, where each of
+#. its pages becomes a template, to write on as paper (a row of about 800 px at 44 px).
 #: rust/src/browser.rs
 msgid "Use as template"
 msgstr ""
@@ -1858,7 +1860,10 @@ msgstr ""
 
 #. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
 #. that (116 px at 34 px, as Pin).
+#. TRANSLATORS: also the only row of a web link's card (the address and its QR code): closes the card (about
+#. 600 px at 44 px).
 #: rust/src/editor.rs rust/src/i18n.rs rust/src/keyboard.rs rust/src/library.rs
+#: rust/src/linkcard.rs
 msgid "Done"
 msgstr ""
 
@@ -2510,6 +2515,7 @@ msgstr ""
 msgid "Preparing PDF: {done} / {total} pages"
 msgstr ""
 
+#. TRANSLATORS: the share index, under its Send a PDF button: how much of the PDF has gone ({percent}: "42%").
 #: rust/src/httpd.rs
 msgid "Sending PDF: {percent}"
 msgstr ""
@@ -2534,6 +2540,50 @@ msgstr ""
 
 #: rust/src/httpd.rs
 msgid "Waiting for an export slot..."
+msgstr ""
+
+#. TRANSLATORS: the share index's button (a phone's or a computer's browser) that picks a PDF to send to the
+#. Kindle, which asks before it keeps it.
+#: rust/src/httpd.rs
+msgid "Send a PDF to the Kindle"
+msgstr ""
+
+#. TRANSLATORS: the share index, once the PDF has gone: the Kindle now asks whether to import it.
+#: rust/src/httpd.rs
+msgid "Confirm on the Kindle."
+msgstr ""
+
+#. TRANSLATORS: the share index, big under Confirm on the Kindle.: the send's code (%s: four digits, "4821"),
+#. which the Kindle shows under its question, so the user can see the question is about this PDF.
+#. TRANSLATORS: the Kindle's question for a PDF sent from the Share page, big under its title: the send's code
+#. (%s: four digits, "4821"), which the page that sent it shows too, so the user can see it is that PDF.
+#: rust/src/httpd.rs rust/src/share.rs
+#, c-format
+msgid "Code %s"
+msgstr ""
+
+#. TRANSLATORS: the share index, after Cancel on the Kindle, no answer there for two minutes, or a PDF the Kindle
+#. did not take; also a toast on the Kindle when its question went without an answer.
+#: rust/src/httpd.rs rust/src/share.rs
+msgid "Not imported."
+msgstr ""
+
+#. TRANSLATORS: the share index, when two PDFs were sent at once (neither is kept).
+#: rust/src/httpd.rs
+msgid "Another PDF is being sent. Try again."
+msgstr ""
+
+#. TRANSLATORS: the share index, when the page is older than the Share screen now open on the Kindle (or Share
+#. was closed): it must be loaded again before it can send.
+#: rust/src/httpd.rs
+msgid "Open Share on the Kindle, then reload this page."
+msgstr ""
+
+#. TRANSLATORS: the share index, when a PDF is sent within a few seconds of the end of the one before (imported,
+#. or Cancel on the Kindle, say): the Kindle takes the next one after that (%d: seconds, 5).
+#: rust/src/httpd.rs
+#, c-format
+msgid "Wait %d seconds, then send again."
 msgstr ""
 
 #. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
@@ -3823,6 +3873,14 @@ msgstr ""
 msgid "Pen button: %s"
 msgstr ""
 
+#. TRANSLATORS: Settings' System category row that opens the darker lines choices, with the one in
+#. use ("Darker lines in imported PDFs: Medium"): how dark the gray pages of a PDF imported from now
+#. on are drawn. A PDF already imported stays as it is.
+#: rust/src/library.rs
+#, c-format
+msgid "Darker lines in imported PDFs: %s"
+msgstr ""
+
 #: rust/src/library.rs
 #, c-format
 msgid "Mirror PDFs to %s (USB)"
@@ -4154,6 +4212,12 @@ msgstr ""
 msgid "Eraser"
 msgstr ""
 
+#. TRANSLATORS: the title of the list of how dark the gray pages of a PDF imported from now on are drawn
+#. (Settings > System): Off, Medium, Strong.
+#: rust/src/library.rs
+msgid "Darker lines in imported PDFs"
+msgstr ""
+
 #: rust/src/library.rs
 msgid "Kindle"
 msgstr ""
@@ -4211,7 +4275,8 @@ msgid "Links"
 msgstr ""
 
 #. TRANSLATORS: Settings > System > About > a link, above the link's QR code.
-#: rust/src/library.rs
+#. TRANSLATORS: also a web link's card, above the address's QR code (about 680 px at 34 px).
+#: rust/src/library.rs rust/src/linkcard.rs
 msgid "Scan with a phone's camera"
 msgstr ""
 
@@ -4481,7 +4546,9 @@ msgstr ""
 
 #. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
 #. annotated from KOReader): "p. 12". 355 px at 34 px.
-#: rust/src/mapview.rs rust/src/pagesview.rs
+#. TRANSLATORS: (also) after the name of a PDF in grimoire/templates, under a tile of the Templates sheet: which
+#. of the PDF's pages the tile is ("Planner p. 3"). %d is the page's number.
+#: rust/src/mapview.rs rust/src/pagesview.rs rust/src/tplsheet.rs
 #, c-format
 msgid "p. %d"
 msgstr ""
@@ -5132,6 +5199,24 @@ msgstr ""
 msgid "Takes away only what it touches"
 msgstr ""
 
+#. TRANSLATORS: Settings' System category, the row that opens the darker lines choices, with the one in use
+#. ("Darker lines in imported PDFs: Off"), and its list's three choices: the gray pages of a PDF imported from
+#. now on are drawn as they are, a little darker, or darker still (faint lines read better on the Kindle).
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Off"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Medium"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Strong"
+msgstr ""
+
 #: rust/src/settingsmenu.rs
 msgid "Style (Gothic)"
 msgstr ""
@@ -5278,6 +5363,13 @@ msgstr ""
 #. TRANSLATORS: Live view's pairing card: turns Live view off.
 #: rust/src/share.rs
 msgid "Stop"
+msgstr ""
+
+#. TRANSLATORS: the question on the Kindle's Share screen when a PDF was sent from its page in a browser: its
+#. file's name (shortened with "..." when long) and its size ("12.3 MB"); Import keeps it, Cancel does not.
+#: rust/src/share.rs
+#, c-format
+msgid "Import \"%s\" (%s)?"
 msgstr ""
 
 #: rust/src/share.rs

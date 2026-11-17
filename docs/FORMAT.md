@@ -51,7 +51,7 @@ root/touch-trace                        an empty file the owner makes: asks for 
 root/touch-trace.txt                    the touch trace (docs/KINDLE.md), never exported (2.0)
 root/bluetooth/                         the Bluetooth helper, unpacked by the owner, and its own data (2.0)
 root/.update-failed                     an update KPM could not install: told at the next start, then removed (2.0)
-root/templates/                         pictures the owner copies in to use as paper (Templates)
+root/templates/                         pictures the owner copies in to use as paper, and PDFs, a template a page (Templates; Template PDFs, 2.2)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
 root/fonts/                             font files the owner copies in, for Classic's text (2.1.0-beta.2; Your own fonts)
 root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
@@ -70,7 +70,7 @@ root/.cache/files/                      Files' previews of the files its Covers 
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
 `folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
 `bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
-`import/.attempts`, an import's work files `links.part` and `names.part`, `clipboard.qpg`, the shortcut files
+`import/.attempts`, an import's work files `links.part`, `names.part` and (2.2) `webs.part`, `clipboard.qpg`, the shortcut files
 (`shortcuts.ini`, `controller.ini`, `shortcuts/`, `gestures.ini`, `live-keys.ini`) and the PDF cache's
 records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
 is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
@@ -81,8 +81,8 @@ the check's verdicts, marks and previews (Your own fonts).
 The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
 `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
 4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, an import's `links.part` up to 4,194,314
-bytes and its `names.part` up to 406,000 (the most one worker's walk can have the first slice write: "Imports:
-PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
+bytes, its `names.part` up to 406,000 and its `webs.part` (2.2) up to 4,194,304 (the most one worker's walk can
+have the first slice write: "Imports: PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
 8000 x 8000, and a header). Page files and pictures have no limit of this kind. A `folders.ini` over its limit
 reads as an empty list; what the other readers do with a file that is not read is in their sections.
 
@@ -622,6 +622,33 @@ the rename). The editor, which may have the notebook open, writes the card itsel
 the first page or closes the notebook, saving the page first: if it did meanwhile, the job draws
 the card again from the page as it is then, and after three tries leaves the editor's.
 
+### Template PDFs: `root/templates/*.pdf` (2.2)
+
+A file of `templates/` whose name ends in `.pdf` (any case), does not start with a dot and is a plain file is a
+template PDF: one template a page. Its pages are drawn once, by the sandboxed PDF worker, into `templates/.cache/`
+beside the pictures' previews, under the same `<hash>` (of the PDF's name, size and time):
+
+- `<hash>.pages`: the PDF's page count, exactly `<n>` and a line break, n from 1 to 50 in decimal with no sign or
+  leading zero; written once the worker has counted the pages, before any page. Anything else is no count (the
+  pages are counted again).
+- for page n (from 1, four digits: `p0001`): `<hash>-p<nnnn>.png`, the page fitted and centred on a white page of the
+  Kindle's page size, 8-bit gray, or 8-bit RGB for a page with colour (as the PDF import stores its pages);
+  `<hash>-p<nnnn>.key`, the line a template's `.key` has (the hash of that PNG's bytes, 16 hex digits, then its width
+  and height); `<hash>-p<nnnn>.pgm`, its preview (P5 PGM, a sixth of the page). Written in that order: a page is
+  made when its preview is there with the two before it. `<hash>-p<nnnn>.bad` for a page that cannot be drawn: empty,
+  or `died` and a line break when its worker ended or stalled on it twice.
+- `<hash>.bad`, empty, for a PDF that is no template: empty, over 16 MB, more than 50 pages, refused by the worker
+  (no PDF Grimoire reads, a password, no page), a worker that lied, ended or stalled twice opening it, two pages
+  marked `died`, or no page drawn. It then has no `.pages` and no page files.
+
+A page is then a template as a picture is: its path is its `.png` in the cache, its key and preview are beside it,
+and a page given one gets the template's image paper (role 0) with its picture made for the notebook from that PNG
+(Ids). A notebook keeps its own copy (`bg/`): deleting or changing the PDF, or the cache, never changes a page
+already on it. The entries of a PDF that changed (another `<hash>`) or went are removed by the next previews job or
+template PDF job, as a picture's are; a look at the folder that finds the count of a PDF no longer there queues the
+previews job for it. Deleting `templates/.cache/` loses nothing: the pages are drawn again at the
+next look.
+
 ### Photos: `root/photos/` (2.0.0-beta.5 on)
 
 Photos the owner copies in (over USB, while Grimoire is closed), named as templates are. Grimoire
@@ -823,6 +850,20 @@ waits, and within 10 s of the end of a previous run's import):
   colour picture in colour, DeviceRGB (see the notebook PDF below). The pages KOReader draws (Annotate this
   page, and Open this book for DjVu, comics, XPS and any book version 1 sends) stay gray; a PDF KOReader hands over
   by its path (2.2, Whole books) is drawn by this import, in colour.
+- **Darker lines (2.2, issue #173):** `settings.ini`'s `pdf_gamma` (Settings > System > Darker lines in imported
+  PDFs: Off, Medium or Strong) is the gamma a PDF queued from then on draws its gray pages at, `1.5` or `2.0`: each
+  level of a page stored gray becomes 255 (level / 255)^gamma, rounded to the nearest whole level and computed in
+  whole numbers, so every build makes the same bytes; white stays white, black stays black, and the grays between
+  go darker. A page stored in colour (a page with gray and colour on it is one) is stored exactly as at Off, and at
+  Off every page is the import's as before. The level is the one the file was queued at: the UI writes it into the
+  file's mark (a file of `import/` and a pick at the setting, a PDF KOReader hands over at its request's `gamma=`
+  when it has one, Whole books), the first slice keeps it in the import's state, and the notebook keeps it in its
+  `source.ini` as one line after the file record, `gamma=1.5` or `gamma=2.0` (no line at Off). Each of these lines
+  is read strictly: `1.0`, `1.5` or `2.0`, and any other value is no gamma. A fill (below) draws the pages it adds at
+  its notebook's own `gamma=` (no line: Off), whatever the setting or a request says, and leaves the line as it was;
+  a notebook KOReader made by version 1 has no line, so a fill adds its pages at Off even where KOReader drew its
+  own darker. The same PDF again with every page is "PDF already imported." at any level: no page is drawn again (a
+  notebook moved to the trash no longer holds the PDF, which then imports afresh at the setting).
 - **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
   as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
   per page, and `links=1` when the import wrote `doclinks.ini`, so KOReader's Open this book does not ask for
@@ -904,7 +945,8 @@ waits, and within 10 s of the end of a previous run's import):
   lists the pages it had and shows nothing new. After it come the links (`doclinks.ini`): only the PDF's links
   that start or end on a page the fill added, through `pdflinks_fill` with the notebook's document links in it
   and its own links' seeds never taken, the water level trimming only links the fill adds; a link between two
-  pages the notebook had is never added, and `source.ini`'s `links=` stays as it was. Then the names (`nav.ini`):
+  pages the notebook had is never added, and `source.ini`'s `links=` stays as it was. Then the web links of the
+  pages the fill added (`weblinks.ini`, below), the notebook's own never trimmed. Then the names (`nav.ini`):
   the outline's, for the pages the fill added only. Deleting the pages a fill added takes every page, link and
   name it wrote. Each of these files is read and written whole in one tick, so nothing written between two ticks
   is undone. Then `stage=3`, and one more background slice moves the PDF to `import/done/` (while its name still
@@ -926,7 +968,8 @@ waits, and within 10 s of the end of a previous run's import):
   `notebooks/.import-<id>/pdf-import.ini` (`src`, the path as it is, as in the mark; `size`, `mtime`, `key`,
   `pages`, `next`, `pics` (the picture
   id of each page made, hex), `blank`, `strikes`, `cpu_ms`, `pick`, `name`, `folder` (a pick's, kept here as in
-  its mark), `bytes` (what the pages made take), `open` (1 while a slice runs) and `stops`; 2.1.0-beta.2's
+  its mark), `bytes` (what the pages made take), `open` (1 while a slice runs), `stops` and from 2.2 `gamma` (darker
+  lines, above: a line only away from Off); 2.1.0-beta.2's
   first builds wrote `owner` and `started`, read by nothing), which a start or a scan that finds the file
   unchanged resumes from; a changed file removes the work. The picture index `bg/index.ini` is saved before any
   state that names its pictures, and a slice that resumes first makes again every page from the first whose
@@ -943,8 +986,9 @@ waits, and within 10 s of the end of a previous run's import):
 - **Marks:** `import/.marks/<16 hex of the source path>` holds `state` (`making`, `waiting` or `done`), `id`,
   `src` (the path from the storage root, as it is: no character of it is changed, and a path with a line feed or
   a carriage return in a name is given no mark and no state, so it is never imported; `id`, `name` and `folder`
-  are written without control characters), `pick`, `name`, `folder`, `page`, `pages`, `at`, and for `done` the
-  file's `size` and `mtime` (another file of that name later is a new file); the coarse progress a detached
+  are written without control characters), `pick`, `name`, `folder`, `page`, `pages`, `at`, for `done` the
+  file's `size` and `mtime` (another file of that name later is a new file), and from 2.2 `gamma` (the darker lines
+  the file was queued at, above: a line only away from Off); the coarse progress a detached
   import leaves, rewritten at most every 20 s. A mark goes when its import ends, whatever the end; `done` stays
   only for a file of `import/` that could not move. A `waiting` mark (a pick made while another process held
   the lock) is queued by the first scan that takes the lock afresh; one whose file name is not the hash of the
@@ -963,12 +1007,16 @@ waits, and within 10 s of the end of a previous run's import):
   `import/done/` like a drop, and the scan leaves it to its pick while the pick's job is queued or running.
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
-  the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
+  the work folder as `links.part` (the `L` and `Q` records, then `F`), `names.part` (the `O` records) and, from
+  2.2 and only for a PDF with a web link, `webs.part` (the `W` records of its web links: never in `links.part`,
+  which 2.1.0 reads), in the
   worker's own record grammar, read back strictly by the last slice, each only as a plain file of at most its
   size: `links.part` 4,194,314 bytes (a worker's 4 MiB of records, line for line, and the `F` line the slice
   writes itself when the walk sent none), `names.part` 406,000 (an `O` line of at most 203 bytes for each of
-  at most 2000 pages); a part that does not read leaves the notebook without links and names. The commit
-  writes `doclinks.ini` (below) and `nav.ini` from them, before `notebook.ini`, and removes the two parts. A
+  at most 2000 pages), `webs.part` 4,194,304; a part that does not read leaves the notebook without links and
+  names (`webs.part`: without web links, its links and names kept). The commit
+  writes `doclinks.ini` (below), `weblinks.ini` (2.2, below: only when the PDF has a web link) and `nav.ini` from
+  them, before `notebook.ini`, and removes the parts. A
   worker that dies, stalls or lies in the walk costs the notebook its links and names only (logged); the
   pages do not depend on it. What is read:
   an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
@@ -977,17 +1025,22 @@ waits, and within 10 s of the end of a previous run's import):
   `LastPage`, resolved to the concrete page), else its `/Dest`; an explicit destination naming its page by
   number instead of a reference counts as a 0-based index in range; `/QuadPoints` (up to 8 quads, a link each,
   its box as the area, a quad that is not an axis-aligned rectangle also as a closed `outline.` polygon),
-  else `/Rect`. Web links (URI) are left out and counted in the log; GoToR, Launch, JavaScript, a link with no
+  else `/Rect`. Web links (a URI action) are kept from 2.2 when their address passes the rules of `weblinks.ini`
+  (below), each quad (or the rectangle) a web link whose area is its box, and are otherwise left out and counted in
+  the log (the web links' line counts apart those whose area is off the page and the addresses over 200 bytes);
+  GoToR, Launch, JavaScript, a link with no
   action, one whose destination does not resolve, an empty rectangle, a link to its own page and one that falls
   off the page are left out and counted too. Walks are capped (name trees and the outline: depth 32, 100,000
   entries and nodes, a visited set; 20,000 annotations a page; 60,000 links a PDF) and the rest is left out.
+  Web links (2.2) are walked after every page link and never take a page link's room: at most 256 a page and
+  4,000 a PDF, in what room the page links left.
   The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
   least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
   outline names pages: depth first, the first item that points at a page names it, a page's own name staying
   (an import makes a new notebook, so none has one; a fill names only the pages it adds); titles are decoded from PDF text strings (UTF-16BE or LE
   with a BOM, UTF-8 with a BOM, else PDFDocEncoding), controls become spaces, trimmed, cut at 95 bytes between
-  characters. The water level trims the densest pages first; when it (or a page's 1,024, or the worker's cap)
-  left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
+  characters. The water level trims the densest pages first; when it (or a page's 1,024, a page's 256 web links,
+  or the worker's cap) left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
   ending wins when both apply).
 - **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
   held while any is queued or running, through one close-on-exec handle; an import's background child (and the
@@ -1104,8 +1157,9 @@ its picture. A paged document's count never changes. A line whose page is no lon
 (deleted) is left out of the next write, and that book page is a new page if it is sent again. Lines
 this version does not know are written back as they were: whole lines of up to 255 bytes, 1 KB in
 all. A notebook made from a PDF may also hold one `file=sha256:...` line, the record of the file it was
-made from (Imports: PDFs, the file record): the code that adds book pages does not read it, and writes
-it back with the lines it does not know, after the page lines. The second notebook of a book's key has
+made from (Imports: PDFs, the file record), and from 2.2 one `gamma=` line, the darker lines its gray pages
+were drawn at (Imports: PDFs, darker lines): the code that adds book pages reads neither, and writes them
+back with the lines it does not know, after the page lines. The second notebook of a book's key has
 no `book=` line.
 
 1.0.0-beta and 1.0.0-rc.1 never read or write `source.ini` or `import/.annotate/`: they stay as
@@ -1169,6 +1223,7 @@ title and page count. The request has the lines above (`book`, `title`, `kind`, 
 | key | value |
 |---|---|
 | `file` | the PDF's absolute path as KOReader has it open, once: inside the Kindle's storage (`/mnt/us/...`), with no `.`, `..` or empty part and no control character in it. Its line is read whole (under 1024 bytes), never cut as a longer title is |
+| `gamma` | the darker lines the reader's contrast asks for (2.2, issue #173), at most once: the plugin writes `1.5` for a contrast from 1.25 and `2.0` for one from 1.75 (KOReader's contrast is a gamma on the page; from the file browser, the one the reader would open the book with), and no line for any other (KOReader's own 1, a lighter page). Grimoire takes `1.0`, `1.5` or `2.0`, and any other value as no gamma; without the line its darker lines setting decides (Imports: PDFs, darker lines). A fill of the book's notebook draws at the notebook's own level |
 
 The plugin sends version 2 only for a PDF Grimoire would take, and version 1 otherwise, KOReader drawing the pages,
 so a book that opened before 2.2 still opens. It keeps version 1 for:
@@ -1190,7 +1245,7 @@ Annotate this page stays version 1 for every format.
 
 Grimoire reads a version 2 request strictly. Its version line says exactly `version=2` (a request with that line
 is a version 2 request wherever the line stands; `02` is no version it knows), and each of `version`, `book`,
-`file`, `title`, `pages`, `page`, `kind` and `time` comes once at most. A key said twice, a path that is not
+`file`, `title`, `pages`, `page`, `kind`, `time` and `gamma` comes once at most. A key said twice, a path that is not
 absolute, is not UTF-8, is 1024 bytes or longer or holds a control character (a byte under 0x20, or 0x7F), or a
 `picture.<n>` line, and it does not read. A key it does not know is passed over, as in version 1.
 
@@ -1317,6 +1372,66 @@ exact area) and raw zips (`raw/doclinks.ini`). Who never does: the Links bar's L
 cache, the library index and the Graph, the lasso and Select, the clipboard, and the 64-a-page and
 4,000-a-notebook checks, which count the user's links only. Moving pages inside a notebook (Move to...) changes
 only the page list: links go by page id.
+
+## Web links: `weblinks.ini` (2.2)
+
+`notebooks/<id>/weblinks.ini` holds the web links a document brought: a PDF link annotation whose action is a URI
+(ISO 32000-1, 12.6.4.7) with an address the rules below take. A finger's tap on one shows a card with the address
+and its QR code, for a phone to open. Nothing on the Kindle opens, fetches or runs an address: the card shows the
+stored text and a code made from it.
+
+```
+# comment lines and blank lines are skipped
+web.<page id>=<seed>,<x>,<y>,<w>,<h>,<address>
+```
+
+The page id and the seed are as in a `link.` line of `links.ini` (the seed names the link inside this file only: ink
+and the other link files never meet it), the area as an `area.` line's (1 to 4 decimal digits each, 1 <= w,
+1 <= h, x + w and y + h at most 6000, page pixels at the notebook's page size), and the address is the rest of the
+line, exactly as stored and as shown (it may hold commas). An address is kept only when it starts with `http://` or
+`https://` (the scheme in either case), holds only printable ASCII other than a space and `\` (bytes 0x21 to 0x7E:
+no control byte, no space, nothing outside ASCII), is at most 200 bytes long (under the 213 that the largest QR code
+Grimoire draws, version 10 at level M, holds) and names a plain host: up to the first `/`, `?` or `#` it is `<host>`
+or `<host>:<port>`, with no `user@` part, the host of letters, digits, `-`, `_` and `.` only (no `%`, no `[`), a host
+whose last label is a number only as four numbers from 0 to 255 without leading zeros, and a port from 1 to 65535
+without a leading zero. These are the addresses whose host, as a browser reads them, is the host their text names
+(a browser reads `\` as `/`, the text before an `@` as a user, `%2E` as a dot and `0x7f.1` as `127.0.0.1`); the
+card's title shows that host as a browser writes it: in lower case, with its port unless it is the scheme's own
+(80 for http, 443 for https). The import trims spaces,
+tabs, line breaks and NULs from the ends of the PDF's string first; a `javascript:`, `file:`, `mailto:` or relative
+address, or any other the rules refuse, is left out and counted in the log, as every web link was before 2.2. The
+worker checks the address, the writer checks it again before it is stored, and the reader checks it again. Within
+a page the file's order is the document's; the last line for a page id and seed wins.
+
+| | `weblinks.ini` |
+|---|---|
+| links | 4,000 (an import or a fill keeps at most 3,600, by `doclinks.ini`'s water level: the densest pages first) |
+| a page | 256 (the rest are left out for room, and the end says "Some links were left out.") |
+| size | 1 MiB (the most links at their longest fit, with the carried lines) |
+
+A file over a cap or one that holds a NUL does not read: it shows no web links and is never written over. A `web.`
+line this version cannot read (an address or an area it refuses: another version's) and any other line it does not
+know are carried, up to 255 bytes a line and 16 KiB together. A line past those bounds (a later version's longer
+address, say) is skipped and counted in the log, the file's other links are shown, and the file is never written
+over, so the line stays for the version that wrote it: a later version may raise the address's cap and cost this
+one only those lines. A link of a page no longer in
+the notebook is not shown and goes from the file at its next write. The writers: the PDF import's last slice (a new
+notebook's, only when the PDF has a web link: a notebook without web links has no `weblinks.ini`), a fill's commit
+(the web links of the pages it adds, the notebook's own never trimmed), Copy page and Copy to notebook (a web link
+goes wherever its page goes; when it cannot, the toasts of document links say so). Never a page turn, Clear page, a
+lasso or Select.
+
+Who reads it: the editor (a tap, the eye's boxes, the card), Copy page and Copy to notebook, and raw zips
+(`raw/weblinks.ini`). Who never does: the Links bar, the backlinks cache, the library index and the Graph, the Index
+and Find, the notebook's PDF (it has no web links), the lasso and Select, the clipboard, and the caps of
+`links.ini` and `doclinks.ini`.
+
+The web links are a file of their own so that versions before 2.2 open the notebook as before. 2.1.0 and every
+version before it never read or write `weblinks.ini`: the notebook opens there with all its pages, ink, names, its
+own links and its document links (`doclinks.ini` holds no web link and carries no line for one, so it reads there
+whole), the web links simply absent. Their saves never touch the file, so the web links are there again when 2.2
+opens the notebook; a page they delete takes its web links at 2.2's next write of the file (page ids are never
+given again: `next_page_id`). What they copy (Copy page, Copy to notebook, raw zips) goes without the web links.
 
 ## Named sections: `nav.ini` (1.2.0 on)
 
@@ -1510,6 +1625,7 @@ owner's to copy back or delete. Older versions ignore it.
 | `files_show` | what Files lists: `all` (every file, the ones Grimoire cannot use greyed, links as "link, not followed"); absent, or `usable`, the PDFs, pictures, fonts and folders (the default, not written). Any other value: as for `files_sort`. Written after `files_sort`. Since 2.2, as `files_card` |
 | `files_view` | how Files lists: `covers`, a grid of previews (Files' previews, below); absent, or `list`, rows (the default, not written). Any other value: as for `files_sort`. Written after `files_show`. Since 2.2, as `files_card` |
 | `home` | the home folder, where the main menu opens at each start (2.2, issue #160): `notebooks/<folder>`, a Library folder by its path (`notebooks/School/2026`), or `files/<path>`, a folder of the Kindle's storage by its path from the storage root (`files/documents/Planners`); absent, empty or `notebooks`, the Library's top (the default, not written). Read strictly: UTF-8, under 608 bytes, no control character, no absolute path, no empty, `.` or `..` part, never the storage root; a Library folder is looked up by name in the Library's list, a storage folder reached only by Files' walk (no link followed, no refused place, not the trash). A value that is not one of these, or names a folder that is gone or refused, is not used: the Library's top with the toast "Home folder not found.", and the line is taken out at once (unlike `files_sort`'s, it is not written back; a folder that could not be read for another reason keeps it). Written after `files_view`. Since 2.2, as `files_card` |
+| `pdf_gamma` | darker lines in imported PDFs (2.2, issue #173; Settings > System's Darker lines in imported PDFs row): `1.5` (Medium) or `2.0` (Strong), the gamma a PDF queued from then on draws its gray pages at (Imports: PDFs); absent, or `1.0`, Off (the default, not written). Read exactly as written: any other value is Off and is written back as it was until the setting changes. Written after `home`. Since 2.2; older versions keep the line as one they do not know |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Pair > Bluetooth controller, Settings > Controller before 2.0.0-beta.2; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
@@ -2029,6 +2145,14 @@ What 2.1.0 and the versions before it do with what a fill (2.2) writes:
 | a fill's work folder (`notebooks/.import-<id>/` with `pdf-fill.ini`) | no `pdf-import.ini` and no `notebook.ini` in it: removed at their next start as any cut-off import's ("removed what a cut-off import left"); the notebook stays as it was, and the PDF, still in `import/`, is "PDF already imported." there (2.1.0) or never imported (before it) |
 | a fill's commit cut off half way (`stage=2`), then a start of one of them before 2.2 goes on with it | they remove the work folder, so the commit never goes on: the notebook lists the pages it had (cut before `notebook.ini` was written), or all of them without the links and names the fill had yet to add (cut after). Page files a cut left unlisted, and their lines in `bg/pages.ini` and `source.ini`, are never shown; `source.ini`'s go at its next write |
 
+What 2.1.0 and the versions before it do with the web links of 2.2 (Web links; read in 2.1.0's code at the tag):
+
+| new data (web links, 2.2) | 2.1.0 and before |
+|---|---|
+| `weblinks.ini` | never read or written: the notebook opens with its pages, ink, names, links and document links, without the web links (a tap there does nothing); its raw zips leave the file out; the file stays in the notebook's folder, as it was, for 2.2 |
+| `doclinks.ini` of a PDF with web links | the same bytes as for the PDF without them: read whole, nothing carried |
+| an unfinished import's `webs.part` (2.2 began the import, 2.1.0 finishes it) | never read: `links.part` and `names.part` hold only records 2.1.0 knows, so the notebook is made with its pages, its document links and its names, without its web links; `webs.part` stays in the notebook's folder, unread |
+
 What 2.1.0 does with what a version that numbers its font verdicts 2 writes (read in its code at the tag):
 
 | new data (font verdicts numbered 2) | 2.1.0 |
@@ -2042,6 +2166,24 @@ What 2.1.0 and the versions before it do with KOReader's hand-over by path (2.2)
 |---|---|
 | `import/.book/request.ini` version 2 | never sent to them: the plugin sends version 2 only to a launcher whose Capabilities line says `pdf`, and no launcher before 2.2 does (a 2.2 plugin sends them version 1, KOReader drawing the pages). One that reaches them anyway does not read (2.0.0-beta.5 to 2.1.0: "a version of request this Grimoire does not know"): nothing opened, "Couldn't open book from KOReader (see grimoire.log).", the folder emptied. 2.0.0-beta.4 and before never read the folder |
 | a notebook made or filled through version 2 | a notebook the PDF import made or filled (the tables above) |
+
+What 2.1.0 and the versions before it do with darker lines (2.2, issue #173), read in their code at the tag:
+
+| new data (darker lines, 2.2) | 2.1.0 and before |
+|---|---|
+| `pdf_gamma` in `settings.ini` | a line they do not know, kept as it is on their saves; their imports draw every page as at Off |
+| a notebook's pages drawn at 1.5 or 2.0 | ordinary page pictures, shown as they are |
+| `gamma=` in a notebook's `source.ini` | a line they do not know, written back as it was after the page lines (1.1 on), so a later fill by 2.2 still draws at it. Their own fill (2.1.0 has none) and KOReader's version 1 pages never read it |
+| `gamma=` in a mark or in `pdf-import.ini` | passed over as a key they do not know (2.1.0-beta.2 on): an import 2.2 began at 1.5 or 2.0 that one of them takes up draws the pages it makes as at Off, and its notebook has no `gamma=` line. Before 2.1.0-beta.2 the work folder is removed, as any cut-off import's |
+| `gamma=` in a version 2 request | never sent to them (the plugin sends version 2 only to a launcher that says `pdf`) |
+
+What 2.1.0 and the versions before it do with template PDFs (2.2):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| a PDF in `templates/` | not listed: their Templates sheet takes pictures alone, and they never read the file |
+| a template PDF's entries in `templates/.cache/` (`<hash>.pages`, `<hash>-p<nnnn>.*`, `<hash>.bad`) | never read; their previews job, when a picture of the folder lacks its preview, removes them as entries of a file it does not list. Back in 2.2 the pages are drawn again at the next look |
+| a page whose paper came from a template PDF's page | an ordinary page on a template's picture (`bg/`), drawn as any (Image papers) |
 
 ## Highlighter rendering in 1.2.0
 

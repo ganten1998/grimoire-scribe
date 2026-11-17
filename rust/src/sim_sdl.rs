@@ -150,6 +150,10 @@ struct State {
     // Simulated front light (the simulator has no light to drive).
     light_i: i32,
     light_w: i32,
+    /// the Kindle's own auto brightness (flAuto): 1 on, 0 off
+    light_auto: i32,
+    /// GRIMOIRE_SIM_LIGHT_SENSOR: whether this simulated Kindle has an ambient-light sensor
+    light_sensor: bool,
     // The simulated power service's state, what sys_powerd_state reports: set by the script's
     // `powerd <state>` ("unknown" reads as unreadable). It never changes on its own.
     powerd_state: FixedStr<32>,
@@ -278,6 +282,8 @@ impl Default for State {
             npresents: 0,
             light_i: 12,
             light_w: 8,
+            light_auto: 0,
+            light_sensor: false,
             powerd_state: FixedStr::from_str("active"),
             sim_grab: true,
             pokes: 0,
@@ -1046,7 +1052,10 @@ pub fn display_set_invert(on: bool) {
 pub fn light_available() -> bool {
     std::env::var_os("GRIMOIRE_SIM_NO_LIGHT").is_none()
 }
-pub fn light_refresh() {}
+pub fn light_refresh() {
+    let sensor = light_available() && std::env::var_os("GRIMOIRE_SIM_LIGHT_SENSOR").is_some_and(|v| v != "0");
+    with(|st| st.light_sensor = sensor);
+}
 pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
     with(|st| {
         *intensity = st.light_i;
@@ -1061,6 +1070,25 @@ pub fn light_set_warmth(level: i32) {
 }
 pub fn light_warmth() -> i32 {
     with(|st| st.light_w)
+}
+pub fn light_auto() -> i32 {
+    if !with(|st| st.light_sensor) {
+        return -1;
+    }
+    with(|st| st.light_auto)
+}
+pub fn light_set_auto(on: bool) {
+    if !with(|st| st.light_sensor) {
+        return;
+    }
+    with(|st| {
+        st.light_auto = i32::from(on);
+        if on {
+            // The simulated sensor's room: a level distinct from the startup one, so a script can
+            // see the Brightness slider follow auto brightness.
+            st.light_i = 18;
+        }
+    });
 }
 pub fn sys_powerd_state(out: &mut String, cap: usize) -> i32 {
     with(|st| {
@@ -1594,6 +1622,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
         && !libindex_probe(&key, &mut got, GOT_CAP)
+        && !upload_probe(a.as_deref(), &key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {
         err(&bformat("expect failed (line %d): unknown key \"%s\"\n", &[B::D(line), B::S(&key)]));
@@ -1727,6 +1756,119 @@ enum Step {
     Share(FixedStr<96>,bool),
     LibraryContact(FixedStr<96>,InType),
     Strokes(FixedStr<512>,usize,u32,usize),
+    /// `upload MODE FILE`: a browser's send from the Share page (sim_upload), started where the App says the port
+    Upload(String, String),
+}
+
+/// What each `upload` line's browser had, in order: its answer, "<status> <last line>", None while it waits; and the
+/// send's code from its reply's first line, once it came (a send the Kindle asked about).
+#[derive(Clone, Default)]
+struct Sent {
+    reply: Option<String>,
+    code: Option<String>,
+}
+static UPLOADS: std::sync::Mutex<Vec<Sent>> = std::sync::Mutex::new(Vec::new());
+
+/// A browser on the Wi-Fi sending `file` (its whole path) to the share server on `port`, in a thread of its own (the main loop serves
+/// it meanwhile): it loads the Share page for its token, then sends the file's bytes as web/upload.js does, its name
+/// percent-encoded, and waits for the answer (the Kindle's question's). The thread ends with its answer; the scripts
+/// wait for it (upload.reply.N) before anything forks.
+fn sim_upload(port: i32, mode: String, file: String) {
+    let slot = {
+        let mut u = UPLOADS.lock().unwrap_or_else(|e| e.into_inner());
+        u.push(Sent::default());
+        u.len() - 1
+    };
+    std::thread::spawn(move || {
+        let r = sim_upload_run(port as u16, &mode, &file, slot).unwrap_or_else(|e| format!("error {e}"));
+        UPLOADS.lock().unwrap_or_else(|e| e.into_inner())[slot].reply = Some(r);
+    });
+}
+
+/// One request and everything its answer holds, to the close; `seen` is given what has come after each read.
+fn sim_http(port: u16, head: &str, body: &[u8], mut seen: impl FnMut(&[u8])) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
+    let _ = s.set_read_timeout(Some(Duration::from_secs(180)));
+    s.write_all(head.as_bytes()).map_err(|e| e.to_string())?;
+    let _ = s.write_all(body); // (a refusal may close the connection before the body is all sent)
+    let mut out = Vec::new();
+    let mut b = [0u8; 4096];
+    while let Ok(n) = s.read(&mut b) {
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&b[..n]);
+        seen(&out);
+    }
+    Ok(out)
+}
+
+/// The send's code in what has come of an answer: the four digits of its body's first line, `code NNNN`.
+fn sim_code(out: &[u8]) -> Option<String> {
+    let at = out.windows(4).position(|w| w == b"\r\n\r\n")? + 4;
+    let line = out[at..].strip_prefix(b"code ")?;
+    (line.len() >= 5 && line[..4].iter().all(u8::is_ascii_digit) && line[4] == b'\n').then(|| String::from_utf8_lossy(&line[..4]).into_owned())
+}
+
+fn sim_upload_run(port: u16, mode: &str, file: &str, slot: usize) -> Result<String, String> {
+    let body = std::fs::read(file).map_err(|e| e.to_string())?;
+    let page = sim_http(port, &format!("GET / HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n"), b"", |_| {})?;
+    let page = String::from_utf8_lossy(&page);
+    const AT: &str = "window.GRIMOIRE_UPLOAD={\"token\":\"";
+    let token: String = page.find(AT).map(|i| page[i + AT.len()..].chars().take_while(|c| c.is_ascii_hexdigit()).collect()).unwrap_or_default();
+    let name: String = file.rsplit('/').next().unwrap_or(file).bytes().map(|c| {
+        // encodeURIComponent's
+        if c.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&c) { (c as char).to_string() } else { format!("%{c:02X}") }
+    }).collect();
+    let origin = if mode == "othersite" { "http://evil.example".to_string() } else { format!("http://127.0.0.1:{port}") };
+    let token = match mode {
+        "notoken" => String::new(),
+        "badtoken" => format!("X-Grimoire-Token: {}\r\n", "0".repeat(32)),
+        _ => format!("X-Grimoire-Token: {token}\r\n"),
+    };
+    let head = format!(
+        "POST /upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: {origin}\r\nContent-Type: application/pdf\r\nContent-Length: {}\r\n{token}X-Grimoire-Name: {name}\r\n\r\n",
+        body.len()
+    );
+    let r = sim_http(port, &head, &body, |out| {
+        if let Some(code) = sim_code(out) {
+            UPLOADS.lock().unwrap_or_else(|e| e.into_inner())[slot].code.get_or_insert(code);
+        }
+    })?;
+    let r = String::from_utf8_lossy(&r);
+    let status = r.split(' ').nth(1).unwrap_or("0");
+    // (a send the Kindle asked about says its code first and its answer last: the answer is the last line)
+    let text = r.split_once("\r\n\r\n").map_or("", |x| x.1).trim_end();
+    Ok(format!("{status} {}", text.rsplit('\n').next().unwrap_or("")))
+}
+
+/// "upload.reply.N": the answer the Nth `upload` line's browser had, "" while it waits; "upload.count": how many;
+/// "upload.samecode.N": "1" when the code the Nth browser was given is the one under the question the Kindle shows,
+/// "0" when it is another, "" while either has none.
+fn upload_probe(a: Option<&App>, key: &[u8], out: &mut String, cap: usize) -> bool {
+    let u = UPLOADS.lock().unwrap_or_else(|e| e.into_inner());
+    if key == b"upload.count" {
+        csnprintf!(out, cap, "%d", u.len() as i32);
+        return true;
+    }
+    let nth = |prefix: &[u8]| key.strip_prefix(prefix).and_then(|n| std::str::from_utf8(n).ok()?.parse::<usize>().ok()).and_then(|n| n.checked_sub(1)).map(|i| u.get(i).cloned().unwrap_or_default());
+    if let Some(sent) = nth(b"upload.samecode.") {
+        let mut shown = String::new();
+        if let Some(a) = a {
+            crate::share::share_probe(a, "code", &mut shown, 64);
+        }
+        let shown: String = shown.chars().filter(char::is_ascii_digit).collect();
+        let v = match sent.code {
+            Some(code) if !shown.is_empty() => if code == shown { "1" } else { "0" },
+            _ => "",
+        };
+        csnprintf!(out, cap, "%s", v);
+        return true;
+    }
+    let Some(sent) = nth(b"upload.reply.") else { return false };
+    csnprintf!(out, cap, "%s", &sent.reply.unwrap_or_default());
+    true
 }
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
@@ -2377,6 +2519,18 @@ fn script_step_in(st: &mut State) -> Step {
             let ms = if k > 4 { v[4] as u32 } else { 80 };
             st.tg_tapn(v[0] as usize, v[1], v[2], sep, ms);
             return Step::Batch;
+        } else if a == b"upload" {
+            // `upload MODE FILE`: a browser on the Wi-Fi sends FILE (a path in the data root, the rest of the line)
+            // as the Share page's script does (MODE send), with no token (notoken), a wrong one (badtoken), or
+            // from another site's page (othersite). Its answer is upload.reply.N (N from 1, in order).
+            sc.space();
+            let file = String::from_utf8_lossy(sc.s[sc.i..].trim_ascii()).into_owned();
+            if !matches!(b, b"send" | b"notoken" | b"badtoken" | b"othersite") || file.is_empty() {
+                err(&bformat("script: bad upload line: %s", &[B::S(s)]));
+                st.expect_unknown_line();
+                continue;
+            }
+            return Step::Upload(String::from_utf8_lossy(b).into_owned(), file);
         } else if a == b"quit" {
             let e = st.make_ev(InType::Quit, 0.0, 0.0, true);
             st.q_push(e);
@@ -2444,6 +2598,11 @@ fn script_step(mut a: Option<&mut App>) {
                 with(|st|match at{Some((x,y))=>st.touch_ev(t,x,y),None=>{
                     err(format!("expect failed (line {}): no library control {}\n",st.line_no,name.as_str()).as_bytes());st.expect_total+=1;st.expect_failed+=1;
                 }});break;
+            }
+            Step::Upload(mode, file) => {
+                let port = a.as_deref().map_or(8765, |a| a.settings.http_port);
+                // (the data root is this thread's to read: the browser's thread is given the whole path)
+                sim_upload(port, mode, format!("{}/{file}", store_root()));
             }
             Step::Share(name,pen)=>{
                 let at=a.as_deref().and_then(|a|crate::share::share_control_point(a,name.as_str()));

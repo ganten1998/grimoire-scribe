@@ -581,7 +581,7 @@ exit. `store_add_page` never writes over an existing `p<id>.qpg`: it takes the n
 Reads of the data folder take plain files only. What is read there through `util::read_file`,
 `util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and import
 scans, the marks, the share zip's raw copies, the clipboard, the compaction lists, the shortcut files, the PDF
-cache's records, an import's `links.part` and `names.part`, a notebook's `nav.ini`, `links.ini` and
+cache's records, an import's `links.part`, `names.part` and `webs.part`, a notebook's `nav.ini`, `links.ini` and
 `doclinks.ini`) is read only when the entry at the name itself is a plain file (a link, a folder or anything
 else there reads as a file that is not there, or, for the shortcut files and a notebook's `nav.ini`,
 `links.ini` and `doclinks.ini`, as one that is there and does not read: nothing of it is used, and an edit
@@ -897,7 +897,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    and notebooks with thumbnails; per page PNG, per notebook PDF / zip, per folder zip,
    everything zip. `/api/list.json` makes it scriptable. The server only runs while the Share
    screen is open; turning the Kindle and the redraw after waking keep it (`share_leave` returns
-   early while `App.relayout` is set), with its downloads and queue.
+   early while `App.relayout` is set), with its downloads and queue. Its page also sends one PDF to the Kindle,
+   kept only once the Kindle has asked and the user said Import (Send a PDF from the Share page, below).
    Up to 16 connections at once, each with its own request buffer (a shared one once answered a
    new connection from the previous request); renders fork, two at a time, the rest queue
    oldest first and are dropped when their browser hangs up. The pages use the fonts of the
@@ -1463,6 +1464,83 @@ Select (D7b a): the hold asks `link_under`, which never sees them. Nothing that 
 index reads the file; Clear page, the lasso, the clipboard and the 64/4,000 checks read `nav.links` alone, so they
 never see them by construction. Copy page and Copy to notebook carry them (the latter only to targets that were
 copied too); the notebook PDF and raw zips carry them.
+
+## Web links as a QR card (2.2, issue #174)
+
+A PDF's web links (link annotations whose action is a URI) were counted and left out. From 2.2 an address that
+passes the rules is kept, and a finger's tap on its area shows a card with the address and its QR code, for a phone
+at arm's length to open. The Kindle never opens, fetches or runs an address: the card draws the stored text and a
+code made from it, and nothing else.
+
+- **Where they live: `notebooks/<id>/weblinks.ini`** (`weblinks.rs`, FORMAT.md "Web links"), a file of its own,
+  one `web.<page id>=<seed>,<x>,<y>,<w>,<h>,<address>` line a link. Not a new target kind in `doclinks.ini`: 2.1.0
+  reads `doclinks.ini` and carries the lines it does not know only up to 16 KiB together, past which it refuses the
+  whole file (no tabs at all there). A planner or a book with a few hundred web links would have cost a 2.1.0 user
+  every tab. In a file of their own the web links are simply absent in 2.1.0 and before, which never open it and
+  never write over it; `doclinks.ini` is the same bytes as for the PDF without its web links.
+- **The rules** (`weblinks_address_ok`, `weblinks_authority`): `http://` or `https://` (the scheme in either
+  case), printable ASCII other than a space and `\` (0x21 to 0x7E), at most `WEBLINK_ADDRESS_MAX` (200) bytes, under
+  the 213 bytes a version 10 code holds at level M, the largest `qr.rs` draws, so every address kept has its code,
+  and a plain host: `<host>` or `<host>:<port>`, no `user@` part, a host of letters, digits, `-`, `_` and `.`, a
+  numeric one only as four plain numbers, a port without a leading zero. What is refused is each form whose host a
+  browser reads otherwise than its text says (`\` as `/`, the text before an `@` as a user, `%2E` as a dot,
+  `0x7f.1` as `127.0.0.1`), so the card's title (`weblinks_host`) is always the host a phone opens, as the URL
+  standard writes it (`URL.host`: lower case, the port unless it is the scheme's own); a unit test holds the title
+  against a browser parser's answers. The worker
+  trims the PDF string's ends (spaces, line breaks, NULs: `weblinks_address_from`) and checks; the writer checks the
+  `W` record again (`parse_record`, `Collected::take`), and the reader checks the file's line again. A refused
+  address stays a counted web link left out (`LeftOut.uri`).
+- **The worker** (`pdfwork.rs`, `Walk::target`): a URI action's string is read and, when the rules take it, each
+  quad (or the Rect) of the annotation goes out as `W <src> <x> <y> <w> <h> <i> <address>`, the area as an `L`
+  record's (its box; no polygon), `i` its place among the page's web links. The page links never lose room to
+  them: the walk sends every page's `L` and `Q` records first, exactly as for the PDF without its web links, and
+  keeps the web links for a second pass after them, at most `WEBLINKS_PER_PAGE` (256) a page and `WEBLINKS_MAX`
+  (4,000) in all, what a notebook keeps, under what is left of `LINKS_MAX` and the walk's 3 MiB of records; those
+  left out are counted (`U <capped> <off> <long>`) and added to the end's "Some links were left out.". A web link
+  with nothing of it on the page is left out by the walk (it would take a page's room there) and counted as off the
+  page; an http or https address over 200 bytes is a refused one (`LeftOut.uri`) counted apart too, and the import's
+  log line of web links says both. So `doclinks.ini` and
+  `nav.ini` are, for any PDF, what the PDF without its web links gives. The first slice keeps the `W` records in `webs.part`, a part of their own
+  (`WEBS_PART`, only for a PDF with a web link), never in `links.part`, which 2.1.0 reads: an import 2.2 began and
+  2.1.0 finishes keeps its tabs and names, without its web links.
+- **The writer** (`pdfimport.rs`, `put_weblinks`): the last slice of a new notebook writes `weblinks.ini` in the
+  work folder when there is a web link (`weblinks_fill`: validated, one of each, the same address with its area
+  within 2 px; 256 a page; then `weblinks_water`, 90% of `WEBLINKS_MAX`, 4,000, the densest pages first); a fill's
+  commit (`fill_weblinks`) adds the web links of the pages it adds only, the notebook's own never trimmed. Those left
+  for room count in the end's "Some links were left out.".
+- **The editor**: `EditorState.wl`, read at open and pruned as `dl` is. What a finger's tap opens where links
+  meet (`link_follow`): the user's own links first, their touch area grown to a finger's 7 mm too; then the
+  document's page links (a planner's tabs), a small tab's grown finger margin too; then a web link (`weblinks_at`:
+  exact area first, then the 7 mm growth). Grimoire's own links to pages win over a web link's area wherever they
+  reach, so a whole-page web link never hides a tab. The clock's corner is the clock's over a web link, as over a
+  user's link (`editor_control_at`; a tab under the corner still takes the tap). The tap
+  opens the long-press card in a form of its own (`linkcard_set_web`, `LinkCard.web`): the heavy border around the
+  link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`, in Terminess
+  bold; a host too long for the card shows "..." and its end, where its own name is), the address as stored and
+  always whole (in Terminess, the face of every look, broken between its characters: any 200 printable bytes take at
+  most 5 lines; in a look's own face 200 wide letters took up to 9), "Scan with a phone's camera",
+  the code in a 600 px box (a symbol of 37 to 65 modules: 9 to 16 px, 0.8 to 1.4 mm a module on the Scribe; its
+  negative under Invert, as the Share screen's) and Done; a tap outside closes it too. A finger held on a web link
+  arms Select, as on a document link. The eye draws their boxes with the document links' (`LinkBoxes.doc`). Copy
+  page and Copy to notebook carry them (to any notebook: a web link goes nowhere inside it); when they cannot, the
+  document links' toasts say so. Raw zips carry `raw/weblinks.ini`.
+- **Where they never appear**: the Links bar, the backlinks cache, the library index and the Graph (a web link
+  points at no page), the Index and Find (they list pages and names), the notebook's PDF (a choice for the owner:
+  BACKLOG.md), the lasso, Select, Clear page and the clipboard. Nor in a PDF used as a template (PDFs as
+  templates): the template job asks the worker for the page count and the pages only (`PROBE`, `R`), never `LINKS`,
+  the one command whose answer holds `W` records, so a template PDF's web links are never read; a template is drawn
+  under a page as a picture template is, with no link of either kind.
+- **Tests**: `weblinks.rs`'s unit tests and `tests/test_weblinks.rs` (the file, the caps, carried lines, what
+  2.1.0's readers see and write, Copy page and Copy to notebook, raw zips); `test_pdflinks_import.rs` (the rules
+  through a real worker, the `W` record, an import's other files byte for byte those of the PDF without web links,
+  a page past 256); `test_pdf_fill.rs` (a fill, a fill into a notebook with no `weblinks.ini`, and a fill past the
+  water level, which trims only the web links it adds); `test_qr.rs`
+  (`ui_qr_matches`, every address's code); `test_linkcard.rs` (the whole address and the host's end in every look
+  the l10n check runs); scenarios `z_weblinks_1_card`, `z_weblinks_2_es`, `z_weblinks_3_fill`,
+  `z_weblinks_4_wide` (the longest address of wide letters in Literata), `z_weblinks_5_overlap` (what wins where a
+  web link meets a tab, a link of the user's and the clock's corner) and `z_weblinks_6_hold` (the card under
+  Invert, a hold arming Select, a deleted page's web links dropped at the next open), whose
+  `editor.link_card.qr` checks the code on the screen module for module against the address's.
 
 ## The notebook PDF, incremental and streamed (2.1.0-beta.2, lane L9)
 
@@ -3146,6 +3224,324 @@ Files (`browser.rs`) has the rows that set it and the home folder as the top.
   the path bar after the home action, KOReader's PDF hand-over, a hand-over that opens nothing, a gone home at a
   KOReader start, the Files card hidden, What's new, the Exit question through a turn and a sleep, and a start in
   Covers). docs/TESTING.md has the Scribe's checks.
+
+## Darker lines in imported PDFs (2.2, issue #173)
+
+Faint planners read poorly on e-ink. An option darkens the lines of a PDF as it is imported: a gamma on the gray
+pages, as KOReader's contrast darkens a page it draws. `pdfwork.rs` has the levels and the arithmetic; `pdfimport.rs`
+carries the level from the UI to the notebook; `library.rs` and `settingsmenu.rs` have the row; `annotate.rs` and the
+KOReader plugin carry the reader's contrast.
+
+- **The levels**, `pdfwork::Gamma`: Off, Medium (1.5) and Strong (2.0). Each level of a gray page becomes 255
+  (level / 255)^gamma, rounded to the nearest whole level, from a table computed in whole numbers (2.0 is
+  round(v^2 / 255), 1.5 is round(sqrt(v^3 / 255))), so every build makes the same bytes and neither ever falls on a
+  half. White stays white and black stays black.
+- **Gray pages only** (the owner's ruling of 2026-11-17). The writer applies the gamma to the gray page it already
+  holds (`darken`, after `Session::render` has settled the page gray or colour): no new parse of the PDF, no new
+  decode, and the worker and its protocol are unchanged. A page kept in colour is left exactly as it is, and a page
+  with gray and colour on it is a colour page. At Off nothing is applied: the pages, the card's thumbnail, the
+  notebook's files and the import's screens and refreshes are those of an import before 2.2, byte for byte
+  (Settings > System has one row more). Blank pages (a page whose worker died twice) are white at every level.
+- **Where it lives**: one setting, settings.ini `pdf_gamma`, the last row of Settings > System, "Darker lines in
+  imported PDFs: %s", which opens a list of the three levels as the eraser's row does, in one column so that they read
+  in their order, Off, Medium, Strong (`draw_pick_cards`). It is the smallest place every way in can follow: the
+  import folder's scan (which asks nothing), Files' Import and New notebook's From a file..., and KOReader's
+  hand-over. The app gives it to `pdfimport` at the start and when it is picked (`set_darker`).
+- **The level travels with the file.** The UI decides it as it queues a file and writes it into the file's mark
+  (`gamma=`): the setting, or a level of the caller's own through `pdf_import_queue_at` (KOReader's request). A pick
+  that waits for the lock keeps its level until a later scan queues it, and a file whose mark is lost is drawn at the
+  setting. The first slice keeps the level in the import's state, so every slice, a resume included, draws at it.
+- **Kept with the notebook**: one `gamma=` line in its `source.ini`, after the file record, a line only away from Off.
+  annotate.rs and every version since 1.1 write the lines of `source.ini` they do not know back as they were, so the
+  line stays through KOReader's version 1 pages, an older version's saves and a raw zip. A fill draws the pages it
+  adds at its notebook's own level (`gamma_among`, read when the fill is decided), whatever the setting or the
+  request says: a notebook made before 2.2 or at Off has no line and is filled at Off, as its import drew it. A
+  notebook KOReader made (version 1) has no line either and is filled at Off, though KOReader drew its pages at the
+  reader's contrast: where that was darker, the pages a fill adds are lighter than KOReader's. The same PDF again
+  with every page is "PDF already imported." at any level: a PDF already imported is not drawn again by a change of
+  the setting.
+- **Read strictly**: settings.ini, a mark, an import's state, a notebook's `source.ini` and KOReader's request each
+  say a level as `1.0`, `1.5` or `2.0` (`Gamma::parse`), and any other value is no gamma. settings.ini writes an
+  unknown value back as it was, as it does `files_sort`'s.
+- **KOReader**: the version 2 request (`file=`, the PDF by its path) gains `gamma=`, the reader's contrast as darker
+  lines. KOReader's contrast is a gamma on the page, the one version 1 drew KOReader's pictures at; the plugin sends
+  `1.5` for a contrast from 1.25 and `2.0` for one from 1.75, and no line for any other (KOReader's own 1, a lighter
+  page, which Grimoire does not draw), so Grimoire's setting decides then, as it does for an older plugin. A request's
+  line wins over the setting, and a fill still draws at the notebook's own level. Version 1 is unchanged. From the
+  file browser (Open with) the plugin reads the contrast the reader would open the book with: the book's own, else
+  the default set for books, else KOReader's. A KOReader before 2023.10 kept a book's contrast as its `gamma`
+  setting (its `kopt_contrast` then held 1/contrast) and the default as 1/contrast, until it moves them itself (a
+  book's `gamma` when the book is next opened, the default by its one-time move of 20230901,
+  `last_migration_date`); the plugin reads them as KOReader does until then, a book's `gamma` first and a default
+  not yet moved turned back, so Open with draws (version 1) and asks (version 2) at the reader's contrast there too.
+- **Not darkened**: Files' previews of a PDF (they show the file), and the pages KOReader draws (Annotate this page,
+  Open this book by version 1), which come at KOReader's own contrast. Template pages made from a PDF (issue #172)
+  do not take the level either: the setting is the import's, and a template is paper under the ink.
+- **Logs**: `import: <id>: darker lines: its gray pages are drawn at gamma 1.5 (the import's)` (or `its notebook's`
+  for a fill), and `book: the request asks for darker lines at gamma 2.0`; the plugin's crash.log line ends `with
+  gamma=2.0`. Never a name.
+- **Strings**: Darker lines in imported PDFs: %s, Darker lines in imported PDFs, and Off, Medium and Strong in the
+  context "darker lines".
+- **Tests**: `pdfwork.rs`'s unit tests (each level against the formula, Off byte for byte, a colour page and a mixed
+  page untouched, only the three values read); `pdfimport.rs`'s (the state's and the mark's line);
+  `test_pdf_darker.rs` (each level's pages are the pages at Off through its table, a colour page's picture the same
+  file at every level, the level a pick, a pick of a level of its own, a pick waiting for the lock and one waiting
+  for a copy of its PDF were queued at, a fill at its notebook's level both ways, the same PDF again, the
+  notebook's line read strictly); `test_store.rs`
+  `pdf_gamma_key`; `library.rs`'s row test; `test_annotate.rs` and `test_koreader_pdf.rs` (the request's line);
+  the plugin's stub test; the scenarios `z_pdf_darker_*` and `y_koreader_pdf_darker_*`. docs/TESTING.md has the
+  Scribe's checks.
+
+## PDFs as templates (2.2, issue #172)
+
+A PDF in `grimoire/templates` (copied in over USB, or by Use as template on a PDF's card in Files) gives one template
+a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tplsheet.rs` shows them.
+
+- **Only the worker parses the PDF.** A PDF's pages are drawn by the sandboxed PDF worker an import uses (the same
+  exec, filter, limits and record grammar, validated by the same `Session`), and the writer and the UI never parse
+  PDF syntax. The job opens the PDF once, with no link followed, as a plain file of the templates folder, and that
+  open file is what the worker reads. With no worker to be had (a sandbox step failed, none starts, or one without
+  the sandbox's steps where the sandbox is required) nothing is drawn and nothing is marked: the PDF's tile waits, as
+  a picture's does, and the next look tries again. A sandbox step that fails marks the session broken, the UI's too:
+  the job's child ends with status 4 (`CODE_SANDBOX`), which bgjob.rs turns into the UI's mark, as an import's progress
+  record and a font check's status 4 do. A session marked broken queues no PDF's job until Grimoire starts again.
+- **The stored form** (docs/FORMAT.md, Template PDFs): in the folder's cache, under the key its previews already use
+  (the FNV-1a hash of the PDF's name, size and time), `<hash>.pages` holds the page count, and each page is a picture
+  of the Kindle's page size, `<hash>-p<nnnn>.png` (gray, or RGB for a page with colour, as the import keeps them),
+  with its `.key` and its preview `.pgm` beside it, written in that order (the preview says the page is made), or
+  its `.bad`. These files are written only inside Grimoire's own templates folder, into a cache folder reached with
+  no link on the way, as the previews job writes its own (`write_quiet`, `store_write_pgm`, `write_file_atomic`:
+  a temporary name, fsync, rename). No file of the user's is written, renamed or replaced, and no name is made from
+  the PDF's: the tiles' names are labels, never files. What removes entries of the cache (a PDF's own, and the sweep
+  of files that went, the previews job's too) looks for a link on the way again right before it lists the cache, so
+  a link put there since the job began is never followed by a removal: the window is that one listing.
+- **A page is a picture template.** A page's tile has its picture's path, and from there it is a template as any
+  picture is: `template_install` takes its key from its `.key` and queues its picture for the notebook's page size,
+  made by the picture worker from the page's PNG (`make_template`). Picking a page, drawing it and opening a notebook
+  on it never read the PDF again; the PDF can be gone by then. The PDF itself is never a picture: whatever the cache
+  holds under its own name it has no preview or key of its own (`preview_of`), so its tile is never ready,
+  `template_install` refuses it, and a notebook's picture job refuses a PDF, so the picture worker is never handed one.
+- **When.** The scan that looks at the folder (`template_scan`, as the Templates sheet opens) queues a job for each
+  PDF with work left (at most `TEMPLATE_PDF_QUEUE_MAX`, 8, a look): `BgKind::Template` with no notebook and the PDF's
+  path. It ranks behind imports and font checks, with Files' previews, first queued first run (bgjob.rs `rank`), and
+  runs in slices as an import does (`SLICE_PAGES` pages or `SLICE_WALL_MS` a slice, looked at before a page, never
+  between the tries of one): a slice that leaves pages ends with `CODE_MORE` (3) and is queued again behind whatever
+  ranks higher, so a picture picked meanwhile waits for one slice at most. Each slice asks the worker for the page
+  count again and goes on from the pages made. Jobs still queued when Grimoire ends are dropped, as Files' previews
+  are: the next look queues them again. A look that finds in the cache the count of a PDF no longer in the folder
+  (deleted, renamed or changed since) queues the folder's previews job, which sweeps that PDF's entries.
+- **Limits.** The templates folder's 16 MB (`TEMPLATE_MAX_BYTES`, a picture's), `TEMPLATE_PDF_MAX_PAGES` (50) pages,
+  the import's worker limits (its address space for the file, its CPU, the page watchdog, band mode under little
+  memory), and the free-space floor before every page (room for a page before its worker is asked, and for its
+  picture and preview before they are written). A PDF over the page limit is no template as a whole and is never cut
+  to its first pages: its count is in the log, and the sheet shows its one tile crossed out (The sheet, below).
+  The sheet takes at most `TEMPLATE_PDF_TILES_MAX` (200) tiles of PDF pages in all, four PDFs at the page limit (each
+  tile is looked at when the sheet reads the folder, and every 1.5 s while one waits, so many long PDFs must not slow
+  it): the PDFs are taken in the order of their names, and one that would take the sheet past the cap (its page
+  count, or one tile while its pages are not counted) is left out whole, as one tile the sheet cannot use, with no
+  job queued for it; the log says how many.
+- **What a failure costs.** A PDF that is empty, over 16 MB (marked before any worker starts), that the worker
+  refuses (no PDF Grimoire reads, a password, no page), whose worker lies, whose worker ends or stalls twice while it
+  is opened, or none of whose pages draws, is marked bad as a whole, as a picture is (`<hash>.bad`, and what was made
+  of it goes). A page the worker cannot draw is marked alone (`<hash>-p<nnnn>.bad`), and so is a page whose worker
+  ends or stalls twice on it (a fresh worker tries it once more; a stall right after the Kindle slept is tried again
+  with no strike, as in an import); `DEAD_PAGES_MAX` (2) pages marked so make the whole PDF no template. No worker, no
+  room, the writer out of memory for a page's pixels (no strike either), a write that failed: nothing is marked.
+- **A file changed while its pages are made.** The job checks before it keeps the count and before it keeps each page
+  that the open file is unchanged and still the plain file at the PDF's name (device, inode, size and time to the
+  nanosecond), and its cache entries are keyed by the file it opened. A PDF written over, or another file put at its
+  name, while its pages are made: no page of it drawn after the change is kept, what was made of it goes, nothing is
+  marked, and the next look makes the pages of the file as it is then.
+- **Never an import by itself.** The import watch reads `grimoire/import` alone, and the template job writes only its
+  cache: the template job never makes a notebook of a PDF in the templates folder, never moves it, and never puts it
+  in the import folder. The user may still import one by choice: Import as notebook on its card in Files makes a
+  notebook of it, as it does of any PDF there.
+- **The sheet.** Until its job has counted the pages a PDF is one waiting tile under its name. When the sheet sees the
+  count (when it looks for previews: as a job ends, and every 1.5 s while one runs) it reads the folder again, as
+  after a copy, and the PDF's pages take its place, a tile a page named after the file and the page ("Planner p. 3",
+  the Pages view's "p. %d"; the file's name is cut short before the page's part when both do not fit). Never under a
+  contact: a count seen while a pen or finger is down on the sheet is read after the lift. A PDF before the page in
+  view taking more places does not turn the sheet away: the tile the page was anchored on stays in view (the page
+  that holds it now). The pages' tiles fill in
+  as their pictures are made. A PDF's tile the sheet cannot use stays crossed out in its place at every opening (the
+  tile a picture found unusable while the sheet is open has): the whole PDF's when it is refused (over 50 pages, over
+  16 MB, a password, no PDF) or past the tiles PDFs may give, and a page's that is marked, so the user sees which file
+  or page is not used even while other templates are offered (no string is new). A picture it cannot use is still left
+  out when the sheet opens, as before. With no template to offer, the sheet counts them among the files it cannot use,
+  as for pictures. A template PDF's tiles are templates only: the Photos sheet lists no PDF.
+- **Colour** follows a picture template's: a page with colour is kept in colour, drawn behind the ink as such a
+  template is, and its preview is gray.
+- **Users with no PDF in the folder** see what they saw: the same tiles and jobs, and the sheet's tick asks nothing
+  of the folder for a picture.
+- **Use as template on a PDF** (`browser.rs`): Files' PDF card has it after Import as notebook, never for a PDF already
+  in the templates folder or one of Grimoire's PDF copies, and never in a picker. It is the pictures' copy job and
+  limit: a PDF over 16 MB is refused at the request with "Too big (over 16 MB).". The Templates sheet's From a file...
+  still picks pictures alone.
+- **Strings**: none new ("p. %d" and "Use as template" were there).
+- **Tests**: `test_template_pdfs.rs` (the tiles before and after the count, the stored form and its keys, a page used
+  as a notebook's template with the PDF gone and in colour, the slices through the queue, the cap at 50 and 51 pages,
+  the cap of tiles in all, 16 MB and an empty file with no worker, the worker's refusals, a page that crashes or hangs
+  its worker, two such pages, the writer out of memory, a PDF swapped or written over after its first page or right
+  after its count, a link swapped in for the cache, no room before the first page and in the middle of a slice, no
+  worker, and a sandbox step that fails in the job's own child, a PDF that is never a picture, a removed PDF's pages
+  swept, the import watch, a folder of pictures alone and a picture beside a PDF, the queue's order and the jobs
+  dropped at exit, and the sheet: its reading of the folder after a lift, a PDF's crossed-out tiles, the page in
+  view),
+  `bgwork_tplpdf.rs`'s unit tests (the count's strict reading, a long name's page part), `browser.rs`'s
+  `a_pdfs_card_in_files_offers_its_copy_into_templates`, and the scenarios `z_tpl_h_pdf_pages`, `z_tpl_i_pdf_refused`,
+  `z_tpl_j_pdf_cap` and `z_tpl_k_pdf_use_as`.
+
+## Send a PDF from the Share page (2.2, issue #175)
+
+While the Share screen is open, its page (the index) has a Send a PDF to the Kindle button. The browser sends the
+file; once all of it is in, the Kindle asks "Import "2027 Planner.pdf" (12.3 MB)?" over the Share screen with the
+send's code under it ("Code 4821", which the page that sent it shows too), and only Import keeps it: the PDF goes
+into `grimoire/import`, where the Library's import takes it as any PDF copied in. Share has no password, so anyone on
+the same Wi-Fi can load its page while it is open: the question on the Kindle, with the send's code, is the gate, and
+everything before it is built so that a PDF nobody said yes to leaves nothing behind.
+
+**The request** (upload.rs; httpd.rs's `route_upload`). `POST /upload` with the PDF's bytes as the body and a
+Content-Length, the file's name percent-encoded in `X-Grimoire-Name`, the page's token in `X-Grimoire-Token`. A raw
+body, no multipart form: the server reads the request line and the headers as it does for every request, a
+Content-Length, and looks at the body's first five bytes; the rest of the body is written, unread. Headers are looked
+for in the head alone, never in the body. A
+refusal before the Kindle asks is a status of its own with one short line. Once the Kindle asks, the reply opens:
+200, no Content-Length (the close ends it), and its first line, `code 4821`, the send's code; its last line, sent
+with the answer, says how it ended: `imported`, `declined on the Kindle`, `no answer on the Kindle`, `another PDF was
+sent`, `share is closed`, `the Kindle is asleep`, `no room` or `could not keep it`.
+
+**The send's code.** Each upload the server takes has a code of four digits drawn from the system's randomness
+(`upload::new_code`, each of the 10,000 as likely). It is given in that send's own reply alone, as its first line,
+once the PDF is all in: the page shows "Code 4821" in big type while the Kindle shows the same under its question,
+half again the title's size, so the user can see that the question is about the PDF they sent before tapping Import.
+**The code is never logged, never written to the storage, never in another connection's answer or in a page, and it
+is gone with the send.** Four digits are enough for what it does: it is no password, only a check of one send against
+one question; the server draws it, so no sender chooses it, and a question follows another only after the first was
+answered or taken away and the quiet time below.
+
+**Who may send.** In this order, each refused with a short plain answer: the Share screen keeps the server (403
+`share is closed`: with Share closed and no Live view the server is not running at all); the Host header names the
+Kindle by address (`host_ok`, 400); an Origin header, when there is one, is `http://` and the Host header's text, and
+Sec-Fetch-Site, when there is one, is `same-origin` (`same_origin`, 403); `X-Grimoire-Token` is the page's token
+(401). **Each header these rules read (Host, Origin, Sec-Fetch-Site, the token, Content-Length) is there at most once
+and short enough to read: one there twice or too long is refused, never read as absent** (`header_one`). The token is
+128 random bits, new each time Share opens (`httpd_acquire`), gone when it closes, in the page alone, compared in
+constant time (`same_token`), and never logged or stored. A page of another site the user visits cannot read it (the
+share pages send no CORS headers, and `host_ok` refuses a name rebound to the Kindle's address), cannot send the
+header without a preflight, which the server refuses (OPTIONS answers 405), and an HTML form cannot send it at all.
+
+**Limits.** One Content-Length of digits only (411 without one, or with any `Transfer-Encoding` line: no chunked
+body; 400 with two), at least five bytes (415) and at most `UPLOAD_MAX`, 64 MB (413): the import's limit for one PDF
+where the private mapping is refused (`s1::PDF_MAX_READ_WHOLE`), so every PDF sent can be imported on every Kindle;
+the page refuses a bigger file before sending. One upload at a time: **a second upload while one is under way ends
+both** (the second refused with 409, the first told `another PDF was sent`). **After an upload ends, however it ends,
+no new one is taken for `UPLOAD_QUIET_MS`** (5 s, 503: Import, Cancel, no answer, the browser gone, a second upload,
+a body refused): longer than the toast that ends a question ("Copied to grimoire/import." or "Not imported."), so a
+question that went is seen to go before another can come. A connection sends exactly the length it said: more, with
+the head or once the Kindle asks, is refused (400, or the last line `more than its length`) and nothing is kept. Room
+for it above the storage's floor, 100 MB left after it (`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS`
+(30 s) of each read and `UPLOAD_BODY_MS` (10 minutes) in all (408), read up to 256 KiB a poll; the Kindle asks for
+`UPLOAD_ASK_MS` (2 minutes, then `no answer on the Kindle`). The head within a connection's 4096 bytes, and 16
+connections, as for every request. A refusal sent while the body may still come is followed by reading and dropping
+what still comes for `UPLOAD_DRAIN_MS` (5 s) or until the browser closes, so that the close does not reset the
+connection under the answer.
+
+**Before the yes.** Of the body only its first five bytes are looked at before the user's yes: they must be `%PDF-`,
+checked before any byte is written and refused at the first byte that differs (415). The body is written to one file
+only, `grimoire/.cache/share-upload.part` (`.cache` is a folder Files never lists or enters), made afresh: what is at
+its name is removed first (the entry, never what it points at), then O_CREAT|O_EXCL|O_NOFOLLOW, mode 0600, in a
+`.cache` reached from Grimoire's folder with O_NOFOLLOW. It is never in `import/` and never under a name the import's
+scan takes. **The temporary file is removed whenever its `Part` is dropped without `commit`**: Cancel, Esc, no
+answer, a body that stalls or is too slow, a browser that hangs up before the end of its body or while the Kindle
+asks (an upload's connection closed for any reason ends it, `client_close`), Share left (`httpd_release`), Live
+view's card taking Share's place, sleep (`share_sleep`), a second upload, the server stopping; one a crash left is
+removed at the next start (`upload_sweep`, from `share_init`). The file is not synced before the question (a crash
+before Import loses it anyway, and a long fsync would hold the UI's loop).
+
+**The name is never a path.** `X-Grimoire-Name`, percent-decoded (a `%` without two hex digits refuses it), is shown
+on the Kindle and names the file in `import/`, nothing more, cleaned so that the name shown is what the file is
+called (`upload_name`, `cleaned`): what draws as nothing or turns text goes (Unicode's format characters and
+Default_Ignorable_Code_Point: direction marks and overrides, zero-width characters, invisible fillers, variation
+selectors, tags; `unseen`); a space of another width, or a line or paragraph separator, is a plain space; each
+character a name in Grimoire's folders may not have (/ \ : * ? " < > |, a control character) or that draws as no
+letter of its own (private use, a noncharacter, a byte that was not UTF-8) is `_`. Spaces and dots go from both ends,
+`.pdf` is added where it is missing (any case is kept), and a name past 252 bytes is cut short before its `.pdf`, so
+that " 99" still fits. The result keeps `fsview_name_check`'s rules; a name that cleans to nothing, or none, is
+`Untitled.pdf`.
+
+**The question.** The Share screen draws the Library's question sheet over itself, as Files draws its Delete
+question: `Import "%s" (%s)?` with the name shortened with "..." to fit and the size as the file rows show sizes,
+`Code %s` under it in big type, a Primary Import row and Cancel. While it is up, it and Share's X are the screen's
+only controls; it answers only a tap that comes down after its frame was shown (`app_ask`, `app_asked_seen`, as the
+Delete questions) and lifts on the row it came down on. **Share's X, outside the sheet, is its Cancel and closes
+Share**, at once (a refusal waits for nothing, so a question that comes again after every answer cannot keep Share
+open), and so is Esc, which closes Share as it does without a question; a turn draws it at its new place and asks
+again. Import: `Part::commit` renames the file into `grimoire/import` under the name, or " 2", " 3"... before `.pdf`
+where taken, **never over a file** (fsview's `rename_noreplace`, the folder reached with O_NOFOLLOW), says "Copied to
+grimoire/import.", ends the browser's reply with `imported`, and asks the Library's scan to look as soon as the
+Library is in front (`pdfimport::rescan_soon`); a rename that fails keeps nothing and says why: "Couldn't import PDF.
+Is the storage full?" when the storage is full, else "Couldn't import PDF (see grimoire.log)." (the log has the
+reason). An Import tap in the moment the question ends without it (the browser gone, its time up) says "Not
+imported.". Cancel keeps nothing and ends the reply with `declined on the Kindle`. **A question that ends without an
+answer here, for whatever reason (no answer in two minutes, a second PDF sent, the browser gone), is taken away
+first, with the toast "Not imported.", and only then can another be drawn** (`ask_sync`): a question is never
+replaced in place, even by one that reads the same.
+
+**After the yes** the file is a PDF in `grimoire/import` like one copied over USB: the scan takes it once it holds
+still, and the sandboxed worker parses it ("The safe loader and the PDF import", above); nothing in the UI process
+parses it.
+
+**The page** (web/upload.js, inline in the index after `window.GRIMOIRE_UPLOAD`: the token, the limit and the words;
+served without its comment lines, blank lines and indents, `script_bare`). The script makes the button, so a browser
+without JavaScript shows nothing. A pick sends the file as one XMLHttpRequest (no byte of it passes through the
+script; a lone half of a UTF-16 pair in its name is sent as `_`), shows "Sending PDF: 42%", then, once the reply's
+first line has come, "Confirm on the Kindle." with "Code 4821" in big type under it (never the one without the
+other), then the answer, and the code goes: `imported` "Copied to grimoire/import.", `another PDF was sent` or 409
+"Another PDF is being sent. Try again.", `no room` or 507 "Couldn't import PDF. Is the storage full?", 413 "PDF too
+big: over 64 MB.", 401 and 403 "Open Share on the Kindle, then reload this page.", 503 "Wait 5 seconds, then send
+again.", anything else (Cancel, no answer, not a PDF, a connection lost) "Not imported.".
+
+**The log** says what came and how it ended, never the name, the token, the send's code or a header: `httpd: an
+upload of N KB is coming in`, `... is in; the Kindle asks`, `httpd: an upload was kept: it waits in import/ for the
+import`, `httpd: an upload was refused (<why>)`, `httpd: an upload was not kept (<why>)`, `httpd: an upload was cut
+short; nothing kept`, `httpd: the browser that sent an upload left; nothing kept`, and at a start `share: a sent PDF
+the last run left unanswered was removed`.
+
+What reaches the share server from the network, and who:
+
+| Surface | Open while | Who can use it | Its limits |
+|---|---|---|---|
+| Share's pages and downloads (every GET but `/live`) | the Share screen is open | anyone on the network: no password | Host must name the Kindle by address; 16 connections, a 4096-byte request, 30 s idle; renders forked, 2 at a time, others queued 2 minutes at most |
+| Live view (`/live` and its streams, `POST /live/key`) | Live view is on | a browser paired with the Kindle's one-use code or QR token (pair.c) | sessions in an HttpOnly SameSite=Strict cookie; the key POST is bodyless, its event in a custom header, its preflight refused |
+| Send a PDF (`POST /upload`) | the Share screen is open | anyone who loaded the Share page (its token) | one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one ends |
+
+**The rules, in short.** While Share is open, a browser that loaded its page may send one PDF at a time; with Share
+closed nothing is taken. The server takes only what the rules above allow, looks at nothing of a body but its first
+five bytes before the user's yes, and writes nothing but the one temporary file until then. Every PDF is asked about
+on the Kindle before anything is kept, under the name its file will have, with its size and the send's code, which
+only the page that sent it shows. A question that ends without an answer is taken away first, and after any send ends
+the next is taken only after `UPLOAD_QUIET_MS`. Only Import keeps a PDF: it goes into `grimoire/import` under a name
+that is never a path and never replaces a file, and the sandboxed import parses it as any PDF copied in. Share's X
+and Esc close Share at any time, which ends a send and takes no more. A page of another site the user visits cannot
+send at all.
+
+- **Strings**: `Import "%s" (%s)?`, Send a PDF to the Kindle, Confirm on the Kindle., Not imported., Another PDF is
+  being sent. Try again., Open Share on the Kindle, then reload this page., `Wait %d seconds, then send again.`,
+  `Code %s` (Import, Cancel, "Sending PDF: {percent}", "Copied to %s.", "PDF too big: over %d MB." and "Couldn't
+  import PDF. Is the storage full?" were there.)
+- **Tests**: upload.rs's unit tests (names, tokens, codes, origins, lengths); `test_share_upload.rs`, the server
+  spoken to over localhost as a browser on the Wi-Fi would (a PDF asked about and kept with its code in its reply
+  alone, " 2", Cancel, every refusal, first bytes split over reads, a refusal read by a browser still sending, names,
+  two at once, a body cut short, a browser gone, Share left and the token with it, the server stopping, sleep, a
+  crash's leftover and a link at its name, slow bodies, no answer, no room, the quiet time (after an Import too), and
+  a log and files without names, tokens or codes); `test_share.rs`'s question (the code drawn under it and in the
+  browser's reply, taps before and after it was shown, both answers, X and Esc, a turn, sleep, no answer, leaving, a
+  question that ends taken away before the next); tests/upload_ui_check.js (the page's script, its code and the word
+  to confirm that comes only with it, from tests/share_check.sh); `test_sec_invariants.rs`
+  `a_pdf_sent_from_the_share_page_is_told_as_it_is`; and the scenarios `share_upload_1_imported` (with the quiet time
+  after an Import), `share_upload_2_cancelled`, `share_upload_3_refused`, `share_upload_4_twice` (the 5 s),
+  `share_upload_5_es_fit_gothic`, `share_upload_5_es_fit_classic` and `share_upload_6_x_closes` (X and Esc while it
+  asks). docs/TESTING.md has the Scribe's checks.
 
 ## Shared building blocks (2.1, lane L0)
 

@@ -9,7 +9,8 @@ use std::cell::Cell;
 thread_local! {
     /// Facade cache for callers on the input path. It is populated by explicit reads/refreshes
     /// and kept current by the set wrappers, so `light_cached` never reaches the platform.
-    static LIGHT_CACHE: Cell<(i32, i32)> = const { Cell::new((-1, -1)) };
+    /// (intensity, warmth, auto brightness)
+    static LIGHT_CACHE: Cell<(i32, i32, i32)> = const { Cell::new((-1, -1, -1)) };
 }
 
 // light.h is implemented by light_kindle.c on the Kindle and by the simulator (sim_sdl.c); host
@@ -72,32 +73,60 @@ pub fn light_refresh() {
 ;
     let (mut intensity, mut warmth) = (-1, -1);
     active().light_get(&mut intensity, &mut warmth);
-    LIGHT_CACHE.set((intensity, warmth));
+    LIGHT_CACHE.set((intensity, warmth, active().light_auto()));
 }
 /// Current levels (0..LIGHT_MAX) as last read or set; -1 where unknown.
 #[inline]
 pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
     active().light_get(intensity, warmth)
 ;
-    LIGHT_CACHE.set((*intensity, *warmth));
+    LIGHT_CACHE.set((*intensity, *warmth, LIGHT_CACHE.get().2));
 }
 /// The last known light levels, or (-1, -1) until a read or set has supplied them. This never
 /// performs a platform call, so it is safe for shortcut and gesture dispatch.
 #[inline]
 pub fn light_cached() -> (i32, i32) {
-    LIGHT_CACHE.get()
+    let (intensity, warmth, _) = LIGHT_CACHE.get();
+    (intensity, warmth)
 }
 #[inline]
 pub fn light_set_intensity(level: i32) {
     active().light_set_intensity(level)
 ;
-    LIGHT_CACHE.set((level.clamp(0, LIGHT_MAX), LIGHT_CACHE.get().1));
+    let (_, warmth, auto) = LIGHT_CACHE.get();
+    LIGHT_CACHE.set((level.clamp(0, LIGHT_MAX), warmth, auto));
 }
 #[inline]
 pub fn light_set_warmth(level: i32) {
     active().light_set_warmth(level)
 ;
-    LIGHT_CACHE.set((LIGHT_CACHE.get().0, level.clamp(0, LIGHT_MAX)));
+    let (intensity, _, auto) = LIGHT_CACHE.get();
+    LIGHT_CACHE.set((intensity, level.clamp(0, LIGHT_MAX), auto));
+}
+/// Whether the Kindle follows the room's light itself (com.lab126.powerd flAuto): 1 on, 0 off, -1
+/// where this Kindle has no ambient-light sensor (or the power service does not say). Read once at
+/// light_refresh, and set by light_set_auto: it never asks the power service.
+#[inline]
+pub fn light_auto() -> i32 {
+    let cached = LIGHT_CACHE.get().2;
+    if cached >= 0 {
+        cached
+    } else {
+        active().light_auto()
+    }
+}
+/// Turn the Kindle's own auto brightness on or off. Nothing happens where light_auto is -1 (no
+/// sensor to follow). On the Kindle the write is waited for, so a light_get right after it reads
+/// the level auto has picked.
+#[inline]
+pub fn light_set_auto(on: bool) {
+    if light_auto() < 0 {
+        return;
+    }
+    active().light_set_auto(on)
+;
+    let (intensity, warmth, _) = LIGHT_CACHE.get();
+    LIGHT_CACHE.set((intensity, warmth, if on { 1 } else { 0 }));
 }
 /// The warmth as last read (light_get) or set, without asking the power service: -1 before either,
 /// or on a Kindle without warm light.

@@ -116,6 +116,7 @@ check "pdf attachment header" "grep -qi 'content-disposition: attachment' $B/pdf
 check "pdf renders (sips)" "sips -s format png $B/nb.pdf --out $B/nb-pdf.png >/dev/null 2>&1"
 python3 -I tests/download_check.py "$URL" "$ID" "$B/nb.pdf"
 node tests/download_ui_check.js
+node tests/upload_ui_check.js
 check "PDF progress UI on both pages" "grep -q GRIMOIRE_DOWNLOAD_WORDS $B/index.html && grep -q GRIMOIRE_DOWNLOAD_WORDS $B/nb.html"
 curl -fsS "$URL/nb/$ID/1.png" -o "$B/p1.png"
 check "page png" "file $B/p1.png | grep -q 'PNG image data, 1860 x 2480'"

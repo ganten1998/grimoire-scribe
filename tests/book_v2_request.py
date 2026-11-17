@@ -3,9 +3,10 @@
 # absolute path, which a fixture cannot hold, as it depends on where the run's root is. This writes the request into
 # the data root of a scenario's run as the plugin does, for the one PDF in a folder the scenario copied in
 # (tests/scenarios/y_koreader_pdf_*.qs).
-# Usage: book_v2_request.py --dir DIR --book KEY --page N --pages M [--data DATA] [--title TITLE] ROOT
+# Usage: book_v2_request.py --dir DIR --book KEY --page N --pages M [--data DATA] [--title TITLE] [--gamma G] ROOT
 #   DIR: the PDF's folder, from ROOT; DATA: Grimoire's folder, from ROOT ("." by default, "grimoire" for a
-#   "# storage:" run); TITLE: the book's title (by default the PDF's name without .pdf)
+#   "# storage:" run); TITLE: the book's title (by default the PDF's name without .pdf); G: the darker lines the
+#   reader's contrast asks for (a gamma= line, 2.2, as the plugin writes it; none by default)
 import argparse
 import os
 import time
@@ -17,6 +18,7 @@ p.add_argument('--page', type=int, required=True)
 p.add_argument('--pages', type=int, required=True)
 p.add_argument('--data', default='.')
 p.add_argument('--title')
+p.add_argument('--gamma')
 p.add_argument('root')
 a = p.parse_args()
 folder = os.path.abspath(os.path.join(a.root, a.dir))
@@ -37,6 +39,8 @@ lines = [
     'kind=paged',
     f'time={int(time.time())}',
 ]
+if a.gamma is not None:
+    lines.append(f'gamma={a.gamma}')
 part = os.path.join(book, 'request.ini.part')
 with open(part, 'w', encoding='utf-8') as f:
     f.write('\n'.join(lines) + '\n')

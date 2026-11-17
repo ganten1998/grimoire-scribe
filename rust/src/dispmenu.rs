@@ -39,6 +39,9 @@ pub struct DispMenu {
     /// 0..LIGHT_MAX, -1 unknown
     pub intensity: i32,
     pub warmth: i32,
+    /// The Kindle's own auto brightness (com.lab126.powerd flAuto): 1 on, 0 off, -1 where this
+    /// Kindle has no ambient-light sensor to follow.
+    pub auto: i32,
     /// slider being dragged (its D_* id), 0 none
     pub active: i32,
     /// that slider's row
@@ -65,12 +68,13 @@ const D_CORNER: i32 = 10;
 
 pub fn dispmenu_control_point(m:&DispMenu,name:&str)->Option<(f32,f32)> {
     if !m.open{return None;}
-    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"back"=>D_BACK,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"sleep"=>D_SLEEP_MODE,"pin"=>D_PIN,"sleep_after"=>D_SLEEP_AFTER,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
+    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"back"=>D_BACK,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"sleep"=>D_SLEEP_MODE,"pin"=>D_PIN,"sleep_after"=>D_SLEEP_AFTER,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,"auto"=>D_AUTO,_=>return None};
     m.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
 const D_NEWPAGE: i32 = 11;
 const D_TIME12: i32 = 12;
 const D_BACK: i32 = 13;
+const D_AUTO: i32 = 14;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -138,6 +142,7 @@ fn step_of(minutes: i32) -> i32 {
 pub fn dispmenu_open(m: &mut DispMenu, a: &mut App) {
     *m = DispMenu { open: true, ..Default::default() };
     light_get(&mut m.intensity, &mut m.warmth);
+    m.auto = light_auto();
     m.rect = Rect::new(0, 0, a.w, a.h);
 }
 
@@ -312,6 +317,18 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
                 rows.push(DRowKind::Note(tr("Front light controls are not available here.").to_string()));
             } else {
                 rows.push(DRowKind::Slider(D_BRIGHT));
+                // The Kindle's own auto brightness: the power service follows its ambient-light
+                // sensor. Only a Kindle with one has the row.
+                if m.auto >= 0 {
+                    // TRANSLATORS: the Display page's on/off row under Brightness: the Kindle's own
+                    // auto brightness, which follows the light in the room (com.lab126.powerd
+                    // flAuto). About 930 px at 44 px, beside its switch.
+                    rows.push(DRowKind::Check {
+                        id: D_AUTO,
+                        label: tr("Auto brightness (follow the room's light)").to_string(),
+                        on: m.auto != 0,
+                    });
+                }
                 if m.warmth < 0 {
                     rows.push(DRowKind::Note(tr("This Kindle has no warmth control.").to_string()));
                 } else {
@@ -531,6 +548,20 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         }
         D_STATUS => status_cycle_size(a),
         D_CORNER => status_cycle_corner(a),
+        D_AUTO => {
+            let on = m.auto == 0;
+            if !on {
+                // Read the level auto last chose before turning it off: after it is off, the power
+                // service no longer moves the light, so this is where the slider leaves it.
+                light_get(&mut m.intensity, &mut m.warmth);
+            }
+            light_set_auto(on);
+            m.auto = light_auto();
+            if on {
+                // Show the level the power service picked for the room at once.
+                light_get(&mut m.intensity, &mut m.warmth);
+            }
+        }
         D_PIN => {
             if editor_pin_sleep_page(a) {
                 a.settings.sleep_mode = 1;

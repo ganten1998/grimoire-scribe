@@ -42,6 +42,21 @@ const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
 const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
 const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
+const PDFIMPORT: File = ("rust/src/pdfimport.rs", include_str!("../src/pdfimport.rs"));
+const ANNOTATE: File = ("rust/src/annotate.rs", include_str!("../src/annotate.rs"));
+const STORE: File = ("rust/src/store.rs", include_str!("../src/store.rs"));
+const TPLPDF: File = ("rust/src/bgwork_tplpdf.rs", include_str!("../src/bgwork_tplpdf.rs"));
+const BGJOB: File = ("rust/src/bgjob.rs", include_str!("../src/bgjob.rs"));
+const TPLSHEET: File = ("rust/src/tplsheet.rs", include_str!("../src/tplsheet.rs"));
+const WEBLINKS: File = ("rust/src/weblinks.rs", include_str!("../src/weblinks.rs"));
+const DOCLINKS: File = ("rust/src/doclinks.rs", include_str!("../src/doclinks.rs"));
+const LINKCARD: File = ("rust/src/linkcard.rs", include_str!("../src/linkcard.rs"));
+const EDITOR: File = ("rust/src/editor.rs", include_str!("../src/editor.rs"));
+const HTTPD: File = ("rust/src/httpd.rs", include_str!("../src/httpd.rs"));
+const UPLOAD: File = ("rust/src/upload.rs", include_str!("../src/upload.rs"));
+const SHARE: File = ("rust/src/share.rs", include_str!("../src/share.rs"));
+const PAIR: File = ("rust/src/pair.rs", include_str!("../src/pair.rs"));
+const UPLOAD_TESTS: File = ("rust/tests/test_share_upload.rs", include_str!("test_share_upload.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -772,4 +787,331 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
     gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
     none_failed(&fails, "a font added from a file");
+}
+
+// Darker lines in imported PDFs (2.2, issue #173): the rules DESIGN.md and FORMAT.md give, and the code that holds
+// each. A gamma on gray pages only, applied by the writer to the page it holds; Off untouched; a fill at its
+// notebook's level; every value from a file read strictly.
+#[test]
+fn darker_lines_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    // the writer, on the gray page it holds: no new parse, no new decode, the worker as it was
+    present(&mut fails, DESIGN, "The writer applies the gamma to the gray page it already holds");
+    present(&mut fails, DESIGN, "no new parse of the PDF, no new decode, and the worker and its protocol are unchanged");
+    present(&mut fails, PDFIMPORT, "darken(&mut p, state.gamma);");
+    // gray pages only, and nothing at Off
+    present(&mut fails, DESIGN, "A page kept in colour is left exactly as it is, and a page with gray and colour on it is a colour page");
+    present(&mut fails, DESIGN, "At Off nothing is applied");
+    present(&mut fails, PDFWORK, "if g == Gamma::Off || p.ch != 1 {");
+    // a fill draws at its notebook's own level
+    present(&mut fails, DESIGN, "A fill draws the pages it adds at its notebook's own level");
+    present(&mut fails, PDFIMPORT, "st.gamma = p.gamma;");
+    present(&mut fails, PDFIMPORT, "pub fn gamma_among(kept: &[u8]) -> Gamma {");
+    // read strictly: the three values, anything else no gamma, in every file that says a level
+    present(&mut fails, FORMAT, "Each of these lines is read strictly: `1.0`, `1.5` or `2.0`, and any other value is no gamma.");
+    present(&mut fails, FORMAT, "`kind`, `time` and `gamma` comes once at most");
+    present(&mut fails, PDFWORK, "b\"1.5\" => Gamma::Medium, b\"2.0\" => Gamma::Strong, _ => Gamma::Off,");
+    present(&mut fails, STORE, "keep_named(\"pdf_gamma\", v, &crate::pdfwork::Gamma::NAMES)");
+    present(&mut fails, ANNOTATE, "r.gamma = Some(crate::pdfwork::Gamma::parse(v));");
+    present(&mut fails, ANNOTATE, "b\"kind\", b\"time\", b\"gamma\"];");
+    // (the mark's, the import state's and source.ini's readers, and a version 1 request's, which drops the line)
+    present(&mut fails, PDFIMPORT, "\"gamma\" => m.gamma = Gamma::parse(v.as_bytes()),");
+    present(&mut fails, PDFIMPORT, "\"gamma\" => s.gamma = Gamma::parse(v.as_bytes()),");
+    present(&mut fails, PDFIMPORT, ".find_map(|line| line.strip_prefix(b\"gamma=\")).map_or(Gamma::Off, Gamma::parse)");
+    present(&mut fails, ANNOTATE, "r.file.clear(); r.gamma = None;");
+    // what the change took away
+    gone(&mut fails, BACKLOG, "A `gamma=` line waits with the darker lines import option");
+    none_failed(&fails, "darker lines in imported PDFs");
+}
+
+// PDFs as templates (issue #172): the safety sentences of DESIGN.md held with the code that makes them true (only the
+// worker parses the PDF, nothing drawn or marked without one, no job queued in a broken session, the page limit whole,
+// the cache reached with no link, the floor, nothing kept of a file that changed, never an import, the job's rank,
+// nothing read again under a contact), and the page limit's figure beside its name in DESIGN.md and FORMAT.md.
+#[test]
+fn pdfs_as_templates_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    let max = grimoire::bgwork_tplpdf::TEMPLATE_PDF_MAX_PAGES.to_string();
+    beside(&mut fails, DESIGN, "`TEMPLATE_PDF_MAX_PAGES`", &max);
+    present(&mut fails, FORMAT, &format!("n from 1 to {max} in decimal"));
+    present(&mut fails, FORMAT, &format!("more than {max} pages"));
+    // only the worker parses the PDF, the file the job opened
+    told_on(&mut fails, DESIGN, "the writer and the UI never parse PDF syntax", TPLPDF, "let mut s = Session::start(self.file.as_raw_fd(), self.md.len(), &self.limits)?;");
+    told_on(&mut fails, DESIGN, "The job opens the PDF once, with no link followed", TPLPDF, "let Ok((file, md)) = open_read_nofollow(src) else {");
+    // no worker: nothing drawn, nothing marked; a broken session queues nothing
+    let waits = "nothing is drawn and nothing is marked: the PDF's tile waits, as a picture's does";
+    told_on(&mut fails, DESIGN, waits, TPLPDF, r#"Err(StartErr::Worker(why)) => return Err(Stop::Later(format!("no worker ({why})"))),"#);
+    told_on(&mut fails, DESIGN, waits, TPLPDF, "crate::sandbox::session_set_broken(); Stop::Later(");
+    told_on(&mut fails, DESIGN, "A session marked broken queues no PDF's job until Grimoire starts again", TPLPDF, "if crate::sandbox::session_broken() { return; }");
+    told_on(
+        &mut fails,
+        DESIGN,
+        "the job's child ends with status 4 (`CODE_SANDBOX`), which bgjob.rs turns into the UI's mark",
+        BGJOB,
+        "if template_pdf(&job) && code == crate::bgwork_tplpdf::CODE_SANDBOX { crate::sandbox::session_set_broken();",
+    );
+    // the page limit, whole
+    told_on(&mut fails, DESIGN, "is no template as a whole and is never cut to its first pages", TPLPDF, "if n > TEMPLATE_PDF_MAX_PAGES {");
+    told_on(&mut fails, DESIGN, "over 16 MB (marked before any worker starts)", TPLPDF, "if size > TEMPLATE_MAX_BYTES as u64 {");
+    // the tiles PDFs give in all, and a PDF past them left out whole, with no job
+    beside(&mut fails, DESIGN, "`TEMPLATE_PDF_TILES_MAX`", &grimoire::bgwork_tplpdf::TEMPLATE_PDF_TILES_MAX.to_string());
+    told_on(&mut fails, DESIGN, "is left out whole, as one tile the sheet cannot use, with no job queued for it", TPLPDF, "if tiles > *left { out.push(whole(true)); return None; }");
+    // written only in Grimoire's own folder, reached with no link; the floor before every page
+    told_on(&mut fails, DESIGN, "into a cache folder reached with no link on the way", TPLPDF, "if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {");
+    told_on(&mut fails, DESIGN, "the free-space floor before every page", TPLPDF, "Some(free) if !crate::fsview::fsview_room_for(free, need) =>");
+    // ... at each of its two places: before a page's worker is asked, and with the page's real size before it is kept
+    told_on(&mut fails, DESIGN, "room for a page before its worker is asked", TPLPDF, "self.room(PAGE_ROOM)?; match self.page(k)? {");
+    told_on(&mut fails, DESIGN, "and for its picture and preview before they are written", TPLPDF, "if let Err(e) = self.room(need) {");
+    // a file changed while its pages are made: the count is not kept either
+    told_on(
+        &mut fails,
+        DESIGN,
+        "The job checks before it keeps the count and before it keeps each page",
+        TPLPDF,
+        "if !self.same() { return Err(Stop::Changed); } if known != Some(n) {",
+    );
+    // a file changed while its pages are made: nothing of it after the change is kept
+    told_on(
+        &mut fails,
+        DESIGN,
+        "no page of it drawn after the change is kept",
+        TPLPDF,
+        "(nothing of a file that changed while its worker read it is kept) if !self.same() { return Err(Stop::Changed); } return self.store(k, p);",
+    );
+    // a page is its picture: drawing or picking it never reads the PDF
+    told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TPLPDF, r#"t.path.set(&f("png"));"#);
+    told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TEMPLATES, "if let Some(stem) = crate::bgwork_tplpdf::page_stem(path) {");
+    // the PDF itself is never a picture: no preview of its own, never installed, never a notebook's picture job
+    told_on(&mut fails, DESIGN, "The PDF itself is never a picture", TEMPLATES, "if crate::bgwork_tplpdf::is_pdf_name(&path[slash + 1..]) { return false; }");
+    told_on(&mut fails, DESIGN, "a notebook's picture job refuses a PDF, so the picture worker is never handed one", TEMPLATES, "a PDF is no picture (its pages are the templates); nothing made\", id); return -1;");
+    // never an import
+    told_on(&mut fails, DESIGN, "The import watch reads `grimoire/import` alone", PDFIMPORT, r#"let dir = root_path("import");"#);
+    // ... and the template job makes no notebook and queues no import (the user's own Import as notebook aside)
+    told_on(&mut fails, DESIGN, "the template job never makes a notebook of a PDF in the templates folder", PDFIMPORT, r#"let dir = root_path("import");"#);
+    gone(&mut fails, TPLPDF, "store_create");
+    gone(&mut fails, TPLPDF, "pdf_import_queue");
+    gone(&mut fails, TPLPDF, "import_pick_queue");
+    // removals look for a link again right before they list the cache
+    let removals = "looks for a link on the way again right before it lists the cache";
+    told_on(&mut fails, DESIGN, removals, TPLPDF, "fn remove_entries(&self) { if !no_link_below(&store_root(), &self.cache) { return; }");
+    told_on(&mut fails, DESIGN, removals, TEMPLATES, "fn sweep_cache(cache: &str, keep: &[String]) { if !no_link_below(&store_root(), cache) { return; }");
+    // the job's rank, and its slices
+    told_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "if template_pdf(j) { return 4; }");
+    stands_on(&mut fails, DESIGN, "It ranks behind imports and font checks, with Files' previews", BGJOB, "BgKind::FilePreviews => 4,");
+    told_on(&mut fails, DESIGN, "looked at before a page, never between the tries of one", TPLPDF, "if made + marked >= max || mono_ms().saturating_sub(t0) >= s1::SLICE_WALL_MS as u64 {");
+    // the sheet: a PDF's tile it cannot use stays, crossed out (a picture's is left out, as on main)
+    told_on(&mut fails, DESIGN, "A PDF's tile the sheet cannot use stays crossed out in its place at every opening", TPLSHEET, "if s.t[i].bad && !pdf_tile(&s.t[i]) { continue; }");
+    // the sheet: nothing read again under a contact
+    told_on(&mut fails, DESIGN, "Never under a contact: a count seen while a pen or finger is down on the sheet is read after the lift.", TPLSHEET, "if s.press.down { s.pdf_counted = true; }");
+    none_failed(&fails, "PDFs as templates");
+}
+
+// Web links as a QR card (2.2, issue #174). What keeps versions before 2.2 safe: the web links are in a file of their
+// own, which no version before 2.2 opens, and doclinks.ini (which 2.1.0 reads and carries only 16 KiB of lines it does
+// not know in) never holds one: its writer writes page targets alone. What an address may be: the rules, held against
+// the whole function, checked by the worker, the writer and the reader; a notebook without web links has no file.
+// The card draws the stored text and its code and opens nothing. The old words that said web links are left out are
+// gone.
+#[test]
+fn web_links_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    told_on(&mut fails, FORMAT, "2.1.0 and every version before it never read or write `weblinks.ini`", WEBLINKS, r#"pub const WEBLINKS_FILE: &str = "weblinks.ini";"#);
+    told_on(&mut fails, FORMAT, "`doclinks.ini` holds no web link and carries no line for one", DOCLINKS, r#"text.push_str(&format!("link.{}={:08x},p{}\n", l.pid, l.seed, l.target));"#);
+    told_on(&mut fails, DESIGN, "In a file of their own the web links are simply absent in 2.1.0 and before, which never open it and never write over it", WEBLINKS, r#"pub const WEBLINKS_FILE: &str = "weblinks.ini";"#);
+    const ADDRESS_OK: &str = r#"pub fn weblinks_address_ok(b: &[u8]) -> bool { if b.len() > WEBLINK_ADDRESS_MAX || !b.iter().all(|&c| (0x21..=0x7e).contains(&c) && c != b'\\') { return false; } let rest = if b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://") { &b[7..] } else if b.len() >= 8 && b[..8].eq_ignore_ascii_case(b"https://") { &b[8..] } else { return false; }; let end = rest.iter().position(|c| matches!(c, b'/' | b'?' | b'#')).unwrap_or(rest.len()); weblinks_authority(&rest[..end]).is_some() }"#;
+    const AUTHORITY: &str = r#"fn weblinks_authority(a: &[u8]) -> Option<(&[u8], Option<u32>)> { let (host, port) = match a.iter().position(|&c| c == b':') { Some(i) => (&a[..i], Some(&a[i + 1..])), None => (a, None), }; if host.is_empty() || !host.iter().all(|&c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.')) { return None; } let num = |p: &[u8], max: u32| -> Option<u32> { if p.is_empty() || p.len() > 5 || !p.iter().all(u8::is_ascii_digit) || (p.len() > 1 && p[0] == b'0') { return None; } let v = p.iter().fold(0u32, |v, &c| v * 10 + (c - b'0') as u32); (v <= max).then_some(v) }; let port = match port { None => None, Some(p) => Some(num(p, 65535).filter(|&v| v > 0)?), }; let last = host.strip_suffix(b".").unwrap_or(host).rsplit(|&c| c == b'.').next().unwrap_or(b""); let hex = last.len() >= 2 && last[0] == b'0' && (last[1] | 0x20) == b'x' && last[2..].iter().all(u8::is_ascii_hexdigit); if hex || (!last.is_empty() && last.iter().all(u8::is_ascii_digit)) { let parts: Vec<&[u8]> = host.split(|&c| c == b'.').collect(); if parts.len() != 4 || !parts.iter().all(|p| p.len() <= 3 && num(p, 255).is_some()) { return None; } } Some((host, port)) }"#;
+    let rules = "An address is kept only when it starts with `http://` or `https://` (the scheme in either case), holds only printable ASCII other than a space and `\\` (bytes 0x21 to 0x7E: no control byte, no space, nothing outside ASCII), is at most 200 bytes long (under the 213 that the largest QR code Grimoire draws, version 10 at level M, holds) and names a plain host: up to the first `/`, `?` or `#` it is `<host>` or `<host>:<port>`, with no `user@` part, the host of letters, digits, `-`, `_` and `.` only (no `%`, no `[`), a host whose last label is a number only as four numbers from 0 to 255 without leading zeros, and a port from 1 to 65535 without a leading zero.";
+    told_on_code(&mut fails, FORMAT, rules, WEBLINKS, "pub fn weblinks_address_ok(", ADDRESS_OK);
+    told_on_code(&mut fails, FORMAT, rules, WEBLINKS, "fn weblinks_authority(", AUTHORITY);
+    // (the title: the host as a browser writes it, held against the function that makes it)
+    const HOST: &str = r#"pub fn weblinks_host(a: &str) -> String { let b = a.as_bytes(); let (rest, own) = if b.len() >= 8 && b[..8].eq_ignore_ascii_case(b"https://") { (&b[8..], 443) } else if b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://") { (&b[7..], 80) } else { return a.to_string(); }; let end = rest.iter().position(|c| matches!(c, b'/' | b'?' | b'#')).unwrap_or(rest.len()); match weblinks_authority(&rest[..end]) { Some((host, port)) if weblinks_address_ok(b) => { let mut s = String::from_utf8_lossy(host).to_ascii_lowercase(); if let Some(p) = port.filter(|&p| p != own) { s.push_str(&format!(":{p}")); } s } _ => a.to_string(), } }"#;
+    let title = "the card's title shows that host as a browser writes it: in lower case, with its port unless it is the scheme's own (80 for http, 443 for https)";
+    told_on_code(&mut fails, FORMAT, title, WEBLINKS, "pub fn weblinks_host(", HOST);
+    beside(&mut fails, DESIGN, "WEBLINK_ADDRESS_MAX", &grimoire::weblinks::WEBLINK_ADDRESS_MAX.to_string());
+    let checked = "The worker checks the address, the writer checks it again before it is stored, and the reader checks it again.";
+    told_on(&mut fails, FORMAT, checked, PDFWORK, "if w < 1 || h < 1 || !crate::weblinks::weblinks_address_ok(t[7].as_bytes()) {");
+    told_on(&mut fails, FORMAT, checked, PDFWORK, "if l.src < 1 || l.src > pages || off || !crate::weblinks::weblinks_address_ok(l.address.as_bytes()) {");
+    told_on(&mut fails, FORMAT, checked, WEBLINKS, "if !nav_area_valid(area) || !weblinks_address_ok(t) {");
+    told_on(&mut fails, FORMAT, "a notebook without web links has no `weblinks.ini`", WEBLINKS, "if !wl.file && n == 0 && wl.unknown.is_empty() {");
+    // (a file that does not read, or one with a line skipped, is never written: the writer refuses it)
+    let never = "A file over a cap or one that holds a NUL does not read: it shows no web links and is never written over.";
+    told_on(&mut fails, FORMAT, never, WEBLINKS, "if !wl.writable || nb.npages() < 0 || nb.npages() > STORE_MAX_PAGES as i32 {");
+    told_on(&mut fails, FORMAT, never, WEBLINKS, "WebLinks { writable: false, file: true, ..Default::default() }");
+    let skipped = "A line past those bounds (a later version's longer address, say) is skipped and counted in the log, the file's other links are shown, and the file is never written over";
+    told_on(&mut fails, FORMAT, skipped, WEBLINKS, "if !carry_line(&mut wl.unknown, line) { wl.skipped += 1; wl.writable = false; }");
+    // The card opens nothing: both sentences stand on the whole of linkcard_set_web (its one row, Close, and its
+    // title, address and code: a row added fails here), on what the editor does with that row (it closes the card),
+    // on the card drawing the code of the stored address, and on weblinks.rs and linkcard.rs making no process and
+    // no network call (a call added to either fails here).
+    const SET_WEB: &str = r#"pub fn linkcard_set_web(c: &mut LinkCard, pid: u32, seed: u32, address: &str) { let kb = std::mem::take(&mut c.kb); let boxes = std::mem::take(&mut c.boxes); *c = LinkCard { open: true, pid, page: -1, kb, boxes, ..Default::default() }; c.boxes.clear(); c.seeds.push(seed); c.web = address.to_string(); c.title = weblinks_host(address); c.rows[0] = CardRow::Close; c.enabled[0] = true; c.labels[0] = tr("Done").to_string(); c.nrows = 1; }"#;
+    for (f, opens_nothing) in [
+        (DESIGN, "The Kindle never opens, fetches or runs an address: the card draws the stored text and a code made from it, and nothing else."),
+        (FORMAT, "Nothing on the Kindle opens, fetches or runs an address: the card shows the stored text and a code made from it."),
+    ] {
+        told_on_code(&mut fails, f, opens_nothing, LINKCARD, "pub fn linkcard_set_web(", SET_WEB);
+        told_on(&mut fails, f, opens_nothing, EDITOR, "LcResult::Row(CardRow::Close) => card_close(a),");
+        told_on(&mut fails, f, opens_nothing, LINKCARD, "c.qr = ui_qr(s, qbox, &web, negative);");
+    }
+    for f in [WEBLINKS, LINKCARD] {
+        for call in ["std::process", "Command::new", "std::net", "TcpStream", "TcpListener", "UdpSocket", "libc::exec", "libc::fork", "posix_spawn", "libc::socket", "libc::connect"] {
+            gone(&mut fails, f, call);
+        }
+    }
+    // A template PDF's web links are never read: LINKS is the one command answered with W records, and the template
+    // job never sends it (a call added there fails here).
+    let templates = "the template job asks the worker for the page count and the pages only (`PROBE`, `R`), never `LINKS`, the one command whose answer holds `W` records, so a template PDF's web links are never read";
+    told_on(&mut fails, DESIGN, templates, PDFWORK, r#"["LINKS", w, h] => {"#);
+    gone(&mut fails, TPLPDF, ".links(");
+    gone(&mut fails, TPLPDF, "LINKS");
+    gone(&mut fails, FORMAT, "Web links (URI) are left out and counted in the log");
+    gone(&mut fails, BACKLOG, "web links are counted and left out");
+    none_failed(&fails, "web links in the documents");
+}
+
+// Send a PDF from the Share page (2.2, issue #175): the server takes a PDF from the network, as root, kept only after
+// the user's yes on the Kindle. Each sentence of DESIGN.md (and KINDLE.md) that states one of its safety rules is held
+// with the code that makes it true: Share alone, the Host, Origin and token checks (whole functions where they are
+// functions), each header the rules read there once, no chunked body, one length and exactly that many bytes, a token
+// new each time Share opens and gone when it closes, nothing looked at past the first five bytes before the yes, the
+// one temporary file made afresh and removed whenever its Part drops (and when its connection closes), two senders
+// keeping neither, the quiet time after a send ends (Import too), the send's code (drawn, given in its own reply alone,
+// drawn on the Kindle, never logged: the code side and the tests that look at the log and the files), a question that
+// ends taken away first, the name never a path (whole functions), never a rename over a file, the question answered
+// only once shown and asked again after a turn, X and Esc closing Share, the network table's three rows, the log's
+// lines, and the limits with their figures. A changed line, or a reworded sentence, fails here until the two are read
+// again together.
+#[test]
+fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
+    let mut fails = Vec::new();
+    const SAME_TOKEN: &str = r#"pub fn same_token(given: &[u8], page: &[u8]) -> bool { if given.len() != page.len() || page.is_empty() { return false; } std::hint::black_box(given.iter().zip(page).fold(0u8, |acc, (x, y)| acc | (x ^ y))) == 0 }"#;
+    const SAME_ORIGIN: &str = r#"pub fn same_origin(origin: Option<&[u8]>, host: Option<&[u8]>, site: Option<&[u8]>) -> bool { if site.is_some_and(|s| s.trim_ascii() != b"same-origin") { return false; } let Some(o) = origin.map(|o| o.trim_ascii()) else { return true }; let Some(h) = host.map(|h| h.trim_ascii()).filter(|h| !h.is_empty()) else { return false }; o.len() == 7 + h.len() && o[..7].eq_ignore_ascii_case(b"http://") && o[7..].eq_ignore_ascii_case(h) }"#;
+    const HEADER_ONE: &str = r#"fn header_one(head: &[u8], name: &str, cap: usize) -> Result<Option<Vec<u8>>, ()> { match header_all(head, name).as_slice() { [] => Ok(None), [v] if v.len() < cap => Ok(Some(v.to_vec())), _ => Err(()), } }"#;
+    const UPLOAD_DROP: &str = r#"fn upload_drop() { with(|s| { s.upload = Upload { serial: s.upload.serial, ..Upload::default() }; s.quiet_from = Some(now_ms()); }); }"#;
+    const ASK_SYNC: &str = r#"fn ask_sync(a: &mut App) { let now = httpd_upload_question(); let shown = s(a).ask.as_ref().map(|k| (k.serial, k.rect)); match (now, shown) { (now, Some((serial, old))) if now.as_ref().map(|q| q.0) != Some(serial) => { s(a).ask = None; draw(a); app_invalidate(a, old, RefreshMode::Ui); app_toast(a, tr("Not imported."), 3000); } (Some((serial, name, size, code)), None) => { s(a).ask = Some(Ask { serial, name, size, code, ..Ask::default() }); draw(a); let r = s(a).ask.as_ref().map_or(RECT_EMPTY, |k| k.rect); app_invalidate(a, r, RefreshMode::Ui); } _ => {} } }"#;
+    const SHARE_BACK: &str = r#"pub fn share_back(a: &mut App) -> bool { if a.scr != ScreenId::Share { return false; } if s(a).ask.is_some() { ask_answer(a, false); } if s(a).wifi_open { s(a).wifi_open = false; if !s(a).started { start(a); } draw(a); app_invalidate_all(a, RefreshMode::Ui); return true; } let ret = s(a).ret; app_switch( a, if ret == ScreenId::Share { ScreenId::Library } else { ret }, ); true }"#;
+    const NEW_TOKEN: &str = r#"pub fn new_token() -> Option<String> { let mut b = [0u8; 16]; crate::util::random_fill(&mut b).then(|| b.iter().map(|x| format!("{x:02x}")).collect()) }"#;
+    const NEW_CODE: &str = r#"pub fn new_code() -> Option<String> { loop { let mut b = [0u8; 2]; if !crate::util::random_fill(&mut b) { return None; } let v = u16::from_le_bytes(b); if v < 60_000 { return Some(format!("{:04}", v % 10_000)); } } }"#;
+    const BODY_LENGTH: &str = r#"pub fn body_length(v: Option<&[u8]>) -> Option<u64> { let v = v?.trim_ascii(); if v.is_empty() || v.len() > 12 || !v.iter().all(u8::is_ascii_digit) { return None; } std::str::from_utf8(v).ok()?.parse().ok() }"#;
+    const PART_CREATE: &str = r#"pub fn create() -> Result<Part, i32> { let root = root_dir()?; let dir = sub_dir(root.as_raw_fd(), ".cache", true)?; let name = part_cname(); unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) }; let fd = unsafe { libc::openat(dir.as_raw_fd(), name.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint) }; if fd < 0 { return Err(errno()); } let file = unsafe { std::fs::File::from_raw_fd(fd) }; Ok(Part { dir, file: Some(file), kept: false }) }"#;
+    const SUB_DIR: &str = r#"fn sub_dir(dirfd: i32, name: &str, make: bool) -> Result<OwnedFd, i32> { let c = CString::new(name).map_err(|_| libc::EINVAL)?; for _ in 0..2 { let fd = unsafe { libc::openat(dirfd, c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) }; if fd >= 0 { return Ok(unsafe { OwnedFd::from_raw_fd(fd) }); } let e = errno(); if e != libc::ENOENT || !make { return Err(e); } unsafe { libc::mkdirat(dirfd, c.as_ptr(), 0o755) }; } Err(libc::ENOENT) }"#;
+    const UPLOAD_NAME: &str = r#"pub fn upload_name(raw: Option<&[u8]>) -> String { raw.and_then(percent_decoded).and_then(|n| cleaned(&n)).unwrap_or_else(|| UPLOAD_FALLBACK.to_string()) }"#;
+    const CLEANED: &str = r#"fn cleaned(n: &str) -> Option<String> { let mapped: String = n .chars() .filter(|&c| !unseen(c)) .map(|c| match c { '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{2800}' | '\u{3000}' => ' ', '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\u{fdd0}'..='\u{fdef}' | '\u{fffd}'..='\u{ffff}' => '_', c if c.is_control() || matches!(c as u32, 0xe000..=0xf8ff | 0xf0000..=0x10ffff) || (c as u32 & 0xfffe) == 0xfffe => '_', c => c, }) .collect(); let name = mapped.trim_end_matches(|c| c == ' ' || c == '.'); let pdf = name.len() >= 4 && name.as_bytes()[name.len() - 4..].eq_ignore_ascii_case(b".pdf"); let (stem, ext) = if pdf { name.split_at(name.len() - 4) } else { (name, ".pdf") }; let mut stem = stem.trim_start_matches(|c| c == ' ' || c == '.').to_string(); while stem.len() + ext.len() > FS_NAME_MAX - 3 { stem.pop(); } let name = format!("{stem}{ext}"); (!stem.is_empty() && fsview_name_check(name.as_bytes(), name.as_bytes(), false).is_ok()).then_some(name) }"#;
+    const UNSEEN: &str = r#"fn unseen(c: char) -> bool { matches!(c as u32, 0xad | 0x34f | 0x600..=0x605 | 0x61c | 0x6dd | 0x70f | 0x890..=0x891 | 0x8e2 | 0x115f..=0x1160 | 0x17b4..=0x17b5 | 0x180b..=0x180f | 0x200b..=0x200f | 0x202a..=0x202e | 0x2060..=0x206f | 0x3164 | 0xfe00..=0xfe0f | 0xfeff | 0xffa0 | 0xfff0..=0xfffb | 0x110bd | 0x110cd | 0x13430..=0x1343f | 0x1bca0..=0x1bca3 | 0x1d173..=0x1d17a | 0xe0000..=0xe0fff) }"#;
+    // who may send: Share open, the page's origin, the page's token (new each time Share opens)
+    told_on(&mut fails, DESIGN, "the Share screen keeps the server (403", HTTPD, r#"return upload_refuse(c, 403, "share is closed", "Share is closed");"#);
+    told_on_code(&mut fails, DESIGN, "Sec-Fetch-Site, when there is one, is `same-origin` (`same_origin`, 403)", UPLOAD, "pub fn same_origin(", SAME_ORIGIN);
+    told_on_code(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", UPLOAD, "pub fn same_token(", SAME_TOKEN);
+    told_on(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", HTTPD, "Ok(Some(t)) if same_token(&t, page.as_bytes()) => {}");
+    told_on(&mut fails, DESIGN, "new each time Share opens (`httpd_acquire`)", HTTPD, "let token = crate::upload::new_token();");
+    // before the yes: the first five bytes, one temporary file made afresh, removed on every way out
+    told_on(&mut fails, DESIGN, "Of the body only its first five bytes are looked at before the user's yes", HTTPD, "if !PDF_MAGIC.starts_with(&held) {");
+    told_on(&mut fails, DESIGN, "then O_CREAT|O_EXCL|O_NOFOLLOW, mode 0600", UPLOAD, "libc::openat(dir.as_raw_fd(), name.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint)");
+    let removed = "The temporary file is removed whenever its `Part` is dropped without `commit`";
+    told_on(&mut fails, DESIGN, removed, UPLOAD, "if !self.kept {");
+    told_on(&mut fails, DESIGN, removed, HTTPD, "if s.upload.st != UploadState::None && s.upload.client == i {");
+    told_on(&mut fails, DESIGN, removed, SHARE, "httpd_upload_discard(UploadEnd::Asleep);");
+    told_on(&mut fails, DESIGN, "a second upload while one is under way ends both", HTTPD, "upload_end(UploadEnd::Another);");
+    // the name: shown and the file's name in import/, never a path; the file never renamed over another
+    told_on_code(&mut fails, DESIGN, "**The name is never a path.**", UPLOAD, "pub fn upload_name(", UPLOAD_NAME);
+    told_on_code(&mut fails, DESIGN, "**The name is never a path.**", UPLOAD, "fn cleaned(", CLEANED);
+    told_on_code(&mut fails, DESIGN, "what draws as nothing or turns text goes", UPLOAD, "fn unseen(", UNSEEN);
+    told_on(&mut fails, DESIGN, "**never over a file** (fsview's `rename_noreplace`", UPLOAD, "match rename_noreplace(self.dir.as_raw_fd(), &part, import.as_raw_fd(), &c) {");
+    // the question: answered only once it has been shown
+    told_on(&mut fails, DESIGN, "it answers only a tap that comes down after its frame was shown", SHARE, "k.swallow = !seen;");
+    // the log: what came and how it ended, never the name or the token
+    told_on(&mut fails, DESIGN, "never the name, the token, the send's code or a header", HTTPD, r#"qlog!("httpd: an upload was refused (%s)", why);"#);
+    told_on(&mut fails, KINDLE, "Never the file's name, the page's token, the send's code or a header.", HTTPD, r#"qlog!("httpd: an upload was not kept (%s)", why);"#);
+    // the limit, with its figure
+    beside(&mut fails, DESIGN, "`UPLOAD_MAX`", &format!("{} MB", grimoire::upload::UPLOAD_MAX >> 20));
+
+    // who may send: the Host check, each header the rules read there once and readable, no chunked body, one length
+    told_on(&mut fails, DESIGN, "the Host header names the Kindle by address (`host_ok`, 400)", HTTPD, "if !host_ok(head) {");
+    let once = "one there twice or too long is refused, never read as absent";
+    told_on_code(&mut fails, DESIGN, once, HTTPD, "fn header_one(", HEADER_ONE);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"let Ok(host) = one("Host", 128) else {"#);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"let (Ok(origin), Ok(site)) = (one("Origin", 256), one("Sec-Fetch-Site", 32)) else {"#);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"match one("X-Grimoire-Token", 64) {"#);
+    told_on(&mut fails, DESIGN, once, HTTPD, r#"let Ok(length) = one("Content-Length", 32) else {"#);
+    told_on(&mut fails, DESIGN, "or with any `Transfer-Encoding` line: no chunked body", HTTPD, r#"if !header_all(head, "Transfer-Encoding").is_empty() {"#);
+    told_on_code(&mut fails, DESIGN, "One Content-Length of digits only", UPLOAD, "pub fn body_length(", BODY_LENGTH);
+    told_on(&mut fails, DESIGN, "at least five bytes (415)", HTTPD, "if len < PDF_MAGIC.len() as u64 {");
+    let exact = "A connection sends exactly the length it said";
+    told_on(&mut fails, DESIGN, exact, HTTPD, "if (raw.len() - hl) as u64 > len {");
+    told_on(&mut fails, DESIGN, exact, HTTPD, "if r > 0 { return upload_end(UploadEnd::TooLong); }");
+    told_on(&mut fails, DESIGN, "Headers are looked for in the head alone, never in the body", HTTPD, "let head = &raw[..hl];");
+    told_on(&mut fails, DESIGN, "which the server refuses (OPTIONS answers 405)", HTTPD, r#"return respond_text(405, "GET only");"#);
+    told_on(&mut fails, DESIGN, "Room for it above the storage's floor, 100 MB left after it (`fsview_room_for`, 507)", HTTPD, "if !free_bytes().is_some_and(|free| fsview_room_for(free, len)) {");
+    // the token: 128 random bits, gone when Share closes
+    told_on_code(&mut fails, DESIGN, "The token is 128 random bits", UPLOAD, "pub fn new_token(", NEW_TOKEN);
+    told_on(&mut fails, DESIGN, "gone when it closes", HTTPD, "upload_end(UploadEnd::ShareClosed); with(|s| s.token = None);");
+    // the quiet time after a send ends, however it ends (Import too), with its figure
+    let quiet = "**After an upload ends, however it ends, no new one is taken for `UPLOAD_QUIET_MS`**";
+    told_on(&mut fails, DESIGN, quiet, HTTPD, r#"if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {"#);
+    told_on_code(&mut fails, DESIGN, quiet, HTTPD, "fn upload_drop(", UPLOAD_DROP);
+    told_on(&mut fails, DESIGN, quiet, HTTPD, "if s.upload.st != UploadState::None && s.upload.client == i { s.upload = Upload { serial: s.upload.serial, ..Upload::default() }; s.quiet_from = Some(now_ms());");
+    told_on(&mut fails, DESIGN, quiet, HTTPD, "let taken = (s.upload.part.take(), std::mem::take(&mut s.upload.name)); s.upload = Upload { serial: s.upload.serial, ..Upload::default() }; s.quiet_from = Some(now_ms()); taken });");
+    beside(&mut fails, DESIGN, "`UPLOAD_QUIET_MS`", &format!("{} s", grimoire::upload::UPLOAD_QUIET_MS / 1000));
+    gone(&mut fails, DESIGN, "ends any way but Import");
+    gone(&mut fails, DESIGN, "before the next send after one not imported");
+    // the other time limits, with their figures
+    beside(&mut fails, DESIGN, "`UPLOAD_STALL_MS`", &format!("{} s", grimoire::upload::UPLOAD_STALL_MS / 1000));
+    beside(&mut fails, DESIGN, "`UPLOAD_BODY_MS`", &format!("{} minutes", grimoire::upload::UPLOAD_BODY_MS / 60_000));
+    beside(&mut fails, DESIGN, "`UPLOAD_ASK_MS`", &format!("{} minutes", grimoire::upload::UPLOAD_ASK_MS / 60_000));
+    beside(&mut fails, DESIGN, "`UPLOAD_DRAIN_MS`", &format!("{} s", grimoire::upload::UPLOAD_DRAIN_MS / 1000));
+    // the send's code: drawn from the system's randomness, in its own reply alone, drawn on the Kindle, never logged
+    // (no log line in these files names it) and never written or shown elsewhere (the request test looks)
+    told_on_code(&mut fails, DESIGN, "drawn from the system's randomness (`upload::new_code`, each of the 10,000 as likely)", UPLOAD, "pub fn new_code(", NEW_CODE);
+    let alone = "It is given in that send's own reply alone, as its first line";
+    told_on(&mut fails, DESIGN, alone, HTTPD, r#"buf_printf!(&mut o, "code %s\n", code);"#);
+    told_on(&mut fails, DESIGN, alone, HTTPD, "upload_reply_open(c, &code);");
+    told_on(&mut fails, DESIGN, "the Kindle shows the same under its question, half again the title's size", SHARE, "font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.5, Rect::new(inner.x, inner.y, inner.w, ch - gap), &code, 0);");
+    let never = "**The code is never logged, never written to the storage, never in another connection's answer or in a page, and it is gone with the send.**";
+    told_on(&mut fails, DESIGN, never, UPLOAD_TESTS, r#"check!(!httpd.iter().any(|l| whole(format!(" {l} ").as_bytes(), code)));"#);
+    told_on(&mut fails, DESIGN, never, UPLOAD_TESTS, r#"check!(!files.iter().any(|b| whole(&[b" ", &b[..], b" "].concat(), code)));"#);
+    told_on(&mut fails, DESIGN, never, UPLOAD_TESTS, r#"check!(!t.contains(&format!("code {code}")) && !t.contains(&format!("Code {code}")));"#);
+    told_on_code(&mut fails, DESIGN, never, HTTPD, "fn upload_drop(", UPLOAD_DROP);
+    for f in [HTTPD, SHARE, UPLOAD] {
+        for line in f.1.lines().filter(|l| l.contains("qlog!")) {
+            if ["&code", ".code", ", code", "(code", "code_line"].iter().any(|w| line.contains(w)) {
+                fails.push(format!("{} logs the send's code: {}", f.0, line.trim()));
+            }
+        }
+    }
+    // the question: a turn asks again, a tap lifts on its row, one that ends is taken away first, X and Esc close Share
+    told_on(&mut fails, DESIGN, "a turn draws it at its new place and asks again", SHARE, "if rect != was { app_ask(a); }");
+    told_on(&mut fails, DESIGN, "and lifts on the row it came down on", SHARE, "if swallow || at.is_none() || at != down {");
+    told_on_code(&mut fails, DESIGN, "is taken away first, with the toast \"Not imported.\", and only then can another be drawn", SHARE, "fn ask_sync(", ASK_SYNC);
+    let x = "**Share's X, outside the sheet, is its Cancel and closes Share**";
+    told_on(&mut fails, DESIGN, x, SHARE, "let on_x = on_x && !rect_contains(k.rect, ev.x as i32, ev.y as i32);");
+    told_on(&mut fails, DESIGN, x, SHARE, "if on_x && down.is_none() {");
+    told_on(&mut fails, DESIGN, x, SHARE, "ask_answer(a, false); let back = back_screen(a); return app_switch(a, back);");
+    told_on_code(&mut fails, DESIGN, "and so is Esc, which closes Share as it does without a question", SHARE, "pub fn share_back(", SHARE_BACK);
+    // the temporary file: made afresh in .cache, never through a link, never under a name the scan takes; a crash's goes
+    told_on_code(&mut fails, DESIGN, "what is at its name is removed first (the entry, never what it points at)", UPLOAD, "pub fn create(", PART_CREATE);
+    told_on_code(&mut fails, DESIGN, "in a `.cache` reached from Grimoire's folder with O_NOFOLLOW", UPLOAD, "fn sub_dir(", SUB_DIR);
+    told_on(&mut fails, DESIGN, "never under a name the import's scan takes", UPLOAD, r#"pub const PART_NAME: &str = "share-upload.part";"#);
+    told_on(&mut fails, DESIGN, "one a crash left is removed at the next start (`upload_sweep`, from `share_init`)", SHARE, "if crate::upload::upload_sweep() {");
+    // the network table: each row's limits and rules
+    let pages = "Host must name the Kindle by address; 16 connections, a 4096-byte request, 30 s idle; renders forked, 2 at a time, others queued 2 minutes at most";
+    told_on(&mut fails, DESIGN, pages, HTTPD, "if !host_ok(&req) {");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "const MAX_CLIENTS: usize = 16;");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "req: [u8; 4096],");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "if ms_since(now, with(|s| s.cl[c].t0)) > 30000 { return client_close(c); // said nothing (more) for 30 s");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "const MAX_CHILDREN: usize = 2;");
+    told_on(&mut fails, DESIGN, pages, HTTPD, "if st == ClientState::Queued && ms_since(now, t0) > 120000 {");
+    let live = "sessions in an HttpOnly SameSite=Strict cookie; the key POST is bodyless, its event in a custom header, its preflight refused";
+    told_on(&mut fails, DESIGN, live, PAIR, r#""%s=%s; HttpOnly; SameSite=Strict; Path=/""#);
+    told_on(&mut fails, DESIGN, live, HTTPD, r#"return respond_text(400, "no body allowed");"#);
+    told_on(&mut fails, DESIGN, live, HTTPD, r#"let Some(event) = header_get(req, "X-Grimoire-Key", 32) else {"#);
+    told_on(&mut fails, DESIGN, live, HTTPD, r#"return respond_text(405, "GET only");"#);
+    let send = "one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one ends";
+    told_on(&mut fails, DESIGN, send, HTTPD, "upload_end(UploadEnd::Another);");
+    told_on(&mut fails, DESIGN, send, HTTPD, "if len > UPLOAD_MAX {");
+    told_on_code(&mut fails, DESIGN, send, HTTPD, "fn header_one(", HEADER_ONE);
+    told_on_code(&mut fails, DESIGN, send, UPLOAD, "pub fn create(", PART_CREATE);
+    told_on(&mut fails, DESIGN, send, HTTPD, "upload_reply_open(c, &code);");
+    told_on(&mut fails, DESIGN, send, HTTPD, "let r = part.map_or(Err(libc::EBADF), |p| p.commit(&name));");
+    told_on(&mut fails, DESIGN, send, HTTPD, r#"if with(|s| s.quiet_from).is_some_and(|t| ms_since(now_ms(), t) < limit_ms("QUIET", UPLOAD_QUIET_MS) as i32) {"#);
+    beside(&mut fails, DESIGN, "before the next send after one ends", &format!("{} s", grimoire::upload::UPLOAD_QUIET_MS / 1000));
+    none_failed(&fails, "a PDF sent from the Share page");
 }
