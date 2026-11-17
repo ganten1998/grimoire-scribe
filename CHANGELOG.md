@@ -2,6 +2,11 @@
 
 ## 2.1.1 (unreleased)
 
+- **Web links in PDFs** (#174). A PDF's web links, left out until now, are kept when you import the PDF: tap one and
+  a card shows the address and a QR code to scan with your phone's camera, which opens it there (the Kindle opens
+  nothing itself). Only http and https addresses of up to 200 characters are kept. Turn Link areas on to see where
+  they are. A notebook with web links opens in earlier versions as before, without them; they are back when you
+  return.
 - **KOReader hands PDFs over by their path** (#142). With the KOReader plugin updated (Settings > KOReader >
   Install / update Grimoire plugin, then restart KOReader), Open this book in Grimoire on a PDF no longer has
   KOReader draw every page: Grimoire imports the PDF itself, in colour where the PDF has colour, with the notice

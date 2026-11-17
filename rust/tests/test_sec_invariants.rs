@@ -42,6 +42,9 @@ const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
 const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
 const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
+const WEBLINKS: File = ("rust/src/weblinks.rs", include_str!("../src/weblinks.rs"));
+const DOCLINKS: File = ("rust/src/doclinks.rs", include_str!("../src/doclinks.rs"));
+const LINKCARD: File = ("rust/src/linkcard.rs", include_str!("../src/linkcard.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -772,4 +775,31 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
     gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
     none_failed(&fails, "a font added from a file");
+}
+
+// Web links as a QR card (2.2, issue #174). What keeps versions before 2.2 safe: the web links are in a file of their
+// own, which no version before 2.2 opens, and doclinks.ini (which 2.1.0 reads and carries only 16 KiB of lines it does
+// not know in) never holds one: its writer writes page targets alone. What an address may be: the rules, held against
+// the whole function, checked by the worker, the writer and the reader; a notebook without web links has no file.
+// The card draws the stored text and its code and opens nothing. The old words that said web links are left out are
+// gone.
+#[test]
+fn web_links_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    told_on(&mut fails, FORMAT, "2.1.0 and every version before it never read or write `weblinks.ini`", WEBLINKS, r#"pub const WEBLINKS_FILE: &str = "weblinks.ini";"#);
+    told_on(&mut fails, FORMAT, "`doclinks.ini` holds no web link and carries no line for one", DOCLINKS, r#"text.push_str(&format!("link.{}={:08x},p{}\n", l.pid, l.seed, l.target));"#);
+    told_on(&mut fails, DESIGN, "In a file of their own the web links are simply absent in 2.1.0 and before, which never open it and never write over it", WEBLINKS, r#"pub const WEBLINKS_FILE: &str = "weblinks.ini";"#);
+    const ADDRESS_OK: &str = r#"pub fn weblinks_address_ok(b: &[u8]) -> bool { if b.len() > WEBLINK_ADDRESS_MAX || !b.iter().all(|&c| (0x21..=0x7e).contains(&c)) { return false; } let rest = if b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"http://") { &b[7..] } else if b.len() >= 8 && b[..8].eq_ignore_ascii_case(b"https://") { &b[8..] } else { return false; }; rest.first().is_some_and(|c| !matches!(c, b'/' | b'?' | b'#')) }"#;
+    let rules = "An address is kept only when it starts with `http://` or `https://` (the scheme in either case) followed by a byte that is not `/`, `?` or `#`, holds only printable ASCII other than a space (bytes 0x21 to 0x7E: no control byte, no space, nothing outside ASCII) and is at most 200 bytes long";
+    told_on_code(&mut fails, FORMAT, rules, WEBLINKS, "pub fn weblinks_address_ok(", ADDRESS_OK);
+    beside(&mut fails, DESIGN, "WEBLINK_ADDRESS_MAX", &grimoire::weblinks::WEBLINK_ADDRESS_MAX.to_string());
+    let checked = "The worker checks the address, the writer checks it again before it is stored, and the reader checks it again.";
+    told_on(&mut fails, FORMAT, checked, PDFWORK, "if w < 1 || h < 1 || !crate::weblinks::weblinks_address_ok(t[7].as_bytes()) {");
+    told_on(&mut fails, FORMAT, checked, PDFWORK, "if l.src < 1 || l.src > pages || off || !crate::weblinks::weblinks_address_ok(l.address.as_bytes()) {");
+    told_on(&mut fails, FORMAT, checked, WEBLINKS, "if !nav_area_valid(area) || !weblinks_address_ok(t) {");
+    told_on(&mut fails, FORMAT, "a notebook without web links has no `weblinks.ini`", WEBLINKS, "if !wl.file && n == 0 && wl.unknown.is_empty() {");
+    told_on(&mut fails, DESIGN, "The Kindle never opens, fetches or runs an address: the card draws the stored text and a code made from it, and nothing else.", LINKCARD, "c.qr = ui_qr(s, qbox, &web, negative);");
+    gone(&mut fails, FORMAT, "Web links (URI) are left out and counted in the log");
+    gone(&mut fails, BACKLOG, "web links are counted and left out");
+    none_failed(&fails, "web links in the documents");
 }

@@ -1461,6 +1461,56 @@ index reads the file; Clear page, the lasso, the clipboard and the 64/4,000 chec
 never see them by construction. Copy page and Copy to notebook carry them (the latter only to targets that were
 copied too); the notebook PDF and raw zips carry them.
 
+## Web links as a QR card (2.2, issue #174)
+
+A PDF's web links (link annotations whose action is a URI) were counted and left out. From 2.2 an address that
+passes the rules is kept, and a finger's tap on its area shows a card with the address and its QR code, for a phone
+at arm's length to open. The Kindle never opens, fetches or runs an address: the card draws the stored text and a
+code made from it, and nothing else.
+
+- **Where they live: `notebooks/<id>/weblinks.ini`** (`weblinks.rs`, FORMAT.md "Web links"), a file of its own,
+  one `web.<page id>=<seed>,<x>,<y>,<w>,<h>,<address>` line a link. Not a new target kind in `doclinks.ini`: 2.1.0
+  reads `doclinks.ini` and carries the lines it does not know only up to 16 KiB together, past which it refuses the
+  whole file (no tabs at all there). A planner or a book with a few hundred web links would have cost a 2.1.0 user
+  every tab. In a file of their own the web links are simply absent in 2.1.0 and before, which never open it and
+  never write over it; `doclinks.ini` is the same bytes as for the PDF without its web links.
+- **The rules** (`weblinks_address_ok`): `http://` or `https://` (the scheme in either case) and a host's first
+  byte, printable ASCII other than a space (0x21 to 0x7E), at most `WEBLINK_ADDRESS_MAX` (200) bytes, under the 213
+  bytes a version 10 code holds at level M, the largest `qr.rs` draws, so every address kept has its code. The worker
+  trims the PDF string's ends (spaces, line breaks, NULs: `weblinks_address_from`) and checks; the writer checks the
+  `W` record again (`parse_record`, `Collected::take`), and the reader checks the file's line again. A refused
+  address stays a counted web link left out (`LeftOut.uri`).
+- **The worker** (`pdfwork.rs`, `Walk::target`): a URI action's string is read and, when the rules take it, each
+  quad (or the Rect) of the annotation goes out as `W <src> <x> <y> <w> <h> <i> <address>`, the area as an `L`
+  record's (its box; no polygon), `i` its place among the page's web links. Web and page links share `LINKS_MAX`
+  and the walk's 3 MiB of records. `links.part` carries the `W` records after the `L` and `Q` lines.
+- **The writer** (`pdfimport.rs`, `put_weblinks`): the last slice of a new notebook writes `weblinks.ini` in the
+  work folder when there is a web link (`weblinks_fill`: validated, one of each, the same address with its area
+  within 2 px; 256 a page; then `weblinks_water`, 90% of `WEBLINKS_MAX`, 4,000, the densest pages first); a fill's
+  commit (`fill_weblinks`) adds the web links of the pages it adds only, the notebook's own never trimmed. Those left
+  for room count in the end's "Some links were left out.".
+- **The editor**: `EditorState.wl`, read at open and pruned as `dl` is. A finger's tap with no link of the user's
+  under it tries a document link, then a web link (`weblinks_at`: exact area first, then the 7 mm growth); a
+  document link reached only through its growth gives way to a web link whose own area holds the point. The tap
+  opens the long-press card in a form of its own (`linkcard_set_web`, `LinkCard.web`): the heavy border around the
+  link's exact box, the card beside it (the popout's place), the host as its title (`weblinks_host`, after any
+  `user@`), the address as stored (up to six lines broken between its characters), "Scan with a phone's camera",
+  the code in a 600 px box (a symbol of 37 to 65 modules: 9 to 16 px, 0.8 to 1.4 mm a module on the Scribe; its
+  negative under Invert, as the Share screen's) and Done; a tap outside closes it too. A finger held on a web link
+  arms Select, as on a document link. The eye draws their boxes with the document links' (`LinkBoxes.doc`). Copy
+  page and Copy to notebook carry them (to any notebook: a web link goes nowhere inside it); when they cannot, the
+  document links' toasts say so. Raw zips carry `raw/weblinks.ini`.
+- **Where they never appear**: the Links bar, the backlinks cache, the library index and the Graph (a web link
+  points at no page), the Index and Find (they list pages and names), the notebook's PDF (a choice for the owner:
+  BACKLOG.md), the lasso, Select, Clear page and the clipboard.
+- **Tests**: `weblinks.rs`'s unit tests and `tests/test_weblinks.rs` (the file, the caps, carried lines, what
+  2.1.0's readers see and write, Copy page and Copy to notebook, raw zips); `test_pdflinks_import.rs` (the rules
+  through a real worker, the `W` record, an import's other files byte for byte those of the PDF without web links,
+  a page past 256); `test_pdf_fill.rs` (a fill, and a fill into a notebook with no `weblinks.ini`); `test_qr.rs`
+  (`ui_qr_matches`, every address's code); `test_linkcard.rs`; scenarios `z_weblinks_1_card`, `z_weblinks_2_es`,
+  `z_weblinks_3_fill`, whose `editor.link_card.qr` checks the code on the screen module for module against the
+  address's.
+
 ## The notebook PDF, incremental and streamed (2.1.0-beta.2, lane L9)
 
 Closing a changed notebook used to draw every page again (minutes for a 400-page planner, holding the one
