@@ -802,6 +802,11 @@ fn darker_lines_are_told_as_they_are() {
     present(&mut fails, STORE, "keep_named(\"pdf_gamma\", v, &crate::pdfwork::Gamma::NAMES)");
     present(&mut fails, ANNOTATE, "r.gamma = Some(crate::pdfwork::Gamma::parse(v));");
     present(&mut fails, ANNOTATE, "b\"kind\", b\"time\", b\"gamma\"];");
+    // (the mark's, the import state's and source.ini's readers, and a version 1 request's, which drops the line)
+    present(&mut fails, PDFIMPORT, "\"gamma\" => m.gamma = Gamma::parse(v.as_bytes()),");
+    present(&mut fails, PDFIMPORT, "\"gamma\" => s.gamma = Gamma::parse(v.as_bytes()),");
+    present(&mut fails, PDFIMPORT, ".find_map(|line| line.strip_prefix(b\"gamma=\")).map_or(Gamma::Off, Gamma::parse)");
+    present(&mut fails, ANNOTATE, "r.file.clear(); r.gamma = None;");
     // what the change took away
     gone(&mut fails, BACKLOG, "A `gamma=` line waits with the darker lines import option");
     none_failed(&fails, "darker lines in imported PDFs");
