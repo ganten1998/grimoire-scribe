@@ -373,6 +373,15 @@ fn every_refusal_keeps_nothing() {
     check!(refused(head(Some(&tok), Some("a.pdf"), n, "Sec-Fetch-Site: cross-site\r\n"), &body, "HTTP/1.0 403 Forbidden", "another site\n"));
     let rebound = head(Some(&tok), Some("a.pdf"), n, "").replace("Host: 127.0.0.1", "Host: evil.example.com");
     check!(refused(rebound, &body, "HTTP/1.0 400 Bad Request", "use the address shown on the Kindle\n"));
+    // a header the rules read, there twice or too long to read: refused, never read as absent
+    let page_origin = format!("Origin: http://127.0.0.1:{}\r\n", port());
+    let long_origin = head(Some(&tok), Some("a.pdf"), n, "").replace(&page_origin, &format!("Origin: http://{}.example\r\n", "a".repeat(250)));
+    check!(refused(long_origin, &body, "HTTP/1.0 403 Forbidden", "another site\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, "Origin: http://evil.example\r\n"), &body, "HTTP/1.0 403 Forbidden", "another site\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, &format!("Sec-Fetch-Site: cross-site{}\r\n", " ".repeat(40))), &body, "HTTP/1.0 403 Forbidden", "another site\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, "Sec-Fetch-Site: same-origin\r\nSec-Fetch-Site: cross-site\r\n"), &body, "HTTP/1.0 403 Forbidden", "another site\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, &format!("Host: 127.0.0.1:{}\r\n", port())), &body, "HTTP/1.0 400 Bad Request", "bad request\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, &format!("X-Grimoire-Token: {tok}\r\n")), &body, "HTTP/1.0 401 Unauthorized", "wrong token\n"));
     // a script elsewhere with no Origin at all (curl) and the page's own Sec-Fetch-Site are fine: the token decides
     let s = upload(&head(Some(&tok), Some("a.pdf"), n, "Sec-Fetch-Site: same-origin\r\n").replace(&format!("Origin: http://127.0.0.1:{}\r\n", port()), ""), &body);
     let q = question();
@@ -383,6 +392,11 @@ fn every_refusal_keeps_nothing() {
     check!(refused(head(Some(&tok), Some("a.pdf"), n, "").replace(&format!("Content-Length: {n}\r\n"), ""), &body, "HTTP/1.0 411 Length Required", "length required\n"));
     check!(refused(head(Some(&tok), Some("a.pdf"), n, "").replace(&format!("Content-Length: {n}"), "Content-Length: 2kb"), &body, "HTTP/1.0 411 Length Required", "length required\n"));
     check!(refused(head(Some(&tok), Some("a.pdf"), n, "Transfer-Encoding: chunked\r\n"), &body, "HTTP/1.0 411 Length Required", "length required\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, &format!("Transfer-Encoding: chunked{}\r\n", " ".repeat(70))), &body, "HTTP/1.0 411 Length Required", "length required\n"));
+    // one length only, and a body of exactly that length (here more of it came with the head)
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, "Content-Length: 10\r\n"), &body, "HTTP/1.0 400 Bad Request", "bad request\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), 10, &format!("Content-Length: {n}\r\n")), &body, "HTTP/1.0 400 Bad Request", "bad request\n"));
+    check!(refused(head(Some(&tok), Some("a.pdf"), n, ""), &[&body[..], b"0123456789"].concat(), "HTTP/1.0 400 Bad Request", "more than its length\n"));
     check!(refused(head(Some(&tok), Some("a.pdf"), 4, ""), b"%PDF", "HTTP/1.0 415 Unsupported Media Type", "not a PDF\n"));
     check!(refused(head(Some(&tok), Some("a.pdf"), UPLOAD_MAX as usize + 1, ""), b"", "HTTP/1.0 413 Content Too Large", "too big\n"));
     let mut gif = b"GIF89a".to_vec();
@@ -519,6 +533,30 @@ fn a_body_cut_short_or_a_browser_gone_keeps_nothing() {
     // the browser closes while the Kindle asks
     let s = upload(&head(Some(&tok), Some("gone.pdf"), body.len(), ""), &body);
     check!(question().is_some());
+    drop(s);
+    check!(nothing_kept(&names));
+}
+
+// A connection sends exactly the length it said: a byte past it once the Kindle asks ends the send (its question goes,
+// nothing is kept, the answer's last line says why), and so do more bytes and a close right after them.
+fn a_body_longer_than_its_length_keeps_nothing() {
+    let before: Vec<String> = import_names();
+    let names: Vec<&str> = before.iter().map(|s| s.as_str()).collect();
+    let tok = page_token();
+    let body = pdf(4028);
+    let mut s = upload(&head(Some(&tok), Some("more.pdf"), body.len(), ""), &body);
+    check!(question().is_some());
+    check!(send(&mut s, b"and more"));
+    check!(poll_until(|| httpd_upload_question().is_none()));
+    let r = refused_reply(s);
+    check!(r.status() == "HTTP/1.0 200 OK" && r.code().is_some() && r.said() == "more than its length");
+    check!(nothing_kept(&names));
+    // 4028 bytes said, 200 KB sent, then a close
+    let mut all = head(Some(&tok), Some("lie.pdf"), body.len(), "").into_bytes();
+    all.extend_from_slice(&body);
+    all.extend(std::iter::repeat_n(b'x', 200_000));
+    let mut s = connect();
+    let _ = send(&mut s, &all);
     drop(s);
     check!(nothing_kept(&names));
 }
@@ -790,6 +828,7 @@ fn test_share_upload() {
     run!(a_name_is_shown_and_never_a_path);
     run!(two_at_once_keep_neither);
     run!(a_body_cut_short_or_a_browser_gone_keeps_nothing);
+    run!(a_body_longer_than_its_length_keeps_nothing);
     run!(leaving_share_keeps_nothing_and_the_token_goes_with_it);
     run!(a_leftover_of_a_crash_goes_at_the_start);
     run!(slow_bodies_and_unanswered_questions_end);
@@ -804,7 +843,9 @@ fn test_share_upload() {
         "httpd: an upload was refused (not a PDF)", "httpd: an upload was refused (too big)", "httpd: an upload was not kept (a second upload came)",
         "httpd: an upload was cut short; nothing kept", "httpd: the browser that sent an upload left; nothing kept",
         "httpd: an upload was not kept (Share closed)", "httpd: an upload was refused (Share is closed)",
-        "httpd: an upload was refused (too soon after the last one ended)"] {
+        "httpd: an upload was refused (too soon after the last one ended)", "httpd: an upload was refused (more bytes than its length)",
+        "httpd: an upload was not kept (more bytes than its length came)", "httpd: an upload was refused (a Content-Length twice or too long)",
+        "httpd: an upload was refused (an Origin or Sec-Fetch-Site header twice or too long)"] {
         check!(t.contains(line));
     }
     for name in ["Planner", "Cancelled", "settings.ini", "first.pdf", "Caf", "Untitled", "over-a-link", "hidden"] {

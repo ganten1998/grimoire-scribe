@@ -796,7 +796,7 @@ fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
     told_on(&mut fails, DESIGN, "the Share screen keeps the server (403", HTTPD, r#"return upload_refuse(c, 403, "share is closed", "Share is closed");"#);
     told_on_code(&mut fails, DESIGN, "Sec-Fetch-Site, when there is one, is `same-origin` (`same_origin`, 403)", UPLOAD, "pub fn same_origin(", SAME_ORIGIN);
     told_on_code(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", UPLOAD, "pub fn same_token(", SAME_TOKEN);
-    told_on(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", HTTPD, "Some(t) if !same_token(&t, page.as_bytes()) =>");
+    told_on(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", HTTPD, "Ok(Some(t)) if same_token(&t, page.as_bytes()) => {}");
     told_on(&mut fails, DESIGN, "new each time Share opens (`httpd_acquire`)", HTTPD, "let token = crate::upload::new_token();");
     // before the yes: the first five bytes, one temporary file made afresh, removed on every way out
     told_on(&mut fails, DESIGN, "Nothing of the body but its first five bytes is read before the user's yes", HTTPD, "if !PDF_MAGIC.starts_with(&held) {");

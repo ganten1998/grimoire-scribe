@@ -271,6 +271,8 @@ pub enum UploadEnd {
     Asleep,
     /// a second upload came while this one was under way: neither is kept
     Another,
+    /// more bytes came on its connection than its length said
+    TooLong,
     /// the server stops
     Stopped,
 }
@@ -2230,6 +2232,31 @@ fn host_ok(req: &[u8]) -> bool {
 // Share left, sleep, a second upload, the server stopping. The log says what came and how it ended, never the name,
 // the token or the code.
 
+/// Every value of a header in a request's head, as header_get reads the first (its name in any case, then a colon;
+/// the spaces and tabs before the value left out; the value to its line's end), however long.
+fn header_all<'a>(head: &'a [u8], name: &str) -> Vec<&'a [u8]> {
+    let name = name.as_bytes();
+    let mut out = Vec::new();
+    for line in head.split(|&b| b == b'\n').skip(1) {
+        if line.len() > name.len() && line[..name.len()].eq_ignore_ascii_case(name) && line[name.len()] == b':' {
+            let v = &line[name.len() + 1..];
+            let v = &v[v.iter().position(|&b| b != b' ' && b != b'\t').unwrap_or(v.len())..];
+            out.push(&v[..v.iter().position(|&b| b == b'\r').unwrap_or(v.len())]);
+        }
+    }
+    out
+}
+
+/// A header the upload's rules read: Ok(None) when it is absent, Ok(its value) when it is there once and shorter than
+/// cap, Err when it is there more than once or too long to read (so it is refused, never read as absent).
+fn header_one(head: &[u8], name: &str, cap: usize) -> Result<Option<Vec<u8>>, ()> {
+    match header_all(head, name).as_slice() {
+        [] => Ok(None),
+        [v] if v.len() < cap => Ok(Some(v.to_vec())),
+        _ => Err(()),
+    }
+}
+
 /// The length of a request's head with its blank line: what follows is the body's first bytes.
 fn head_len(req: &[u8]) -> Option<usize> {
     let crlf = req.windows(4).position(|w| w == b"\r\n\r\n").map(|i| (i, i + 4));
@@ -2279,31 +2306,42 @@ fn route_upload(c: usize) {
     let Some(hl) = head_len(&raw) else { return upload_refuse(c, 400, "bad request", "a head without its end") };
     // (headers are looked for in the head alone: a line of the body is never one)
     let head = &raw[..hl];
-    let h = |name: &str, cap: usize| header_get(head, name, cap);
+    // (each header the rules read is there once, and short enough to read; one there twice or too long is refused,
+    // never read as absent)
+    let one = |name: &str, cap: usize| header_one(head, name, cap);
     if owners() & HTTPD_SHARE == 0 {
         return upload_refuse(c, 403, "share is closed", "Share is closed");
     }
     if !host_ok(head) {
         return upload_refuse(c, 400, tr("use the address shown on the Kindle"), "another host");
     }
-    if !same_origin(h("Origin", 256).as_deref(), h("Host", 128).as_deref(), h("Sec-Fetch-Site", 32).as_deref()) {
+    let Ok(host) = one("Host", 128) else { return upload_refuse(c, 400, "bad request", "a Host header twice") };
+    let (Ok(origin), Ok(site)) = (one("Origin", 256), one("Sec-Fetch-Site", 32)) else {
+        return upload_refuse(c, 403, "another site", "an Origin or Sec-Fetch-Site header twice or too long");
+    };
+    if !same_origin(origin.as_deref(), host.as_deref(), site.as_deref()) {
         return upload_refuse(c, 403, "another site", "another site");
     }
     let page = with(|s| s.token.clone()).unwrap_or_default();
-    match h("X-Grimoire-Token", 64) {
-        None => return upload_refuse(c, 401, "token required", "no token"),
-        Some(t) if !same_token(&t, page.as_bytes()) => return upload_refuse(c, 401, "wrong token", "a wrong token"),
-        Some(_) => {}
+    match one("X-Grimoire-Token", 64) {
+        Ok(None) => return upload_refuse(c, 401, "token required", "no token"),
+        Ok(Some(t)) if same_token(&t, page.as_bytes()) => {}
+        _ => return upload_refuse(c, 401, "wrong token", "a wrong token"),
     }
-    if h("Transfer-Encoding", 64).is_some() {
+    if !header_all(head, "Transfer-Encoding").is_empty() {
         return upload_refuse(c, 411, "length required", "a chunked body");
     }
-    let Some(len) = body_length(h("Content-Length", 32).as_deref()) else { return upload_refuse(c, 411, "length required", "no length") };
+    let Ok(length) = one("Content-Length", 32) else { return upload_refuse(c, 400, "bad request", "a Content-Length twice or too long") };
+    let Some(len) = body_length(length.as_deref()) else { return upload_refuse(c, 411, "length required", "no length") };
     if len < PDF_MAGIC.len() as u64 {
         return upload_refuse(c, 415, "not a PDF", "too short for a PDF");
     }
     if len > UPLOAD_MAX {
         return upload_refuse(c, 413, "too big", "too big");
+    }
+    if (raw.len() - hl) as u64 > len {
+        // (a connection sends exactly the length it said: more is refused, as it is once the body is in)
+        return upload_refuse(c, 400, "more than its length", "more bytes than its length");
     }
     if upload_state() != UploadState::None {
         // (two senders at once: neither is kept, so one can never take the other's place under the question)
@@ -2322,7 +2360,7 @@ fn route_upload(c: usize) {
         Ok(p) => p,
         Err(e) => return upload_refuse(c, 500, "could not store it", &strerror(e)),
     };
-    let name = upload_name(h("X-Grimoire-Name", 1024).as_deref());
+    let name = upload_name(header_get(head, "X-Grimoire-Name", 1024).as_deref());
     let now = now_ms();
     with(|s| {
         let serial = s.upload.serial;
@@ -2475,12 +2513,21 @@ fn client_body(c: usize, now: u32) {
 }
 
 /// The upload's connection while the Kindle asks: no answer in UPLOAD_ASK_MS ends it, and so does the browser
-/// hanging up (what the page would say could not reach it).
+/// hanging up (what the page would say could not reach it), and so does a byte past the body's length (a connection
+/// sends exactly what it said).
 fn client_waiting(c: usize, now: u32) {
     if ms_since(now, with(|s| s.upload.asked)) > crate::upload::limit_ms("ASK", crate::upload::UPLOAD_ASK_MS) as i32 {
         return upload_end(UploadEnd::NoAnswer);
     }
-    if !upload_reply_send(c) || peer_gone(with(|s| s.cl[c].fd)) {
+    let mut b = 0u8;
+    // SAFETY: recv writes at most one byte into the local b.
+    let r = unsafe { libc::recv(with(|s| s.cl[c].fd), &mut b as *mut u8 as *mut libc::c_void, 1, libc::MSG_DONTWAIT) };
+    let e = errno();
+    if r > 0 {
+        return upload_end(UploadEnd::TooLong);
+    }
+    let gone = r == 0 || (r < 0 && e != libc::EAGAIN && e != libc::EWOULDBLOCK && e != libc::EINTR);
+    if gone || !upload_reply_send(c) {
         qlog!("httpd: the browser that sent an upload left; nothing kept");
         client_close(c);
     }
@@ -2522,6 +2569,7 @@ fn upload_end(end: UploadEnd) {
         UploadEnd::ShareClosed => (410, "share is closed", "Share closed"),
         UploadEnd::Asleep => (410, "the Kindle is asleep", "the Kindle went to sleep"),
         UploadEnd::Another => (409, "another PDF was sent", "a second upload came"),
+        UploadEnd::TooLong => (400, "more than its length", "more bytes than its length came"),
         UploadEnd::Stopped => (410, "share is closed", "the server stopped"),
     };
     qlog!("httpd: an upload was not kept (%s)", why);
@@ -2529,6 +2577,8 @@ fn upload_end(end: UploadEnd) {
     // (asked about, its reply is open, with its code: the answer is its last line)
     if st == UploadState::Asking {
         upload_reply_end(c, msg);
+        // (what still comes after too many bytes is read and dropped, so that the answer is read)
+        with(|s| s.cl[c].drain = end == UploadEnd::TooLong);
     } else {
         upload_reply(c, code, msg, true);
     }

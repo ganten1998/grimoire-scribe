@@ -3176,25 +3176,27 @@ taken away and the quiet time below.
 `share is closed`: with Share closed and no Live view the server is not running at all); the Host header names the
 Kindle by address (`host_ok`, 400); an Origin header, when there is one, is `http://` and the Host header's text, and
 Sec-Fetch-Site, when there is one, is `same-origin` (`same_origin`, 403); `X-Grimoire-Token` is the page's token
-(401). The token is 128 random bits, new each time Share opens (`httpd_acquire`), gone when it closes, in the page
-alone, compared in constant time (`same_token`), and never logged or stored. A page of another site the user visits
-cannot read it (the share pages send no CORS headers, and `host_ok` refuses a name rebound to the Kindle's address),
-cannot send the header without a preflight, which the server refuses (OPTIONS answers 405), and an HTML form cannot
-send it at all.
+(401). **Each header these rules read (Host, Origin, Sec-Fetch-Site, the token, Content-Length) is there at most once
+and short enough to read: one there twice or too long is refused, never read as absent** (`header_one`). The token is
+128 random bits, new each time Share opens (`httpd_acquire`), gone when it closes, in the page alone, compared in
+constant time (`same_token`), and never logged or stored. A page of another site the user visits cannot read it (the
+share pages send no CORS headers, and `host_ok` refuses a name rebound to the Kindle's address), cannot send the
+header without a preflight, which the server refuses (OPTIONS answers 405), and an HTML form cannot send it at all.
 
-**Limits.** A Content-Length of digits only (411 without one, or with `Transfer-Encoding`: no chunked body), at least
-five bytes (415) and at most `UPLOAD_MAX`, 64 MB (413): the import's limit for one PDF where the private mapping is
-refused (`s1::PDF_MAX_READ_WHOLE`), so every PDF sent can be imported on every Kindle; the page refuses a bigger file
-before sending. One upload at a time: **a second upload while one is under way ends both** (the second refused with
-409, the first told `another PDF was sent`). **After an upload ends any way but Import, no new one is taken for
-`UPLOAD_QUIET_MS`** (5 s, 503: Cancel, no answer, the browser gone, a second upload, a body refused): longer than the
-toast "Not imported.", so a question that went is seen to go before another can come. Room for it above the storage's
-floor, 100 MB left after it (`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS` (30 s) of each read and
-`UPLOAD_BODY_MS` (10 minutes) in all (408), read up to 256 KiB a poll; the Kindle asks for `UPLOAD_ASK_MS` (2
-minutes, then `no answer on the Kindle`). The head within a connection's 4096 bytes, and 16 connections, as for every
-request. A refusal sent while the body may still come is followed by reading and dropping what still comes for
-`UPLOAD_DRAIN_MS` (5 s) or until the browser closes, so that the close does not reset the connection under the
-answer.
+**Limits.** One Content-Length of digits only (411 without one, or with any `Transfer-Encoding` line: no chunked
+body; 400 with two), at least five bytes (415) and at most `UPLOAD_MAX`, 64 MB (413): the import's limit for one PDF
+where the private mapping is refused (`s1::PDF_MAX_READ_WHOLE`), so every PDF sent can be imported on every Kindle;
+the page refuses a bigger file before sending. One upload at a time: **a second upload while one is under way ends
+both** (the second refused with 409, the first told `another PDF was sent`). **After an upload ends any way but
+Import, no new one is taken for `UPLOAD_QUIET_MS`** (5 s, 503: Cancel, no answer, the browser gone, a second upload,
+a body refused): longer than the toast "Not imported.", so a question that went is seen to go before another can
+come. A connection sends exactly the length it said: more, with the head or once the Kindle asks, is refused (400, or
+the last line `more than its length`) and nothing is kept. Room for it above the storage's floor, 100 MB left after
+it (`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS` (30 s) of each read and `UPLOAD_BODY_MS` (10 minutes)
+in all (408), read up to 256 KiB a poll; the Kindle asks for `UPLOAD_ASK_MS` (2 minutes, then `no answer on the
+Kindle`). The head within a connection's 4096 bytes, and 16 connections, as for every request. A refusal sent while
+the body may still come is followed by reading and dropping what still comes for `UPLOAD_DRAIN_MS` (5 s) or until the
+browser closes, so that the close does not reset the connection under the answer.
 
 **Before the yes.** Nothing of the body but its first five bytes is read before the user's yes: they must be `%PDF-`,
 checked before any byte is written and refused at the first byte that differs (415). The body is written to one file
