@@ -83,6 +83,13 @@ pub trait Platform: Sync {
     fn light_set_intensity(&self, level: i32);
     fn light_set_warmth(&self, level: i32);
     fn light_warmth(&self) -> i32;
+    /// light_auto: 1 where the Kindle follows the room's light itself, 0 where it does not, and -1
+    /// where this platform has no ambient-light sensor (the default).
+    fn light_auto(&self) -> i32 {
+        -1
+    }
+    /// light_set_auto: nothing where a platform has no ambient-light sensor.
+    fn light_set_auto(&self, _on: bool) {}
     fn sys_request_sleep(&self);
     fn sys_powerd_state(&self, out: &mut String, cap: usize) -> i32;
     fn sys_kindle_ui(&self, run: bool) -> bool;
@@ -257,6 +264,14 @@ macro_rules! in_tree_platform {
             #[inline]
             fn light_warmth(&self) -> i32 {
                 crate::$light::light_warmth()
+            }
+            #[inline]
+            fn light_auto(&self) -> i32 {
+                crate::$light::light_auto()
+            }
+            #[inline]
+            fn light_set_auto(&self, on: bool) {
+                crate::$light::light_set_auto(on)
             }
             #[inline]
             fn sys_request_sleep(&self) {

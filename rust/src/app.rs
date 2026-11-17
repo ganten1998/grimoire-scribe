@@ -2968,7 +2968,11 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
             return 0;
         }
     }
-    if key == "light.intensity" || key == "light.warmth" {
+    if key == "light.intensity" || key == "light.warmth" || key == "light.auto" {
+        if key == "light.auto" {
+            csnprintf!(out, cap, "%d", light_auto());
+            return 0;
+        }
         let (mut li, mut lw) = (0, 0);
         light_get(&mut li, &mut lw);
         csnprintf!(out, cap, "%d", if key == "light.intensity" { li } else { lw });
