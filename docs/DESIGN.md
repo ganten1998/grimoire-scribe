@@ -3287,12 +3287,15 @@ send at all.
   spoken to over localhost as a browser on the Wi-Fi would (a PDF asked about and kept with its code in its reply
   alone, " 2", Cancel, every refusal, first bytes split over reads, a refusal read by a browser still sending, names,
   two at once, a body cut short, a browser gone, Share left and the token with it, the server stopping, sleep, a
-  crash's leftover and a link at its name, slow bodies, no answer, no room, the quiet time, and a log and files
-  without names, tokens or codes); `test_share.rs`'s question (the code drawn under it and in the browser's reply,
-  taps before and after it was shown, both answers, Esc, a turn, sleep, no answer, leaving, a question that ends
-  taken away before the next); tests/upload_ui_check.js (the page's script and its code, from tests/share_check.sh);
-  `test_sec_invariants.rs` `a_pdf_sent_from_the_share_page_is_told_as_it_is`; and the scenarios
-  `share_upload_1_imported` to `share_upload_5_es_fit_classic`. docs/TESTING.md has the Scribe's checks.
+  crash's leftover and a link at its name, slow bodies, no answer, no room, the quiet time (after an Import too), and
+  a log and files without names, tokens or codes); `test_share.rs`'s question (the code drawn under it and in the
+  browser's reply, taps before and after it was shown, both answers, X and Esc, a turn, sleep, no answer, leaving, a
+  question that ends taken away before the next); tests/upload_ui_check.js (the page's script, its code and the word
+  to confirm that comes only with it, from tests/share_check.sh); `test_sec_invariants.rs`
+  `a_pdf_sent_from_the_share_page_is_told_as_it_is`; and the scenarios `share_upload_1_imported` (with the quiet time
+  after an Import), `share_upload_2_cancelled`, `share_upload_3_refused`, `share_upload_4_twice` (the 5 s),
+  `share_upload_5_es_fit_gothic`, `share_upload_5_es_fit_classic` and `share_upload_6_x_closes` (X and Esc while it
+  asks). docs/TESTING.md has the Scribe's checks.
 
 ## Shared building blocks (2.1, lane L0)
 
