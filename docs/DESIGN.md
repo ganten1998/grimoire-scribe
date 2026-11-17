@@ -894,7 +894,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    and notebooks with thumbnails; per page PNG, per notebook PDF / zip, per folder zip,
    everything zip. `/api/list.json` makes it scriptable. The server only runs while the Share
    screen is open; turning the Kindle and the redraw after waking keep it (`share_leave` returns
-   early while `App.relayout` is set), with its downloads and queue.
+   early while `App.relayout` is set), with its downloads and queue. Its page also sends one PDF to the Kindle,
+   kept only once the Kindle has asked and the user said Import (Send a PDF from the Share page, below).
    Up to 16 connections at once, each with its own request buffer (a shared one once answered a
    new connection from the previous request); renders fork, two at a time, the rest queue
    oldest first and are dropped when their browser hangs up. The pages use the fonts of the
@@ -3143,6 +3144,115 @@ Files (`browser.rs`) has the rows that set it and the home folder as the top.
   the path bar after the home action, KOReader's PDF hand-over, a hand-over that opens nothing, a gone home at a
   KOReader start, the Files card hidden, What's new, the Exit question through a turn and a sleep, and a start in
   Covers). docs/TESTING.md has the Scribe's checks.
+
+## Send a PDF from the Share page (2.2, issue #175)
+
+While the Share screen is open, its page (the index) has a Send a PDF to the Kindle button. The browser sends the
+file; once all of it is in, the Kindle asks "Import "2027 Planner.pdf" (12.3 MB)?" over the Share screen, and only
+Import keeps it: the PDF goes into `grimoire/import`, where the Library's import takes it as any PDF copied in. Share
+has no password, so anyone on the same Wi-Fi can load its page while it is open: the question on the Kindle is the
+gate, and everything before it is built so that a PDF nobody said yes to leaves nothing behind.
+
+**The request** (upload.rs; httpd.rs's `route_upload`). `POST /upload` with the PDF's bytes as the body and a
+Content-Length, the file's name percent-encoded in `X-Grimoire-Name`, the page's token in `X-Grimoire-Token`. A raw
+body, no multipart form: the server reads the request line and the headers as it does for every request, a
+Content-Length, and the body's first five bytes. Headers are looked for in the head alone, never in the body.
+
+**Who may send.** In this order, each refused with a short plain answer: the Share screen keeps the server (403
+`share is closed`: with Share closed and no Live view the server is not running at all); the Host header names the
+Kindle by address (`host_ok`, 400); an Origin header, when there is one, is `http://` and the Host header's text, and
+Sec-Fetch-Site, when there is one, is `same-origin` (`same_origin`, 403); `X-Grimoire-Token` is the page's token
+(401). The token is 128 random bits, new each time Share opens (`httpd_acquire`), gone when it closes, in the page
+alone, compared in constant time (`same_token`), and never logged or stored. A page of another site the user visits
+cannot read it (the share pages send no CORS headers, and `host_ok` refuses a name rebound to the Kindle's address),
+cannot send the header without a preflight, which the server refuses (OPTIONS answers 405), and an HTML form cannot
+send it at all.
+
+**Limits.** A Content-Length of digits only (411 without one, or with `Transfer-Encoding`: no chunked body), at least
+five bytes (415) and at most `UPLOAD_MAX`, 64 MB (413): the import's limit for one PDF where the private mapping is
+refused (`s1::PDF_MAX_READ_WHOLE`), so every PDF sent can be imported on every Kindle; the page refuses a bigger file
+before sending. One upload at a time: **a second upload while one is under way ends both** (409 to each), so one
+sender can never take another's place under the question. Room for it above the storage's floor, 100 MB left after it
+(`fsview_room_for`, 507). The body within `UPLOAD_STALL_MS` (30 s) of each read and `UPLOAD_BODY_MS` (10 minutes) in
+all (408), read up to 256 KiB a poll; the Kindle asks for `UPLOAD_ASK_MS` (2 minutes, then 408). The head within a
+connection's 4096 bytes, and 16 connections, as for every request. A refusal sent while the body may still come is
+followed by reading and dropping what still comes for `UPLOAD_DRAIN_MS` (5 s) or until the browser closes, so that
+the close does not reset the connection under the answer.
+
+**Before the yes.** Nothing of the body but its first five bytes is read before the user's yes: they must be `%PDF-`,
+checked before any byte is written and refused at the first byte that differs (415). The body is written to one file
+only, `grimoire/.cache/share-upload.part` (`.cache` is a folder Files never lists or enters), made afresh: what is at
+its name is removed first (the entry, never what it points at), then O_CREAT|O_EXCL|O_NOFOLLOW, mode 0600, in a
+`.cache` reached from Grimoire's folder with O_NOFOLLOW. It is never in `import/` and never under a name the import's
+scan takes. **The temporary file is removed whenever its `Part` is dropped without `commit`**: Cancel, Esc, no answer,
+a body that stalls or is too slow, a browser that hangs up before the end of its body or while the Kindle asks (an
+upload's connection closed for any reason ends it, `client_close`), Share left (`httpd_release`), Live view's card
+taking Share's place, sleep (`share_sleep`), a second upload, the server stopping; one a crash left is removed at the
+next start (`upload_sweep`, from `share_init`). The file is not synced before the question (a crash before Import
+loses it anyway, and a long fsync would hold the UI's loop).
+
+**The name is never a path.** `X-Grimoire-Name`, percent-decoded (a `%` without two hex digits refuses it), is shown
+on the Kindle and names the file in `import/`, nothing more: it must be UTF-8 that `fsview_name_check` takes as the
+name of a file in Grimoire's folders, with no control character and no character that turns or hides text (U+200B to
+U+200F, U+202A to U+202E, U+2060 to U+206F, U+FEFF), ending in `.pdf` in any case. Anything else, or none, is
+`Untitled.pdf` (`upload_name`).
+
+**The question.** The Share screen draws the Library's question sheet over itself, as Files draws its Delete
+question: `Import "%s" (%s)?` with the name shortened with "..." to fit and the size as the file rows show sizes, a
+Primary Import row and Cancel. While it is up it is the screen's only control; it answers only a tap that comes down
+after its frame was shown (`app_ask`, `app_asked_seen`, as the Delete questions) and lifts on the row it came down
+on; Esc is Cancel; a turn draws it at its new place and asks again. Import: `Part::commit` renames the file into
+`grimoire/import` under the name, or " 2", " 3"... before `.pdf` where taken, **never over a file** (fsview's
+`rename_noreplace`, the folder reached with O_NOFOLLOW), says "Copied to grimoire/import.", answers the browser 200,
+and asks the Library's scan to look as soon as the Library is in front (`pdfimport::rescan_soon`); a rename that
+fails says "Couldn't import PDF. Is the storage full?" and keeps nothing. Cancel keeps nothing and answers 410. A
+question that goes without an answer here (no answer in two minutes, a second PDF sent, the browser gone) is taken
+away with the toast "Not imported.".
+
+**After the yes** the file is a PDF in `grimoire/import` like one copied over USB: the scan takes it once it holds
+still, and the sandboxed worker parses it ("The safe loader and the PDF import", above); nothing in the UI process
+parses it.
+
+**The page** (web/upload.js, inline in the index after `window.GRIMOIRE_UPLOAD`: the token, the limit and the words).
+The script makes the button, so a browser without JavaScript shows nothing. A pick sends the file as one
+XMLHttpRequest (no byte of it passes through the script), shows "Sending PDF: 42%", "Confirm on the Kindle." once it
+has gone, then the answer: 200 "Copied to grimoire/import.", 413 "PDF too big: over 64 MB.", 409 "Another PDF is
+being sent. Try again.", 401 and 403 "Open Share on the Kindle, then reload this page.", 507 "Couldn't import PDF. Is
+the storage full?", anything else (Cancel, no answer, not a PDF, a connection lost) "Not imported.".
+
+**The log** says what came and how it ended, never the name, the token or a header: `httpd: an upload of N KB is
+coming in`, `... is in; the Kindle asks`, `httpd: an upload was kept: it waits in import/ for the import`, `httpd: an
+upload was refused (<why>)`, `httpd: an upload was not kept (<why>)`, `httpd: an upload was cut short; nothing kept`,
+`httpd: the browser that sent an upload left; nothing kept`, and at a start `share: a sent PDF the last run left
+unanswered was removed`.
+
+What reaches the share server from the network, and who:
+
+| Surface | Open while | Who can use it | Its limits |
+|---|---|---|---|
+| Share's pages and downloads (every GET but `/live`) | the Share screen is open | anyone on the network: no password | Host must name the Kindle by address; 16 connections, a 4096-byte request, 30 s idle; renders forked, 2 at a time, others queued 2 minutes at most |
+| Live view (`/live` and its streams, `POST /live/key`) | Live view is on | a browser paired with the Kindle's one-use code or QR token (pair.c) | sessions in an HttpOnly SameSite=Strict cookie; the key POST is bodyless, its event in a custom header, its preflight refused |
+| Send a PDF (`POST /upload`) | the Share screen is open | anyone who loaded the Share page (its token) | the rules above: nothing kept without Import on the Kindle |
+
+**What an attacker on the same Wi-Fi can still do** while Share is open: load the page and its token (as they could
+already read and download every notebook); send a PDF, which the Kindle asks about under a name and size they choose,
+and which, if Import is tapped, the sandboxed import parses as any PDF copied in; end a send under way by sending one
+of their own (neither is kept); put a question up again after each Cancel until Share is closed; hold the server's
+connections. **What they cannot**: have anything kept without Import on the Kindle; have a byte written outside the
+temporary file before it, or a name taken as a path; replace a file in `import/`; send while Share is closed; send from
+a page of another site the user visits.
+
+- **Strings**: `Import "%s" (%s)?`, Send a PDF to the Kindle, Confirm on the Kindle., Not imported., Another PDF is
+  being sent. Try again., Open Share on the Kindle, then reload this page. (Import, Cancel, "Sending PDF: {percent}",
+  "Copied to %s.", "PDF too big: over %d MB." and "Couldn't import PDF. Is the storage full?" were there.)
+- **Tests**: upload.rs's unit tests (names, tokens, origins, lengths); `test_share_upload.rs`, the server spoken to
+  over localhost as a browser on the Wi-Fi would (a PDF asked about and kept, " 2", Cancel, every refusal, first bytes
+  split over reads, a refusal read by a browser still sending, names, two at once, a body cut short, a browser gone,
+  Share left and the token with it, the server stopping, sleep, a crash's leftover and a link at its name, slow
+  bodies, no answer, no room, and a log without names or tokens); `test_share.rs`'s question (taps before and after
+  it was shown, both answers, Esc, a turn, sleep, no answer, leaving); tests/upload_ui_check.js (the page's script,
+  from tests/share_check.sh); `test_sec_invariants.rs` `a_pdf_sent_from_the_share_page_is_told_as_it_is`; and the
+  scenarios `share_upload_1_imported` to `share_upload_5_es_fit_classic`. docs/TESTING.md has the Scribe's checks.
 
 ## Shared building blocks (2.1, lane L0)
 

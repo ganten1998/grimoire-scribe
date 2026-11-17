@@ -42,6 +42,9 @@ const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
 const HOME: File = ("rust/src/home.rs", include_str!("../src/home.rs"));
 const LIBRARY: File = ("rust/src/library.rs", include_str!("../src/library.rs"));
+const HTTPD: File = ("rust/src/httpd.rs", include_str!("../src/httpd.rs"));
+const UPLOAD: File = ("rust/src/upload.rs", include_str!("../src/upload.rs"));
+const SHARE: File = ("rust/src/share.rs", include_str!("../src/share.rs"));
 
 /// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
 /// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
@@ -772,4 +775,47 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     gone(&mut fails, USERFONTS, "but never applied, sampled or measured before");
     gone(&mut fails, ADDFONT_TESTS, "Until then it is listed and no more: not loaded, not drawn");
     none_failed(&fails, "a font added from a file");
+}
+
+// Send a PDF from the Share page (2.2, issue #175): the server takes a PDF from the network, as root, kept only after
+// the user's yes on the Kindle. Each sentence of DESIGN.md (and KINDLE.md) that states one of its safety rules is held
+// with the code that makes it true: Share alone, the Origin check and the token compared in constant time (whole
+// functions), a token new each time Share opens, nothing read past the first five bytes before the yes, the one
+// temporary file made afresh and removed whenever its Part drops (and when its connection closes), two senders keeping
+// neither, the name never a path (whole functions), never a rename over a file, the question answered only once shown,
+// the log's refusal line, and the size limit with its figure. A changed line, or a reworded sentence, fails here until
+// the two are read again together.
+#[test]
+fn a_pdf_sent_from_the_share_page_is_told_as_it_is() {
+    let mut fails = Vec::new();
+    const SAME_TOKEN: &str = r#"pub fn same_token(given: &[u8], page: &[u8]) -> bool { if given.len() != page.len() || page.is_empty() { return false; } std::hint::black_box(given.iter().zip(page).fold(0u8, |acc, (x, y)| acc | (x ^ y))) == 0 }"#;
+    const SAME_ORIGIN: &str = r#"pub fn same_origin(origin: Option<&[u8]>, host: Option<&[u8]>, site: Option<&[u8]>) -> bool { if site.is_some_and(|s| s.trim_ascii() != b"same-origin") { return false; } let Some(o) = origin.map(|o| o.trim_ascii()) else { return true }; let Some(h) = host.map(|h| h.trim_ascii()).filter(|h| !h.is_empty()) else { return false }; o.len() == 7 + h.len() && o[..7].eq_ignore_ascii_case(b"http://") && o[7..].eq_ignore_ascii_case(h) }"#;
+    const UPLOAD_NAME: &str = r#"pub fn upload_name(raw: Option<&[u8]>) -> String { raw.and_then(percent_decoded).filter(|n| name_ok(n)).unwrap_or_else(|| UPLOAD_FALLBACK.to_string()) }"#;
+    const NAME_OK: &str = r#"fn name_ok(n: &str) -> bool { let b = n.as_bytes(); fsview_name_check(b, b, false).is_ok() && !n.chars().any(|c| c.is_control() || turns_or_hides(c)) && b.len() > 4 && b[b.len() - 4..].eq_ignore_ascii_case(b".pdf") }"#;
+    // who may send: Share open, the page's origin, the page's token (new each time Share opens)
+    told_on(&mut fails, DESIGN, "the Share screen keeps the server (403", HTTPD, r#"return upload_refuse(c, 403, "share is closed", "Share is closed");"#);
+    told_on_code(&mut fails, DESIGN, "Sec-Fetch-Site, when there is one, is `same-origin` (`same_origin`, 403)", UPLOAD, "pub fn same_origin(", SAME_ORIGIN);
+    told_on_code(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", UPLOAD, "pub fn same_token(", SAME_TOKEN);
+    told_on(&mut fails, DESIGN, "compared in constant time (`same_token`), and never logged or stored", HTTPD, "Some(t) if !same_token(&t, page.as_bytes()) =>");
+    told_on(&mut fails, DESIGN, "new each time Share opens (`httpd_acquire`)", HTTPD, "let token = crate::upload::new_token();");
+    // before the yes: the first five bytes, one temporary file made afresh, removed on every way out
+    told_on(&mut fails, DESIGN, "Nothing of the body but its first five bytes is read before the user's yes", HTTPD, "if !PDF_MAGIC.starts_with(&held) {");
+    told_on(&mut fails, DESIGN, "then O_CREAT|O_EXCL|O_NOFOLLOW, mode 0600", UPLOAD, "libc::openat(dir.as_raw_fd(), name.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint)");
+    let removed = "The temporary file is removed whenever its `Part` is dropped without `commit`";
+    told_on(&mut fails, DESIGN, removed, UPLOAD, "if !self.kept {");
+    told_on(&mut fails, DESIGN, removed, HTTPD, "if s.upload.st != UploadState::None && s.upload.client == i {");
+    told_on(&mut fails, DESIGN, removed, SHARE, "httpd_upload_discard(UploadEnd::Asleep);");
+    told_on(&mut fails, DESIGN, "a second upload while one is under way ends both", HTTPD, "upload_end(UploadEnd::Another);");
+    // the name: shown and the file's name in import/, never a path; the file never renamed over another
+    told_on_code(&mut fails, DESIGN, "**The name is never a path.**", UPLOAD, "pub fn upload_name(", UPLOAD_NAME);
+    told_on_code(&mut fails, DESIGN, "**The name is never a path.**", UPLOAD, "fn name_ok(", NAME_OK);
+    told_on(&mut fails, DESIGN, "**never over a file** (fsview's `rename_noreplace`", UPLOAD, "match rename_noreplace(self.dir.as_raw_fd(), &part, import.as_raw_fd(), &c) {");
+    // the question: answered only once it has been shown
+    told_on(&mut fails, DESIGN, "it answers only a tap that comes down after its frame was shown", SHARE, "k.swallow = !seen;");
+    // the log: what came and how it ended, never the name or the token
+    told_on(&mut fails, DESIGN, "never the name, the token or a header", HTTPD, r#"qlog!("httpd: an upload was refused (%s)", why);"#);
+    told_on(&mut fails, KINDLE, "Never the file's name, the page's token or a header.", HTTPD, r#"qlog!("httpd: an upload was not kept (%s)", why);"#);
+    // the limit, with its figure
+    beside(&mut fails, DESIGN, "`UPLOAD_MAX`", &format!("{} MB", grimoire::upload::UPLOAD_MAX >> 20));
+    none_failed(&fails, "a PDF sent from the Share page");
 }

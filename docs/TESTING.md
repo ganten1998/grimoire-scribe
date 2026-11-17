@@ -3316,3 +3316,45 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
     name that is there (Grimoire's `bluetooth`, `extensions` at the storage's top), its short name on the storage:
     `home=files/grimoire/BLUETO~1`, `home=files/EXTENS~1` (`ls -d /mnt/us/grimoire/BLUETO~1` shows that the storage
     takes it). Each start shows the Library's top with "Home folder not found.", and the line is gone afterwards.
+
+## 2.2, Send a PDF from the Share page (issue #175): device checks
+
+Not run on a Scribe yet. Automated: upload.rs's unit tests, `test_share_upload.rs`, `test_share.rs`'s question,
+tests/upload_ui_check.js and the scenarios `share_upload_*` (docs/DESIGN.md, Send a PDF from the Share page). What only
+the Scribe and a real browser can tell: a phone's and a computer's browser sending over the Kindle's Wi-Fi, the
+question's taps on the panel, the rename into `grimoire/import` on its storage, and that the log names nothing. You
+need the Kindle Scribe and a phone or computer on the same Wi-Fi, and two PDFs on the phone or computer: a small one
+(a few MB, `2027 Planner.pdf` say) and one over 64 MB. Over SSH, `ls -a /mnt/us/grimoire/import
+/mnt/us/grimoire/.cache` before you start, to compare with afterwards.
+
+1. **Sent and imported**: on the Kindle, Library > Share. On the phone, open the address it shows (or scan its code):
+   the page has a Send a PDF to the Kindle button under Download everything (zip). Tap it, pick the small PDF: the
+   page counts "Sending PDF: N%", then says "Confirm on the Kindle.". The Kindle shows `Import "2027 Planner.pdf"
+   (N MB)?` with Import and Cancel over the Share screen, its size the file's. Over SSH, `ls -a
+   /mnt/us/grimoire/.cache` shows `share-upload.part` and `grimoire/import` has nothing new. Tap Import: the toast
+   "Copied to grimoire/import.", the page says the same, `grimoire/import/2027 Planner.pdf` is there and
+   `share-upload.part` is gone. Tap X: back in the Library the import's notice counts its pages, and the notebook
+   "2027 Planner" is a card.
+2. **Cancelled**: send the small PDF again; on the Kindle tap Cancel: no toast, the page says "Not imported.",
+   nothing new in `grimoire/import`, no `share-upload.part`.
+3. **A quick double tap**: send it again, and tap twice quickly where Import will be as the question appears (the first
+   tap before it is drawn): the question stays until a tap after it is shown. Then Cancel.
+4. **No answer**: send it, and leave the question for two minutes: it goes with the toast "Not imported.", and the page
+   says "Not imported.".
+5. **Too big**: pick the PDF over 64 MB: the page says "PDF too big: over 64 MB." at once, and the Kindle asks nothing.
+6. **Share closed**: with the page still open on the phone, tap X on the Kindle's Share screen, then send from the
+   page: the page says "Not imported." (the server is not running), and the Kindle shows nothing. Open Share again
+   and send from the old page without reloading it: "Open Share on the Kindle, then reload this page.". Reload: the
+   send is asked about again (Cancel it).
+7. **Two at once**: open the page on the phone and on the computer; send from one, and while the Kindle asks, send
+   from the other: both pages say "Another PDF is being sent. Try again.", the question goes with "Not imported.",
+   and nothing is kept.
+8. **Sleep and a turn**: send, and turn the Kindle while it asks: the question is drawn at its new place, and a tap
+   counts there. Send again and press the power button: the sleep screen comes, and after the wake Share shows no
+   question; the page says "Not imported.".
+9. **Over a stalling Wi-Fi**: send the small PDF and walk the phone out of the Wi-Fi's reach halfway: within a minute
+   the page fails, the Kindle asks nothing, and `share-upload.part` is gone.
+10. **Spanish**: Settings > Language > Español: the page's button reads "Enviar un PDF al Kindle", the question
+    "¿Importar «2027 Planner.pdf» (N MB)?" with Importar and Cancelar, whole upright and sideways.
+11. **The log**: `grep -i 'upload\|planner' /mnt/us/grimoire/grimoire.log`: lines `httpd: an upload ...` for each
+    step, and no file name and no 32-hex token anywhere in it.

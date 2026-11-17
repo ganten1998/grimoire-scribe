@@ -104,6 +104,12 @@
   drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
   once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
   Deleting `grimoire/fonts/.cache` still has every font checked again.
+- **Send a PDF from the Share page** (#175). While Share is open, its page in a phone's or a computer's browser has
+  a Send a PDF to the Kindle button. Once the PDF has arrived, the Kindle asks "Import "2027 Planner.pdf" (12.3 MB)?"
+  and keeps it only if you tap Import: it goes into `grimoire/import` and becomes a notebook as a PDF copied there
+  does. Cancel, no answer for two minutes, closing Share, sleep, or two PDFs sent at once keep nothing. PDFs up to
+  64 MB; the page and the Kindle say why one was not taken. Share still has no password: anyone on your Wi-Fi can open
+  its page while it is open, so only send, and only tap Import, when you expect it.
 
 ## 2.1.0 (2026-11-13)
 

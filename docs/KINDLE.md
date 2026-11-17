@@ -1007,6 +1007,14 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   none; if one appears, it is worth reporting with the orientation and style. Only the simulator
   also logs `share: (simulator) the code holds http://...`, which tests/share_check.sh compares
   with the decoded code.
+- **A PDF sent from the Share page** (2.2) is logged as `httpd: an upload of N KB is coming in`, then `httpd: an
+  upload of N KB is in; the Kindle asks`, and how it ended: `httpd: an upload was kept: it waits in import/ for the
+  import` (Import), `httpd: an upload was not kept (<why>)` (Cancel on the Kindle, no answer on the Kindle, Share
+  closed, the Kindle went to sleep, a second upload came, the server stopped), `httpd: an upload was cut short;
+  nothing kept`, `httpd: the browser that sent an upload left; nothing kept`, or `httpd: an upload was refused
+  (<why>)` (no token, a wrong token, another site, another host, too big, not a PDF, no room, ...). Never the file's
+  name, the page's token or a header. `share: a sent PDF the last run left unanswered was removed` at a start means
+  Grimoire ended while the Kindle asked: its temporary file (`grimoire/.cache/share-upload.part`) went.
 - **Live view** logs `live: on` and `live: off`, `live: a browser paired` or
   `live: a pairing was refused (wrong code)` / `(locked)`, and `live: a viewer started (N
   watching)`. Its requests are logged without their query (`httpd: GET /live/pair`): no code or
