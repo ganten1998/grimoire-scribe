@@ -261,6 +261,11 @@ fn the_page_offers_to_send_with_a_token_of_its_own() {
     check!(t.contains("\"reload\":\"Open Share on the Kindle, then reload this page.\",\"wait\":\"Wait 5 seconds, then send again.\""));
     check!(t.contains("\"big\":\"PDF too big: over 64 MB.\",\"full\":\"Couldn't import PDF. Is the storage full?\"}};</script><script>"));
     check!(t.contains("x.open('POST', '/upload');") && t.contains("x.setRequestHeader('X-Grimoire-Token', cfg.token);"));
+    // the page's script without its comment lines, blank lines and indents: those stay in the file for its readers
+    let script = t.split("}};</script><script>").nth(1).and_then(|x| x.split("</script>").next()).unwrap_or("");
+    let file = include_str!("../../web/upload.js");
+    check!(script.lines().count() > 40 && !script.lines().any(|l| l.is_empty() || l.starts_with("//") || l.starts_with(' ')));
+    check!(script.len() + 1000 < file.len());
     check!(t.ends_with("</script></body></html>"));
     // the same token on every load while Share stays open; the notebook pages have no box
     check!(page_token() == tok);

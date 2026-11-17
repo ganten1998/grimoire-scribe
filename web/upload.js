@@ -2,7 +2,8 @@
 // header beside the page's token; the Kindle asks before it keeps anything. A send it asks about is answered 200:
 // first a line with the send's code, which this page shows while the Kindle shows it under its question, then a
 // last line with the answer. Any other status is a refusal before the Kindle asked.
-// The browser sends the file as it is: no byte of it passes through this script.
+// The browser sends the file as it is: no byte of it passes through this script. The server serves this file
+// without its comment lines and indents (httpd.rs, script_bare): keep each comment on a line of its own.
 (function () {
     'use strict';
     const host = document.getElementById('upload');
@@ -55,6 +56,10 @@
             status.textContent = w.big;
             return;
         }
+        // A lone half of a UTF-16 pair, which a file's name can hold, is a `_` (encodeURIComponent throws on one).
+        const name = file.name.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, function (m) {
+            return m.length > 1 ? m : '_';
+        });
         busy = true;
         button.disabled = true;
         code.textContent = '';
@@ -63,7 +68,7 @@
         x.open('POST', '/upload');
         x.setRequestHeader('Content-Type', 'application/pdf');
         x.setRequestHeader('X-Grimoire-Token', cfg.token);
-        x.setRequestHeader('X-Grimoire-Name', encodeURIComponent(file.name));
+        x.setRequestHeader('X-Grimoire-Name', encodeURIComponent(name));
         x.upload.onprogress = function (e) {
             if (e.lengthComputable) sending(e.loaded, e.total);
         };

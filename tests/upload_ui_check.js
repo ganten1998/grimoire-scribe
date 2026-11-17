@@ -62,6 +62,14 @@ assert.equal(x.headers['Content-Type'], 'application/pdf');
 assert.equal(s.input.value, '', 'the pick is let go: the same file can be sent again');
 assert.equal(s.button.disabled, true);
 assert.equal(s.status.textContent, 'sending 0%');
+// a name with a lone half of a UTF-16 pair (encodeURIComponent throws on one): that half is a `_`, the rest goes as
+// it is, a whole pair too, and the send goes on
+for (const [name, sent] of [['a\uD800b.pdf', 'a_b.pdf'], ['x\uDC00.pdf', 'x_.pdf'], ['\uD83D\uDE00\uDE00.pdf', '%F0%9F%98%80_.pdf']]) {
+    const t = setup();
+    const y = t.pick({name, size: 10});
+    assert.equal(y.headers['X-Grimoire-Name'], sent, name);
+    assert.equal(t.status.textContent, 'sending 0%');
+}
 // a second pick while one is under way sends nothing
 s.pick({name: 'other.pdf', size: 10});
 assert.equal(s.sent.length, 1);

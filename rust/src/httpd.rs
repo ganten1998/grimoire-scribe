@@ -1280,8 +1280,20 @@ fn upload_box(b: &mut Buf) {
     live_word(b, &mut n, "big", &big);
     live_word(b, &mut n, "full", tr("Couldn't import PDF. Is the storage full?"));
     buf_printf!(b, "}};</script><script>");
-    buf_append(b, WEB_UPLOAD_JS);
+    script_bare(b, WEB_UPLOAD_JS);
     buf_printf!(b, "</script>");
+}
+
+/// A script as a page carries it: without its comment lines, its blank lines and its indents (the file keeps them for
+/// its readers; a comment there is always on a line of its own).
+fn script_bare(b: &mut Buf, src: &[u8]) {
+    for line in src.split(|&c| c == b'\n') {
+        let t = line.trim_ascii();
+        if !t.is_empty() && !t.starts_with(b"//") {
+            buf_append(b, t);
+            buf_append(b, b"\n");
+        }
+    }
 }
 
 fn route_index() {
