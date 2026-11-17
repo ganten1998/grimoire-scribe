@@ -22,6 +22,8 @@
 //!   GET /live/stream              the screen, for a paired browser (a viewer child answers it)
 //!   GET /live/pen                 the pen's samples, for a paired browser (a pen viewer child)
 //!   GET /live/time                the Kindle's now_ms(), for a paired browser's latency meter
+//!   POST /upload                  a PDF sent from the Share page (issue #175): kept only once the Kindle has
+//!                                 asked and the user said Import (upload.rs has the request's rules)
 //! The server runs while an owner keeps it (httpd_acquire): the Share screen, whose routes are every
 //! one above but /live, and Live view, whose are /live and the fonts. A route no owner has answers
 //! 403 (a download while only Live view runs) or 404.
@@ -181,6 +183,12 @@ enum ClientState {
     Reading, // C_READING
     Writing, // C_WRITING
     Queued,  // C_QUEUED
+    /// an upload's body coming in, into its temporary file (Rust only, issue #175)
+    Body,
+    /// an upload's body is in: the answer waits for the Kindle's question
+    Waiting,
+    /// a refusal of an upload is sent: what the browser still sends is read and dropped, then it closes
+    Draining,
 }
 struct Client {
     st: ClientState,
@@ -195,6 +203,8 @@ struct Client {
     seq: u32,
     /// the record of the PDF it asked progress for
     download: Option<usize>,
+    /// once its answer is out, Draining rather than closed (an upload refused while its body may still come)
+    drain: bool,
 }
 impl Client {
     fn new() -> Client {
@@ -208,8 +218,58 @@ impl Client {
             t0: 0,
             seq: 0,
             download: None,
+            drain: false,
         }
     }
+}
+
+/// Where the upload is (issue #175): one at a time.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UploadState {
+    #[default]
+    None,
+    /// its body is coming in
+    Receiving,
+    /// its body is in, and the Kindle asks
+    Asking,
+}
+
+/// The upload under way: its connection, its temporary file, what it said and what came.
+#[derive(Default)]
+struct Upload {
+    st: UploadState,
+    client: usize,
+    part: Option<crate::upload::Part>,
+    /// the body's length (Content-Length) and what came of it
+    want: u64,
+    got: u64,
+    /// its first bytes, held until there are five to check (nothing is written before they are `%PDF-`)
+    magic: Vec<u8>,
+    /// the name shown (upload_name: never a path)
+    name: String,
+    /// when it began, when a byte last came, and when the Kindle began to ask
+    t0: u32,
+    last: u32,
+    asked: u32,
+    /// one number a question, so the screen knows a new one from the one it shows
+    serial: u32,
+}
+
+/// How an upload ended without the user's yes: what its connection is told, and what the log says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UploadEnd {
+    /// Cancel on the Kindle (or Esc)
+    Declined,
+    /// no answer in UPLOAD_ASK_MS
+    NoAnswer,
+    /// Share left (the screen closed, or Live view's card took its place)
+    ShareClosed,
+    /// the Kindle went to sleep
+    Asleep,
+    /// a second upload came while this one was under way: neither is kept
+    Another,
+    /// the server stops
+    Stopped,
 }
 
 const MAX_CLIENTS: usize = 16;
@@ -242,6 +302,10 @@ struct State {
     seq: u32,
     children: [libc::pid_t; MAX_CHILDREN],
     child_download: [Option<usize>; MAX_CHILDREN],
+    /// the upload under way (issue #175)
+    upload: Upload,
+    /// the Share page's token, while Share keeps the server (a new one each time it opens; never logged or stored)
+    token: Option<String>,
 }
 
 impl Default for State {
@@ -266,6 +330,8 @@ impl Default for State {
             seq: 0,
             children: [0; MAX_CHILDREN],
             child_download: [None; MAX_CHILDREN],
+            upload: Upload::default(),
+            token: None,
         }
     }
 }
@@ -384,6 +450,11 @@ pub fn httpd_acquire(owner: u32, port: i32, dpi: f32, gothic: bool) -> i32 {
     if with(|s| s.listen) < 0 && httpd_start(port, dpi, gothic) != 0 {
         return -1;
     }
+    // (Share coming: a token of its own for its page to send a PDF with, issue #175)
+    if owner & HTTPD_SHARE != 0 && with(|s| s.owners & HTTPD_SHARE == 0) {
+        let token = crate::upload::new_token();
+        with(|s| s.token = token);
+    }
     with(|s| s.owners |= owner);
     0
 }
@@ -402,6 +473,11 @@ pub fn httpd_restyle(gothic: bool) {
 /// owner is done with it: the server stops once no owner is left (its downloads and connections
 /// with it), and the routes only owner had stop answering at once.
 pub fn httpd_release(owner: u32) {
+    if owner & HTTPD_SHARE != 0 {
+        // (the upload is Share's: it goes with it, and so does the page's token)
+        upload_end(UploadEnd::ShareClosed);
+        with(|s| s.token = None);
+    }
     let none = with(|s| {
         s.owners &= !owner;
         if owner & HTTPD_LIVE != 0 { s.live_keys = LiveKeys::default(); }
@@ -468,12 +544,19 @@ fn client_close(i: usize) {
         c.reqlen = 0;
         c.req[0] = 0;
         c.sent = 0;
+        c.drain = false;
         buf_free(&mut c.out);
+        // An upload's connection closed under it, however (the browser gone, a timeout, the server stopping): its bytes
+        // go with it (the temporary file is removed as its Part drops). Its yes, when it came, ended it first.
+        if s.upload.st != UploadState::None && s.upload.client == i {
+            s.upload = Upload { serial: s.upload.serial, ..Upload::default() };
+        }
     });
 }
 
 /// Stops it whoever has it (Grimoire leaving).
 pub fn httpd_stop() {
+    upload_end(UploadEnd::Stopped);
     for i in 0..MAX_CLIENTS {
         client_close(i);
     }
@@ -486,6 +569,7 @@ pub fn httpd_stop() {
         s.listen = -1;
         s.owners = 0;
         s.live_keys = LiveKeys::default();
+        s.token = None;
     });
 }
 
@@ -703,6 +787,18 @@ fn response_head(code: i32, ctype: &str, len: Option<usize>, download_name: Opti
         "Unauthorized"
     } else if code == 403 {
         "Forbidden"
+    } else if code == 408 {
+        "Request Timeout"
+    } else if code == 410 {
+        "Gone"
+    } else if code == 411 {
+        "Length Required"
+    } else if code == 413 {
+        "Content Too Large"
+    } else if code == 415 {
+        "Unsupported Media Type"
+    } else if code == 507 {
+        "Insufficient Storage"
     } else {
         "Internal Server Error"
     };
@@ -1137,6 +1233,41 @@ fn download_footer(b: &mut Buf) {
     buf_printf!(b, "</script></body></html>");
 }
 
+// The Share page's box to send a PDF to the Kindle (issue #175): web/upload.js makes it from the words and the
+// token here, so a browser without JavaScript shows nothing. The token is in this page alone: never logged, never
+// stored, a new one each time Share opens (httpd_acquire). With no token (no randomness) there is no box.
+fn upload_box(b: &mut Buf) {
+    let Some(token) = with(|s| s.token.clone()) else { return };
+    buf_printf!(b, "<div id=upload></div><script>window.GRIMOIRE_UPLOAD={\"token\":");
+    json_str(b, token.as_bytes());
+    buf_printf!(b, ",\"max\":%lld,\"words\":{", crate::upload::UPLOAD_MAX as i64);
+    let big = cformat!(tr("PDF too big: over %d MB."), (crate::upload::UPLOAD_MAX >> 20) as i32);
+    let sent = cformat!(tr("Copied to %s."), "grimoire/import");
+    let mut n = 0;
+    // TRANSLATORS: the share index's button (a phone's or a computer's browser) that picks a PDF to send to the
+    // Kindle, which asks before it keeps it.
+    live_word(b, &mut n, "send", tr("Send a PDF to the Kindle"));
+    // TRANSLATORS: the share index, under its Send a PDF button: how much of the PDF has gone ({percent}: "42%").
+    live_word(b, &mut n, "sending", tr("Sending PDF: {percent}"));
+    // TRANSLATORS: the share index, once the PDF has gone: the Kindle now asks whether to import it.
+    live_word(b, &mut n, "confirm", tr("Confirm on the Kindle."));
+    // (Import on the Kindle: the PDF is in grimoire/import, where the Library's import takes it)
+    live_word(b, &mut n, "sent", &sent);
+    // TRANSLATORS: the share index, after Cancel on the Kindle, no answer there for two minutes, or a PDF the Kindle
+    // did not take; also a toast on the Kindle when its question went without an answer.
+    live_word(b, &mut n, "no", tr("Not imported."));
+    // TRANSLATORS: the share index, when two PDFs were sent at once (neither is kept).
+    live_word(b, &mut n, "busy", tr("Another PDF is being sent. Try again."));
+    // TRANSLATORS: the share index, when the page is older than the Share screen now open on the Kindle (or Share
+    // was closed): it must be loaded again before it can send.
+    live_word(b, &mut n, "reload", tr("Open Share on the Kindle, then reload this page."));
+    live_word(b, &mut n, "big", &big);
+    live_word(b, &mut n, "full", tr("Couldn't import PDF. Is the storage full?"));
+    buf_printf!(b, "}};</script><script>");
+    buf_append(b, WEB_UPLOAD_JS);
+    buf_printf!(b, "</script>");
+}
+
 fn route_index() {
     let mut nbs: Vec<NotebookInfo> = Vec::new();
     let mut folders: Vec<String> = Vec::new();
@@ -1156,6 +1287,7 @@ fn route_index() {
     // TRANSLATORS: the share index's big link to a zip of every notebook.
     html_esc_bold(&mut b, tr("Download everything (zip)").as_bytes());
     buf_printf!(&mut b, "</a></p>");
+    upload_box(&mut b);
     for f in -1..folders.len() as i32 {
         let folder: &str = if f < 0 { "" } else { &folders[f as usize] };
         let mut count = 0;
@@ -2069,6 +2201,310 @@ fn host_ok(req: &[u8]) -> bool {
     true
 }
 
+// ---- Send a PDF from the Share page (issue #175) ----
+//
+// One upload at a time, only while Share keeps the server. The request is held to upload.rs's rules in this order:
+// Share open, the Host header (host_ok), the Origin and Sec-Fetch-Site headers (same_origin), the page's token
+// (same_token), a Content-Length (no chunked body) of at least five bytes and at most UPLOAD_MAX, no other upload
+// under way (a second one ends the first: neither is kept), and room for it above the storage's floor. Nothing of the
+// head past these headers, and nothing of the body but its first five bytes, is read before the user's yes. The body
+// goes into the one temporary file (upload::Part) as it comes; once it is all in, the Kindle asks (the Share screen,
+// httpd_upload_question), and the request's answer waits for the user's. Import renames the file into import/
+// (Part::commit); every other way out drops the Part, which removes the file: Cancel, no answer in UPLOAD_ASK_MS, a
+// body that stalls for UPLOAD_STALL_MS or is not whole after UPLOAD_BODY_MS, a browser that hangs up, Share left,
+// sleep, a second upload, the server stopping. The log says what came and how it ended, never the name or the token.
+
+/// The length of a request's head with its blank line: what follows is the body's first bytes.
+fn head_len(req: &[u8]) -> Option<usize> {
+    let crlf = req.windows(4).position(|w| w == b"\r\n\r\n").map(|i| (i, i + 4));
+    let lf = req.windows(2).position(|w| w == b"\n\n").map(|i| (i, i + 2));
+    match (crlf, lf) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a.1 } else { b.1 }),
+        (a, b) => a.or(b).map(|x| x.1),
+    }
+}
+
+fn upload_state() -> UploadState {
+    with(|s| s.upload.st)
+}
+
+/// The upload forgotten, its temporary file removed (its Part drops), its connection left as it is.
+fn upload_drop() {
+    with(|s| s.upload = Upload { serial: s.upload.serial, ..Upload::default() });
+}
+
+/// A short plain answer on connection c, sent from the next poll on (its stall timer starts now); with `drain`, what
+/// the browser still sends is read and dropped after it for a while (Draining), so that the browser reads it.
+fn upload_reply(c: usize, code: i32, msg: &str, drain: bool) {
+    with(|s| s.cur = c);
+    respond_text(code, msg);
+    with(|s| {
+        s.cl[c].drain = drain;
+        s.cl[c].t0 = now_ms();
+    });
+}
+
+/// The upload request on connection c refused, before or while its body comes: the log says why (never a name).
+fn upload_refuse(c: usize, code: i32, msg: &str, why: &str) {
+    qlog!("httpd: an upload was refused (%s)", why);
+    upload_reply(c, code, msg, true);
+}
+
+/// `POST /upload` on connection c: its head checked, then its temporary file made and the body's first bytes (those
+/// read with the head) taken.
+fn route_upload(c: usize) {
+    use crate::fsview::fsview_room_for;
+    use crate::upload::*;
+    let raw = with(|s| s.cl[c].req[..s.cl[c].reqlen].to_vec());
+    let Some(hl) = head_len(&raw) else { return upload_refuse(c, 400, "bad request", "a head without its end") };
+    // (headers are looked for in the head alone: a line of the body is never one)
+    let head = &raw[..hl];
+    let h = |name: &str, cap: usize| header_get(head, name, cap);
+    if owners() & HTTPD_SHARE == 0 {
+        return upload_refuse(c, 403, "share is closed", "Share is closed");
+    }
+    if !host_ok(head) {
+        return upload_refuse(c, 400, tr("use the address shown on the Kindle"), "another host");
+    }
+    if !same_origin(h("Origin", 256).as_deref(), h("Host", 128).as_deref(), h("Sec-Fetch-Site", 32).as_deref()) {
+        return upload_refuse(c, 403, "another site", "another site");
+    }
+    let page = with(|s| s.token.clone()).unwrap_or_default();
+    match h("X-Grimoire-Token", 64) {
+        None => return upload_refuse(c, 401, "token required", "no token"),
+        Some(t) if !same_token(&t, page.as_bytes()) => return upload_refuse(c, 401, "wrong token", "a wrong token"),
+        Some(_) => {}
+    }
+    if h("Transfer-Encoding", 64).is_some() {
+        return upload_refuse(c, 411, "length required", "a chunked body");
+    }
+    let Some(len) = body_length(h("Content-Length", 32).as_deref()) else { return upload_refuse(c, 411, "length required", "no length") };
+    if len < PDF_MAGIC.len() as u64 {
+        return upload_refuse(c, 415, "not a PDF", "too short for a PDF");
+    }
+    if len > UPLOAD_MAX {
+        return upload_refuse(c, 413, "too big", "too big");
+    }
+    if upload_state() != UploadState::None {
+        // (two senders at once: neither is kept, so one can never take the other's place under the question)
+        upload_end(UploadEnd::Another);
+        return upload_refuse(c, 409, "another PDF is being sent", "a second upload came while one was under way");
+    }
+    if !free_bytes().is_some_and(|free| fsview_room_for(free, len)) {
+        return upload_refuse(c, 507, "no room", "no room: the storage would keep less than 100 MB");
+    }
+    let part = match Part::create() {
+        Ok(p) => p,
+        Err(e) => return upload_refuse(c, 500, "could not store it", &strerror(e)),
+    };
+    let name = upload_name(h("X-Grimoire-Name", 1024).as_deref());
+    let now = now_ms();
+    with(|s| {
+        let serial = s.upload.serial;
+        s.upload = Upload { st: UploadState::Receiving, client: c, part: Some(part), want: len, name, t0: now, last: now, serial, ..Upload::default() };
+        s.cl[c].st = ClientState::Body;
+    });
+    qlog!("httpd: an upload of %u KB is coming in", (len >> 10) as u32);
+    if raw.len() > hl {
+        body_take(c, &raw[hl..]);
+    }
+}
+
+/// Bytes of the upload's body from its connection c, never past the length it said: its first five held until they
+/// can be checked (`%PDF-`, else refused, with nothing written), then everything into the temporary file. The last
+/// one ends the body: the file is closed, the connection waits, and the Kindle asks.
+fn body_take(c: usize, b: &[u8]) {
+    use crate::upload::PDF_MAGIC;
+    let now = now_ms();
+    let (b, mut held) = with(|s| {
+        let left = (s.upload.want - s.upload.got).min(b.len() as u64) as usize;
+        s.upload.got += left as u64;
+        s.upload.last = now;
+        (&b[..left], std::mem::take(&mut s.upload.magic))
+    });
+    let joined;
+    let mut write = b;
+    if held.len() < PDF_MAGIC.len() {
+        let take = (PDF_MAGIC.len() - held.len()).min(b.len());
+        held.extend_from_slice(&b[..take]);
+        // (refused at the first byte that is not the magic's, as far as it has come)
+        if !PDF_MAGIC.starts_with(&held) {
+            upload_drop();
+            return upload_refuse(c, 415, "not a PDF", "not a PDF");
+        }
+        if held.len() < PDF_MAGIC.len() {
+            with(|s| s.upload.magic = held);
+            return;
+        }
+        joined = [&held[..], &b[take..]].concat();
+        write = &joined;
+    }
+    with(|s| s.upload.magic = held);
+    if let Err(e) = with(|s| s.upload.part.as_mut().map_or(Err(libc::EBADF), |p| p.write(write))) {
+        upload_drop();
+        return if e == libc::ENOSPC {
+            upload_refuse(c, 507, "no room", "the storage is full")
+        } else {
+            upload_refuse(c, 500, "could not store it", &strerror(e))
+        };
+    }
+    let (got, want) = with(|s| (s.upload.got, s.upload.want));
+    if got < want {
+        return;
+    }
+    with(|s| {
+        if let Some(p) = s.upload.part.as_mut() {
+            p.close();
+        }
+        s.upload.st = UploadState::Asking;
+        s.upload.asked = now;
+        s.upload.serial = s.upload.serial.wrapping_add(1);
+        s.cl[c].st = ClientState::Waiting;
+    });
+    qlog!("httpd: an upload of %u KB is in; the Kindle asks", (want >> 10) as u32);
+}
+
+/// An upload's body coming in on connection c: up to 256 KiB a poll, never past its length; refused when it stalls
+/// or takes too long, forgotten when the browser hangs up before its end.
+fn client_body(c: usize, now: u32) {
+    use crate::upload::{limit_ms, UPLOAD_BODY_MS, UPLOAD_STALL_MS};
+    let (t0, last) = with(|s| (s.upload.t0, s.upload.last));
+    if ms_since(now, last) > limit_ms("STALL", UPLOAD_STALL_MS) as i32 || ms_since(now, t0) > limit_ms("BODY", UPLOAD_BODY_MS) as i32 {
+        upload_drop();
+        return upload_refuse(c, 408, "too slow", "its body was too slow");
+    }
+    let mut buf = [0u8; 64 * 1024];
+    for _ in 0..4 {
+        let (st, fd, left) = with(|s| (s.cl[c].st, s.cl[c].fd, s.upload.want - s.upload.got));
+        if st != ClientState::Body || left == 0 {
+            return;
+        }
+        let room = (left as usize).min(buf.len());
+        // SAFETY: recv writes at most room bytes into the local buf, which holds that many.
+        let r = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut libc::c_void, room, 0) };
+        if r == 0 {
+            qlog!("httpd: an upload was cut short; nothing kept");
+            return client_close(c);
+        }
+        if r < 0 {
+            let e = errno();
+            if e == libc::EAGAIN || e == libc::EWOULDBLOCK || e == libc::EINTR {
+                return;
+            }
+            qlog!("httpd: an upload's connection failed (%s); nothing kept", &strerror(e));
+            return client_close(c);
+        }
+        body_take(c, &buf[..r as usize]);
+    }
+}
+
+/// The upload's connection while the Kindle asks: no answer in UPLOAD_ASK_MS ends it, and so does the browser
+/// hanging up (what the page would say could not reach it).
+fn client_waiting(c: usize, now: u32) {
+    if ms_since(now, with(|s| s.upload.asked)) > crate::upload::limit_ms("ASK", crate::upload::UPLOAD_ASK_MS) as i32 {
+        return upload_end(UploadEnd::NoAnswer);
+    }
+    if peer_gone(with(|s| s.cl[c].fd)) {
+        qlog!("httpd: the browser that sent an upload left; nothing kept");
+        client_close(c);
+    }
+}
+
+/// A refused upload's connection after its answer: what still comes is read and dropped (up to 256 KiB a poll) until
+/// the browser closes, or for UPLOAD_DRAIN_MS.
+fn client_drain(c: usize, now: u32) {
+    let (t0, fd) = with(|s| (s.cl[c].t0, s.cl[c].fd));
+    if ms_since(now, t0) > crate::upload::limit_ms("DRAIN", crate::upload::UPLOAD_DRAIN_MS) as i32 {
+        return client_close(c);
+    }
+    let mut buf = [0u8; 16 * 1024];
+    for _ in 0..16 {
+        // SAFETY: recv writes at most buf.len() bytes into the local buf.
+        let r = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0) };
+        if r > 0 {
+            continue;
+        }
+        let e = errno();
+        if r < 0 && (e == libc::EAGAIN || e == libc::EWOULDBLOCK || e == libc::EINTR) {
+            return;
+        }
+        return client_close(c);
+    }
+}
+
+/// The upload under way ended without the user's yes: its bytes go, and its connection is told why. When the server
+/// may not be polled again (Share left, sleep, stopping) the answer goes at once, as far as one send takes it.
+fn upload_end(end: UploadEnd) {
+    let (st, c) = with(|s| (s.upload.st, s.upload.client));
+    if st == UploadState::None {
+        return;
+    }
+    let (code, msg, why) = match end {
+        UploadEnd::Declined => (410, "declined on the Kindle", "Cancel on the Kindle"),
+        UploadEnd::NoAnswer => (408, "no answer on the Kindle", "no answer on the Kindle"),
+        UploadEnd::ShareClosed => (410, "share is closed", "Share closed"),
+        UploadEnd::Asleep => (410, "the Kindle is asleep", "the Kindle went to sleep"),
+        UploadEnd::Another => (409, "another PDF was sent", "a second upload came"),
+        UploadEnd::Stopped => (410, "share is closed", "the server stopped"),
+    };
+    qlog!("httpd: an upload was not kept (%s)", why);
+    upload_drop();
+    upload_reply(c, code, msg, st == UploadState::Receiving);
+    if matches!(end, UploadEnd::ShareClosed | UploadEnd::Asleep | UploadEnd::Stopped) {
+        client_write(c, now_ms());
+        if with(|s| s.cl[c].st) != ClientState::Free {
+            client_close(c);
+        }
+    }
+}
+
+/// The question the Kindle asks for an upload whose body is in: its number (a new one for each), the name shown
+/// (upload_name's) and the size. None while no upload waits for an answer.
+pub fn httpd_upload_question() -> Option<(u32, String, u64)> {
+    with(|s| (s.upload.st == UploadState::Asking).then(|| (s.upload.serial, s.upload.name.clone(), s.upload.want)))
+}
+
+/// Where the upload is (the runner's checks).
+pub fn httpd_upload_state() -> UploadState {
+    upload_state()
+}
+
+/// The upload under way ends without a yes (sleep; Share's own leaving goes through httpd_release).
+pub fn httpd_upload_discard(end: UploadEnd) {
+    upload_end(end);
+}
+
+/// The user's answer to question `serial` (one that has gone is no answer: None, nothing done). Import renames the
+/// file into import/: Some(Ok(the name it took)), or Some(Err(errno)) and the file is gone. Cancel: None, the file gone.
+/// The browser that sent it is told either way.
+pub fn httpd_upload_answer(serial: u32, import: bool) -> Option<Result<String, i32>> {
+    let (st, c, at) = with(|s| (s.upload.st, s.upload.client, s.upload.serial));
+    if st != UploadState::Asking || at != serial {
+        return None;
+    }
+    if !import {
+        upload_end(UploadEnd::Declined);
+        return None;
+    }
+    let (part, name) = with(|s| {
+        let taken = (s.upload.part.take(), std::mem::take(&mut s.upload.name));
+        s.upload = Upload { serial: s.upload.serial, ..Upload::default() };
+        taken
+    });
+    let r = part.map_or(Err(libc::EBADF), |p| p.commit(&name));
+    match &r {
+        Ok(_) => {
+            qlog!("httpd: an upload was kept: it waits in import/ for the import");
+            upload_reply(c, 200, "imported", false);
+        }
+        Err(e) => {
+            qlog!("httpd: an upload could not go into import/ (%s); nothing kept", &strerror(*e));
+            upload_reply(c, if *e == libc::ENOSPC { 507 } else { 500 }, "could not keep it", false);
+        }
+    }
+    Some(r)
+}
+
 fn heavy(path: &[u8]) -> bool {
     if path.starts_with(b"/all.zip") || path.starts_with(b"/folder/") {
         return true;
@@ -2187,6 +2623,9 @@ fn handle_request(c: usize) {
     with(|s| s.head = head);
     if method == b"POST" && path == b"/live/key" {
         return route_live_key(&req);
+    }
+    if method == b"POST" && path == b"/upload" {
+        return route_upload(c);
     }
     if method != b"GET" && method != b"HEAD" {
         return respond_text(405, "GET only");
@@ -2442,7 +2881,17 @@ fn client_write(c: usize, now: u32) {
         }
         k.sent >= k.out.data.len()
     });
-    if finished {
+    if finished && with(|s| s.cl[c].drain) {
+        // (an upload refused while its body may still come: the answer is out, and what follows is dropped)
+        with(|s| {
+            let k = &mut s.cl[c];
+            // SAFETY: shutdown of the write side of the connection's descriptor, which this module owns.
+            unsafe { libc::shutdown(k.fd, libc::SHUT_WR) };
+            k.st = ClientState::Draining;
+            k.t0 = now;
+            buf_free(&mut k.out);
+        });
+    } else if finished {
         client_close(c);
     }
 }
@@ -2458,6 +2907,13 @@ pub fn httpd_poll() {
     for i in 0..MAX_CLIENTS {
         if with(|s| s.cl[i].st) == ClientState::Reading {
             client_read(i, now);
+        }
+        // (an upload's: its body, its wait for the Kindle's answer, or what follows a refusal of it)
+        match with(|s| s.cl[i].st) {
+            ClientState::Body => client_body(i, now),
+            ClientState::Waiting => client_waiting(i, now),
+            ClientState::Draining => client_drain(i, now),
+            _ => {}
         }
         if with(|s| s.cl[i].st) == ClientState::Writing {
             client_write(i, now);
