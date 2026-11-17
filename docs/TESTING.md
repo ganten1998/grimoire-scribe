@@ -3316,3 +3316,69 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
     name that is there (Grimoire's `bluetooth`, `extensions` at the storage's top), its short name on the storage:
     `home=files/grimoire/BLUETO~1`, `home=files/EXTENS~1` (`ls -d /mnt/us/grimoire/BLUETO~1` shows that the storage
     takes it). Each start shows the Library's top with "Home folder not found.", and the line is gone afterwards.
+
+## 2.2, Darker lines (issue #173): device checks
+
+Settings > System > Darker lines in imported PDFs (Off, Medium, Strong; settings.ini `pdf_gamma`, `1.5` or `2.0`) is
+the gamma a PDF queued from then on draws its gray pages at, for faint planners on e-ink. A page kept in colour is
+left exactly as it is. The notebook keeps its level in its `source.ini` (`gamma=`), and a fill draws the pages it
+adds at it. KOReader's Open this book on a PDF by its path sends the reader's contrast as `gamma=` when the reader
+draws the PDF darker (a contrast from 1.25: 1.5; from 1.75: 2.0); otherwise the setting decides.
+
+Automated: `rust/src/pdfwork.rs`'s unit tests (each level against the formula, Off byte for byte, a colour page and a
+mixed page untouched, only `1.0`, `1.5` and `2.0` read), `rust/src/pdfimport.rs`'s (the mark's and the state's
+`gamma=`), `rust/tests/test_pdf_darker.rs` (each level's pages are the pages at Off through the level's table, a colour
+page's picture the same file at every level, the level a pick, a pick at a level of its own, a pick waiting for the lock
+and one waiting for a copy of its PDF were queued at, a fill at its notebook's level both ways, the same PDF again
+"already imported", the notebook's line read strictly), `rust/tests/test_store.rs` (`pdf_gamma_key`),
+`rust/src/library.rs`'s row test, `rust/tests/test_annotate.rs` and `rust/tests/test_koreader_pdf.rs` (the request's
+`gamma=`), `tests/koplugin_test.lua` (each contrast's line, the file browser's, an older KOReader's book and default for
+books, none for version 1), and the scenarios `tests/scenarios/z_pdf_darker_1_row.qs` (the row, its list, a pick at
+Medium), `z_pdf_darker_2_colour.qs` (Strong: the colour page as Off makes it), `z_pdf_darker_3_off.qs` (each page's
+level at Off), `z_pdf_darker_4_fill.qs` (a notebook made at Off filled at Off with the setting at Strong),
+`z_pdf_darker_5_es_fit.qs` and `z_pdf_darker_6_es_fit_classic.qs` (Spanish, both styles, upright and sideways),
+`y_koreader_pdf_darker_1_gamma.qs` (a request with `gamma=2.0`, the setting at Off) and
+`y_koreader_pdf_darker_2_no_gamma.qs` (no line, the setting at Medium).
+
+**Not run on a Scribe.** The owner's check, on a build of this branch (a faint planner PDF, gray only; a PDF with a
+coloured page among gray ones; KOReader with the Grimoire plugin):
+
+1. **The row.** Settings > System: the last row reads "Darker lines in imported PDFs: Off". Tap it: a list of Off,
+   Medium and Strong, one under the other in that order, Off marked. Back: nothing changes. Tap the row, then
+   Medium: the list closes and the row reads "...: Medium"; `grep pdf_gamma /mnt/us/grimoire/settings.ini` shows
+   `pdf_gamma=1.5` at once.
+2. **An import at each level.** On the computer, make three copies of the faint planner, "Planner A.pdf", "Planner
+   B.pdf" and "Planner C.pdf", and append one byte to B and two to C (`printf ' ' >> "Planner B.pdf"` once, and twice
+   for "Planner C.pdf"), so each is another file before it reaches the Kindle (the import takes a file of
+   `grimoire/import/` once it has held still for 5 s, so a byte appended there afterwards comes too late). Copy them
+   over USB into `grimoire/import/` one at a time, A, B, C: first with the row at Off, then at Medium, then at Strong,
+   each after the last import ended. Open the three notebooks on the same page: Off is the planner as before, Medium
+   darker, Strong darker still; white stays white. `grimoire.log` has `import: <id>: darker lines: its gray pages are
+   drawn at gamma 1.5 (the import's)` for the second and `gamma 2.0` for the third, and nothing of the kind for the
+   first. Each notebook's `source.ini` (`/mnt/us/grimoire/notebooks/<id>/source.ini`) has `gamma=1.5`, `gamma=2.0`,
+   and no `gamma` line.
+3. **A colour page.** With the row at Strong, import the PDF with a coloured page: its gray pages are darker than at
+   Off and its coloured page shows as at Off (copy the notebook's PDF from `grimoire/PDFs` to a computer: that page
+   is in colour, as before).
+4. **From Files.** Show Files in the Library, open Files > Documents (or wherever a PDF is) and import a PDF with the
+   row at Medium: its notebook is darker, `gamma=1.5` in its `source.ini`.
+5. **A fill keeps the notebook's level.** In the Medium notebook of step 2, delete two pages (the Pages view). Set the
+   row to Strong, copy the same file ("Planner B.pdf", byte for byte) into `grimoire/import/` again: "Added 2 book
+   pages.", and the two pages are as dark as the rest (Medium), not darker. Its `source.ini` still says
+   `gamma=1.5`; `grimoire.log` has `darker lines: its gray pages are drawn at gamma 1.5 (its notebook's)`.
+6. **The same PDF again.** Copy the Strong planner of step 2 ("Planner C.pdf") into `grimoire/import/` once more with
+   the row at Off: "PDF already imported.", and its notebook is as it was.
+7. **KOReader, darker.** Update the plugin (Settings > KOReader > Install / update Grimoire plugin, restart KOReader).
+   Set Grimoire's row to Off. In KOReader open a PDF Grimoire never saw, set the bottom menu's Contrast to 2 (or
+   more), and use Tools > Grimoire > Open this book in Grimoire: the notebook opens at the reader's page, its gray
+   pages darker. `koreader/crash.log` has `Grimoire: a PDF of M pages sent by its path, to open at page N with
+   gamma=2.0`; `grimoire.log` has `book: the request asks for darker lines at gamma 2.0`; the notebook's `source.ini`
+   has `gamma=2.0`.
+8. **KOReader at its own contrast.** Set Grimoire's row to Medium. In KOReader open another new PDF with Contrast at
+   1 (its default) and use Open this book in Grimoire: crash.log's line ends at the page number (no `gamma=`), and
+   the notebook is at Medium (`gamma=1.5` in its `source.ini`). With Contrast at 1.5 on a third new PDF, the line
+   ends `with gamma=1.5`.
+9. **Spanish.** Settings > Language > Español: Ajustes > Sistema's last row reads "Líneas más oscuras en los PDF
+   importados: No", and its list "No", "Medio", "Fuerte", whole, upright and sideways, in Gothic and Classic.
+10. **Back to Off.** Set the row to Off: `grep pdf_gamma /mnt/us/grimoire/settings.ini` shows nothing, and a new
+    import is drawn as before.

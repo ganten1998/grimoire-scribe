@@ -693,6 +693,8 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     // The lasso's clipboard lasts one session: an earlier one's goes before anything can paste it.
     clipboard_clear_at_start();
     settings_load(&mut a.settings);
+    // (darker lines in imported PDFs: the imports this process queues are drawn at the setting, 2.2)
+    crate::pdfimport::set_darker(crate::pdfwork::Gamma::from_index(a.settings.pdf_gamma));
     let mut shortcuts_path = String::new();
     csnprintf!(&mut shortcuts_path, 600, "%s/shortcuts.ini", &store_root());
     // A starter map nobody edited becomes this build's (grimoire.log says so; no toast); edited files stay.
@@ -2800,8 +2802,8 @@ pub fn app_keyboard_tick(a: &mut App, kb: &mut Keyboard, now: u32) -> KbResult {
 
 // The runner's annotate.* keys: "role", the open page's paper ("document" for a page KOReader sent
 // or an imported one, "template", "" for any other); "luma", the open page as the editor holds it
-// now, its mean (255: white, as a picture still being made draws); the rest are annotate_probe's,
-// for the page open in the editor.
+// now, its mean (255: white, as a picture still being made draws); "gamma", the darker lines the open
+// notebook was made at (2.2); the rest are annotate_probe's, for the page open in the editor.
 fn annotate_app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     let mut v = String::new();
     if key == "role" {
@@ -2824,6 +2826,18 @@ fn annotate_app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i
             Some(mean) => csnprintf!(out, cap, "%d", mean as i32),
             None => csnprintf!(out, cap, "%s", ""),
         };
+        return 0;
+    }
+    if key == "gamma" {
+        // darker lines (2.2): the gamma the open notebook's gray pages were drawn at, as its source.ini says it (1.0
+        // for no line); "" with no notebook open
+        out.clear();
+        if editor_probe(a, "notebook_id", &mut v, 64) == 0 && !v.is_empty() {
+            let mut m = AnnotateMap::default();
+            let g = if annotate_map_load(&v, &mut m) == 0 { crate::pdfimport::gamma_among(m.extra.as_bytes()) } else { crate::pdfwork::Gamma::Off };
+            annotate_map_free(&mut m);
+            csnprintf!(out, cap, "%s", g.name());
+        }
         return 0;
     }
     let page = if editor_probe(a, "page", &mut v, 32) == 0 { atoi(&v) } else { 0 };
@@ -3154,6 +3168,9 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
     } else if key == "settings.font_bold" {
         csnprintf!(out, cap, "%s", st.font_bold.as_str());
+    } else if key == "settings.pdf_gamma" {
+        // darker lines in imported PDFs as settings.ini says it (2.2): 1.0, 1.5 or 2.0
+        csnprintf!(out, cap, "%s", crate::pdfwork::Gamma::from_index(st.pdf_gamma).name());
     } else if key == "settings.home" {
         // the home folder as settings.ini keeps it (2.2): empty for Notebooks, notebooks/<folder>, files/<path>
         csnprintf!(out, cap, "%s", st.home.as_str());

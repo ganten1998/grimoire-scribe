@@ -1300,6 +1300,9 @@ pub struct BookRequest {
     pub sent: Vec<i32>,
     /// version 2: the PDF's absolute path, as KOReader has it open (`file=`); never logged
     pub file: String,
+    /// version 2: the darker lines the reader's contrast asks for (`gamma=`, 2.2, issue #173), read strictly (only
+    /// the three known values; anything else is no gamma); None without the line, and the setting then decides
+    pub gamma: Option<crate::pdfwork::Gamma>,
 }
 
 /// (the lines of up to 2000 pictures)
@@ -1320,8 +1323,9 @@ pub fn book_request_free(r: &mut BookRequest) {
 /// Version 1 names the pictures KOReader drew, and is read as it always was (the last line of a key counts, a
 /// number may have leading zeros). Version 2 (2.2) names a PDF by its absolute path and no picture, and is read
 /// strictly: its version line says exactly `2`, each of its keys (`version`, `book`, `file`, `title`, `pages`,
-/// `page`, `kind`, `time`) comes once at most, and its `file=` line, read whole and never cut, is UTF-8 with no
-/// control character in it. A request with a `version=2` line is a version 2 request wherever that line stands.
+/// `page`, `kind`, `time`, `gamma`) comes once at most, and its `file=` line, read whole and never cut, is UTF-8 with
+/// no control character in it. A request with a `version=2` line is a version 2 request wherever that line stands.
+/// Its `gamma=` (2.2) is `1.0`, `1.5` or `2.0`; any other value is no gamma.
 /// Where the path leads is checked at the start, through the storage walk (book_start), never here.
 pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i32 {
     *r = BookRequest::default();
@@ -1332,7 +1336,7 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
     let mut files = 0;
     let mut file_bad: Option<&'static str> = None;
     // (version 2: a `version=2` line seen, and a key of the request seen a second time)
-    const KEYS: [&[u8]; 7] = [b"version", b"book", b"title", b"page", b"pages", b"kind", b"time"];
+    const KEYS: [&[u8]; 8] = [b"version", b"book", b"title", b"page", b"pages", b"kind", b"time", b"gamma"];
     let mut seen = [0u32; KEYS.len()];
     let mut two = false;
     let mut p = 0;
@@ -1395,6 +1399,10 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
         } else if key == b"time" {
             let t = number(v, 0, 1i64 << 40);
             r.time = if t > 0 { t } else { 0 };
+        } else if key == b"gamma" {
+            // (version 2's darker lines, judged once the version is known: a version 1 request leaves it to a newer
+            // plugin)
+            r.gamma = Some(crate::pdfwork::Gamma::parse(v));
         } else if key.starts_with(b"picture.") {
             // picture.<n>=page-<n>.png: that name and no other, so it names a file in the folder.
             let b = number(&key[8..], 1, STORE_MAX_PAGES as i64);
@@ -1419,8 +1427,9 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
         return -1;
     }
     if r.version == 1 {
-        // (a version 1 request's file= line is a key it does not know, as before 2.2)
+        // (a version 1 request's file= and gamma= lines are keys it does not know, as before 2.2)
         r.file.clear();
+        r.gamma = None;
     } else {
         if seen.iter().any(|&n| n > 1) {
             *why = "a version 2 request names a key twice";
@@ -1895,7 +1904,11 @@ fn start_pdf(j: &mut Job, st: &mut BookStatus, dir: &str) {
     }
     let mut name = String::new();
     annotate_name(j.r.title.as_bytes(), &mut name, STORE_NAME_LEN);
-    let q = crate::pdfimport::pdf_import_queue(&sp, (!name.is_empty()).then_some(name.as_str()), None, store_dpi());
+    // (darker lines: the level the reader's contrast asks for, else the setting's)
+    if let Some(g) = j.r.gamma {
+        qlog!("book: the request asks for darker lines at gamma %s", g.name());
+    }
+    let q = crate::pdfimport::pdf_import_queue_at(&sp, (!name.is_empty()).then_some(name.as_str()), None, j.r.gamma, store_dpi());
     empty_folder(dir); // (the request is taken: no later start opens it again)
     match &q {
         Queued::Started(id) => qlog!("book: the PDF KOReader named goes to the PDF import (%s); its page %d of %d opens once that ends", id, j.r.page, j.r.pages),
