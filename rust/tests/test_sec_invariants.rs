@@ -32,6 +32,7 @@ const BROWSER: File = ("rust/src/browser.rs", include_str!("../src/browser.rs"))
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const BGWORK_COPY: File = ("rust/src/bgwork_copy.rs", include_str!("../src/bgwork_copy.rs"));
+const APP: File = ("rust/src/app.rs", include_str!("../src/app.rs"));
 const PREVIEWS: File = ("rust/src/bgwork_previews.rs", include_str!("../src/bgwork_previews.rs"));
 const ADDFONT_TESTS: File = ("rust/tests/test_addfont.rs", include_str!("test_addfont.rs"));
 const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
@@ -679,20 +680,31 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     }
     stands_on(&mut fails, BGWORK_COPY, "a dot-name with the ending `.part`: no listing shows it and the fonts folder's scan takes no such name", USERFONTS, dot_name);
     stands_on(&mut fails, USERFONTS, "a copy still being written has a dot-name ending in `.part`", BGWORK_COPY, tmp_tail);
-    // what the copy asks of the font check: a time to look at the folder, nothing more
-    let added = "st.added_ms = Some(now_ms().wrapping_add(added_wait_ms()).max(1));";
-    stands_on(&mut fails, DESIGN, "**The copy gives a font nothing.**", USERFONTS, added);
-    stands_on(&mut fails, USERFONTS, "the copy gives it nothing (`userfonts_added` only says when the folder is looked at)", USERFONTS, added);
+    // what the copy asks of the font check: a time to look at the folder, nothing more. What follows a copy that went
+    // in is copy_told (app.rs), whose one call for a font is userfonts_added, which sets that time and the scale:
+    // both held whole, so that a line that applied, loaded or read the font there would fail here.
+    const COPY_TOLD: &str = r#"fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) { use crate::bgwork_copy::{copy_failed, copy_refusal, CopyFail, CopyTo}; if r < 0 { let msg = to.map_or_else(|| copy_failed().to_string(), |to| copy_refusal(CopyFail::of_exit(bg_last_exit()), to)); app_toast(a, &msg, 4000); return; } let Some(to) = to.filter(|_| r > 0) else { return }; if to == CopyTo::Fonts { crate::userfonts::userfonts_added(a.dpi); } if crate::library::library_sheet_folder(a) == Some(to) || crate::editor::editor_sheet_folder(a) == Some(to) { return; } let place = match to { CopyTo::Templates => tr("Templates"), CopyTo::Photos => tr("Photos"), CopyTo::Fonts => tr("Fonts"), }; let mut msg = String::new(); csnprintf!(&mut msg, 256, tr("Copied to %s."), place); app_toast(a, &msg, 3000); }"#;
+    const USERFONTS_ADDED: &str = r#"pub fn userfonts_added(dpi: f32) { with(|st| { st.dpi = dpi; st.added_ms = Some(now_ms().wrapping_add(added_wait_ms()).max(1)); }); }"#;
+    for (f, words) in [
+        (DESIGN, "**The copy gives a font nothing.**"),
+        (USERFONTS, "the copy gives it nothing (`userfonts_added` only says when the folder is looked at)"),
+    ] {
+        told_on_code(&mut fails, f, words, APP, "fn copy_told(", COPY_TOLD);
+        told_on_code(&mut fails, f, words, USERFONTS, "pub fn userfonts_added(", USERFONTS_ADDED);
+    }
     // the limit a font over is refused at, before a byte is copied
     beside(&mut fails, DESIGN, "`FONT_FILE_MAX`", &format!("{} MB", grimoire::fontcheck::FONT_FILE_MAX >> 20));
-    // the Kindle's fonts folder: a write is allowed only inside Grimoire's own folders
-    stands_on(
-        &mut fails,
-        DESIGN,
-        "**The Kindle's fonts folder is read only**, as every folder outside Grimoire's own is",
-        FSVIEW,
-        "if OWN_WRITABLE.iter().any(|s| eq_nocase(n, s)) { return FsZone::Writable; }",
-    );
+    // the Kindle's fonts folder: a write is allowed only inside Grimoire's own folders. A rename or a delete asks
+    // write_zone (the allow-list, inside Grimoire's folder only), which asks zone_of (writable only below Grimoire's
+    // own folder, never at the storage's root): both held whole. The copy job writes only into Grimoire's folder of
+    // its kind, and only where zone_of says writable.
+    const ZONE_OF: &str = r#"fn zone_of(grimoire: Option<&StoragePath>, p: &StoragePath, pick: bool) -> FsZone { let comps: Vec<&[u8]> = p.components().collect(); if comps.iter().any(|n| n.first() == Some(&b'.') || (n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".sdr"))) { return FsZone::Refused; } if comps.first().is_some_and(|n| SYSTEM.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if let Some(g) = grimoire { let gc: Vec<&[u8]> = g.components().collect(); if !gc.is_empty() && comps.len() > gc.len() && gc.iter().zip(&comps).all(|(a, b)| eq_nocase(a, b)) { let n = comps[gc.len()]; if OWN_REFUSED.iter().any(|s| eq_nocase(n, s)) || (pick && OWN_NOT_PICKED.iter().any(|s| eq_nocase(n, s))) { return FsZone::Refused; } if OWN_WRITABLE.iter().any(|s| eq_nocase(n, s)) { return FsZone::Writable; } if comps.len() == gc.len() + 1 && n.len() >= 4 && eq_nocase(&n[n.len() - 4..], b".ini") { return FsZone::Refused; } } } FsZone::ReadOnly }"#;
+    const WRITE_ZONE: &str = r#"fn write_zone(&self, p: &StoragePath) -> Option<&'static str> { let g = self.grimoire.as_ref()?; if zone_of(Some(g), p, false) != FsZone::Writable { return None; } let gl = g.components().count(); let comps: Vec<&[u8]> = p.components().collect(); if comps.len() < gl + 2 || (comps.len() == gl + 2 && eq_nocase(comps[gl], b"import") && eq_nocase(comps[gl + 1], b"done")) { return None; } ["import", "templates", "photos", "fonts"].into_iter().find(|w| eq_nocase(comps[gl], w.as_bytes())) }"#;
+    let read_only = "**The Kindle's fonts folder is read only**, as every folder outside Grimoire's own is";
+    told_on_code(&mut fails, DESIGN, read_only, FSVIEW, "fn zone_of(", ZONE_OF);
+    told_on_code(&mut fails, DESIGN, read_only, FSVIEW, "fn write_zone(", WRITE_ZONE);
+    told_on(&mut fails, DESIGN, read_only, BGWORK_COPY, r#"let dest = g.join(to.folder().as_bytes()).ok_or("a path too long")?;"#);
+    told_on(&mut fails, DESIGN, read_only, BGWORK_COPY, r#"if st.zone(&dest.join(name).ok_or_else(|| long("a path too long"))?, false) != FsZone::Writable {"#);
     // Nothing in the writer or the UI parses, applies, measures or loads a copied font before its check has passed
     // it: what reads a font file as a font in this process is load_file, which takes only bytes that hash to a
     // passing verdict's, and guarded_face, the one maker of a face from them. A preview of it in Files' Covers view
