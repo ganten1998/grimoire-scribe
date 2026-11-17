@@ -568,6 +568,51 @@ fn a_fill_into_a_notebook_without_web_links_gives_them_to_the_added_pages_only()
     assert!(web_links(&id, &e.info(&id)).is_empty());
 }
 
+// A fill never trims the web links the notebook had, past the water level too (90% of 4,000): only those it adds go.
+// A PDF of 16 pages, 240 web links on each of pages 1 to 14 and 200 on page 16 (3,560: the import keeps all); page 16
+// deleted, and 230 more web links on page 15 (as Copy page would bring them): the notebook has 3,590. The fill adds
+// page 16 back with its 200: past 3,600, so 190 of them go, and none of the notebook's.
+#[test]
+fn a_fill_never_trims_the_web_links_the_notebook_had() {
+    use pdffix::{Act, Extra, Lnk, PageSpec};
+    let e = setup("web-fill-water");
+    let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
+    let web = |p: usize, n: usize| -> Vec<Lnk> {
+        (0..n)
+            .map(|k| {
+                let (x, y) = (10.0 + (k % 20) as f64 * 20.0, 10.0 + (k / 20) as f64 * 40.0);
+                Lnk::new([x, y, x + 15.0, y + 20.0], Act::Uri(leak(format!("https://example.org/{p}/{k}"))))
+            })
+            .collect()
+    };
+    let links: Vec<Vec<Lnk>> = (1..=16).map(|p| if p <= 14 { web(p, 240) } else if p == 16 { web(p, 200) } else { Vec::new() }).collect();
+    let pages: Vec<PageSpec> = (0..16).map(|_| PageSpec::new(420.0, 595.0, "")).collect();
+    let bytes = pdffix::make_linked(&pages, &links, &Extra::default());
+    let (id, ends) = import_all(&e.drop("Water.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 16, blank: 0 }, "{ends:?}");
+    assert_eq!(weblinks_load(&id).links.len(), 3560);
+    drop_pages(&id, &[16]);
+    let nb = e.info(&id);
+    let mut wl = weblinks_load(&id);
+    weblinks_prune(&mut wl, &nb);
+    for k in 0..230u32 {
+        assert!(wl.push(WebLink { pid: nb.page_ids[14], seed: 0x100 + k, area: Rect::new(10, 10 + k as i32, 40, 20), address: format!("https://copied.example/{k}") }));
+    }
+    assert_eq!(weblinks_save(&id, &mut wl, &nb), 0);
+    let had: std::collections::BTreeSet<(u32, u32)> = weblinks_load(&id).links.iter().map(|l| (l.pid, l.seed)).collect();
+    assert_eq!(had.len(), 3590);
+    let (_, ends) = import_all(&e.drop("Water again.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 1));
+    let nb = e.info(&id);
+    let now = weblinks_load(&id);
+    let kept: std::collections::BTreeSet<(u32, u32)> = now.links.iter().map(|l| (l.pid, l.seed)).collect();
+    assert!(had.is_subset(&kept), "the notebook's own web links are all kept");
+    let added = *nb.page_ids.last().unwrap();
+    assert_eq!(book_pages(&id, &nb).last(), Some(&16));
+    assert_eq!(weblinks_of(&now, added).len(), 3600 - 3590, "the fill's own go, down to the level");
+}
+
 // A notebook that has every page of the book: "PDF already imported.", and nothing of it is written.
 #[test]
 fn a_notebook_with_every_page_says_already() {
