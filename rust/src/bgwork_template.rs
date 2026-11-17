@@ -516,6 +516,11 @@ fn preview_of(path: &str, ext: &str, buf: &mut String, cap: usize) -> bool {
         return true;
     }
     let Some(slash) = path.rfind('/') else { return false };
+    // (a PDF has no preview, key or mark of its own, whatever the cache holds under its name: its pages are its
+    // templates, so the PDF itself is never ready, never installed, and never reaches the picture path)
+    if crate::bgwork_tplpdf::is_pdf_name(&path[slash + 1..]) {
+        return false;
+    }
     preview_path(&path[..slash], &path[slash + 1..], ext, buf, cap)
 }
 
@@ -987,6 +992,11 @@ fn install_picture(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mu
         *why = "too long a path for a background job";
         return -1;
     }
+    // (a template PDF is no picture: each of its pages is a template of its own, bgwork_tplpdf.rs)
+    if crate::bgwork_tplpdf::is_pdf_name(path.rsplit('/').next().unwrap_or("")) {
+        *why = "a PDF is no picture (its pages are the templates)";
+        return -1;
+    }
     let Ok(st) = std::fs::metadata(path) else { return -1 };
     if !st.is_file() {
         return -1;
@@ -1188,8 +1198,13 @@ fn annotate_source(id: &str, src: &str) -> bool {
 /// With no notebook and a PDF's path: a slice of that template PDF's pages (bgwork_tplpdf.rs; CODE_MORE while pages
 /// are left). Its worker sets its own address space: the writer's is not capped around it, as an import's is not.
 pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
-    if id.is_empty() && crate::bgwork_tplpdf::is_pdf_name(src.rsplit('/').next().unwrap_or("")) {
-        return crate::bgwork_tplpdf::bg_template_pdf(src);
+    if crate::bgwork_tplpdf::is_pdf_name(src.rsplit('/').next().unwrap_or("")) {
+        if id.is_empty() {
+            return crate::bgwork_tplpdf::bg_template_pdf(src);
+        }
+        // (never a notebook's picture made of a PDF: the picture worker is never handed one)
+        qlog!("templates: %s: a PDF is no picture (its pages are the templates); nothing made", id);
+        return -1;
     }
     let cap = cap_memory();
     let rc = if id.is_empty() { make_previews(src) } else { make_template(id, src, dpi) }; // no notebook: the folder's previews

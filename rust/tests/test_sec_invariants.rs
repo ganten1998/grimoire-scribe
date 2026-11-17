@@ -835,6 +835,9 @@ fn pdfs_as_templates_are_told_as_they_are() {
     // a page is its picture: drawing or picking it never reads the PDF
     told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TPLPDF, r#"t.path.set(&f("png"));"#);
     told_on(&mut fails, DESIGN, "Picking a page, drawing it and opening a notebook on it never read the PDF again", TEMPLATES, "if let Some(stem) = crate::bgwork_tplpdf::page_stem(path) {");
+    // the PDF itself is never a picture: no preview of its own, never installed, never a notebook's picture job
+    told_on(&mut fails, DESIGN, "The PDF itself is never a picture", TEMPLATES, "if crate::bgwork_tplpdf::is_pdf_name(&path[slash + 1..]) { return false; }");
+    told_on(&mut fails, DESIGN, "a notebook's picture job refuses a PDF, so the picture worker is never handed one", TEMPLATES, "a PDF is no picture (its pages are the templates); nothing made\", id); return -1;");
     // never an import
     told_on(&mut fails, DESIGN, "The import watch reads `grimoire/import` alone", PDFIMPORT, r#"let dir = root_path("import");"#);
     // the job's rank, and its slices

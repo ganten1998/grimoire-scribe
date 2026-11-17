@@ -482,6 +482,41 @@ fn clean_env_keep_slices() {
     }
 }
 
+// A PDF itself is never a picture, whatever the cache holds under its own name (here a preview and a key planted
+// there, as a picture's): its waiting tile never becomes ready, template_install refuses it (no paper claimed in the
+// notebook, no job queued), and a notebook's picture job refuses a PDF, so the picture worker never sees one.
+fn a_pdf_itself_is_never_a_picture() {
+    clean_env();
+    folder(&[("W.pdf", pdffix::planner(2))]);
+    let h = hash("W.pdf");
+    let path = format!("{}/W.pdf", tpl());
+    std::fs::create_dir_all(cache()).unwrap();
+    let mut thumb = Canvas::default();
+    check!(canvas_init(&mut thumb, PW / 6, PH / 6) == 0);
+    check!(store_write_pgm(&format!("{}/{h}.pgm", cache()), &thumb) == 0);
+    canvas_free(&mut thumb);
+    let pdf = std::fs::read(&path).unwrap();
+    std::fs::write(format!("{}/{h}.key", cache()), format!("{:016x} {PW} {PH}\n", bgimage_content_hash(&pdf))).unwrap();
+    // (its own job cannot run here: the tile stays the whole PDF's)
+    std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire");
+    let mut t = scan();
+    check!(names(&t) == ["W"] && !t[0].ready && t[0].page == 0);
+    check!(template_refresh(&mut t) == 0 && !t[0].ready && template_thumb(&mut t[0]).is_none());
+    template_list_free(&mut t);
+    settle();
+    let mut nb = NotebookInfo::default();
+    check!(store_create("Planted", "", PAPER_BLANK, &mut nb) == 0);
+    let mut kind = PaperKind::default();
+    let mut why: &'static str = "";
+    check!(template_install(&nb, &path, &mut kind, &mut why) == -1 && why.contains("a PDF is no picture"));
+    check!(!bg_job_pending(BgKind::Template, nb.id.as_str(), &path));
+    let mut dir = String::new();
+    check!(bgimage_dir(nb.id.as_str(), &mut dir, 700) == 0 && !std::path::Path::new(&format!("{dir}/index.ini")).exists());
+    let (rc, log) = with_log("pdf-picture", || bg_template(nb.id.as_str(), &path, DPI));
+    check!(rc == -1 && log.contains("a PDF is no picture (its pages are the templates); nothing made") && !log.contains("could not be made"));
+    clean_env();
+}
+
 // A PDF in grimoire/templates is never an import: the import watch reads import/ alone.
 fn a_template_pdf_is_never_imported() {
     clean_env();
@@ -650,6 +685,7 @@ fn test_template_pdfs() {
     run!(the_writer_out_of_memory_marks_nothing);
     run!(a_pdf_changed_while_its_pages_are_made);
     run!(no_room_makes_nothing);
+    run!(a_pdf_itself_is_never_a_picture);
     run!(a_template_pdf_is_never_imported);
     run!(pictures_alone_are_as_they_were);
     run!(a_picture_beside_a_pdf);

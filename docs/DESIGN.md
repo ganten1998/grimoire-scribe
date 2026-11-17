@@ -3168,7 +3168,9 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
 - **A page is a picture template.** A page's tile has its picture's path, and from there it is a template as any
   picture is: `template_install` takes its key from its `.key` and queues its picture for the notebook's page size,
   made by the picture worker from the page's PNG (`make_template`). Picking a page, drawing it and opening a notebook
-  on it never read the PDF again; the PDF can be gone by then.
+  on it never read the PDF again; the PDF can be gone by then. The PDF itself is never a picture: whatever the cache
+  holds under its own name it has no preview or key of its own (`preview_of`), so its tile is never ready,
+  `template_install` refuses it, and a notebook's picture job refuses a PDF, so the picture worker is never handed one.
 - **When.** The scan that looks at the folder (`template_scan`, as the Templates sheet opens) queues a job for each
   PDF with work left (at most `TEMPLATE_PDF_QUEUE_MAX`, 8, a look): `BgKind::Template` with no notebook and the PDF's
   path. It ranks behind imports and font checks, with Files' previews, first queued first run (bgjob.rs `rank`), and
