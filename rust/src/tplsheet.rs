@@ -364,21 +364,26 @@ fn copy_ended(s: &mut TplSheet, a: &mut App) {
 }
 
 // The folder read again as the sheet opened on it, the same paper selected; in view the first tile not listed before
-// when `to_new` (and there is one), else the page that was. Whether there was a new one.
+// when `to_new` (and there is one), else the page that was. Not `to_new` (a PDF's pages counted, #172), the tile the
+// page in view is anchored on is followed to its new place, so tiles taking a PDF's place before it do not turn the
+// sheet away from it (a tile no longer listed, the PDF's own, leaves its place to its pages). Whether there was a new
+// one.
 fn read_again(s: &mut TplSheet, a: &mut App, to_new: bool) -> bool {
     let had: Vec<String> = s.t.iter().map(|t| t.path.as_str().to_string()).collect();
     let anchor = s.anchor;
+    let anchored = usize::try_from(anchor).ok().and_then(|k| s.shown.get(k)).map(|&i| s.t[i as usize].path.as_str().to_string());
     let nb = s.nb.take();
     let (current, photos) = (s.current, s.photos);
     let path = s.current_path.as_str().to_string();
     open_folder(s, a, nb.as_deref(), current, (!path.is_empty()).then_some(path.as_str()), photos);
     let new = s.shown.iter().position(|&i| !had.iter().any(|p| p.as_str() == s.t[i as usize].path.as_str()));
-    s.anchor = new.filter(|_| to_new).map_or(anchor, |k| k as i32);
+    let followed = anchored.filter(|_| !to_new).and_then(|p| s.shown.iter().position(|&i| s.t[i as usize].path.as_str() == p));
+    s.anchor = new.filter(|_| to_new).or(followed).map_or(anchor, |k| k as i32);
     new.is_some()
 }
 
 // A PDF's pages were counted since the folder was read (#172): it is read again, its pages in the PDF's place, the
-// page in view as it was.
+// tile the page in view was anchored on still in view.
 fn pdf_pages_counted(s: &mut TplSheet, a: &mut App) {
     s.pdf_counted = false;
     let had = s.t.len();

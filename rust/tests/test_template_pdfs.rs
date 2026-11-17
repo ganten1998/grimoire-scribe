@@ -684,6 +684,33 @@ fn a_pdfs_unusable_tiles_stay_crossed_out() {
     canvas_free(&mut a.screen);
 }
 
+// The page in view stays when a PDF before it is counted: here the sheet is on the tile that ends its first page when
+// the PDF's tile, first, becomes its two pages; that tile, now first on the second page, is still in view.
+fn the_page_in_view_stays_when_a_pdf_is_counted() {
+    clean_env();
+    let files: Vec<(String, Vec<u8>)> = (1..=30).map(|i| (format!("P{i:02}.png"), png_bytes())).collect();
+    let refs: Vec<(&str, Vec<u8>)> = files.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+    folder(&refs);
+    let _ = scan();
+    settle();
+    std::fs::write(format!("{}/A.pdf", tpl()), pdffix::planner(2)).unwrap();
+    let (mut a, mut s) = sheet_open();
+    check!(probe(&s, "names").starts_with("A|P01|P02") && s.shown.len() == 31);
+    let last = s.per - 1;
+    let on = s.t[s.shown[last as usize] as usize].name.as_str().to_string();
+    s.anchor = last;
+    tplsheet_draw(&mut s, &mut a);
+    check!(probe(&s, "page") == "1");
+    settle();
+    let mut d = Rect::default();
+    check!(tplsheet_tick(&mut s, &mut a, now_ms(), &mut d));
+    check!(probe(&s, "names").starts_with("A p. 1|A p. 2|P01") && s.shown.len() == 32);
+    let at = s.shown.iter().position(|&i| s.t[i as usize].name.as_str() == on).unwrap_or(0) as i32;
+    check!(at == last + 1 && probe(&s, "page") == "2" && s.page == at / s.per);
+    tplsheet_close(&mut s);
+    canvas_free(&mut a.screen);
+}
+
 // No worker to be had (none starts, or one without the sandbox's steps where the sandbox is required): nothing is made
 // and nothing marked. A sandbox step that fails, in the job's own child as the app runs it (queued by a look, not called
 // here): nothing made or marked, the child's exit status marks this process's session broken too, and no look queues
@@ -745,6 +772,7 @@ fn test_template_pdfs() {
     run!(the_pages_wait_behind_other_jobs);
     run!(the_sheet_reads_the_folder_again_once_the_pages_are_counted);
     run!(a_pdfs_unusable_tiles_stay_crossed_out);
+    run!(the_page_in_view_stays_when_a_pdf_is_counted);
     run!(no_worker_makes_nothing);
     font_shutdown();
     done();

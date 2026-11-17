@@ -3210,7 +3210,9 @@ a page. `bgwork_tplpdf.rs` makes the pages, `bgwork_template.rs` lists them, `tp
   count (when it looks for previews: as a job ends, and every 1.5 s while one runs) it reads the folder again, as
   after a copy, and the PDF's pages take its place, a tile a page named after the file and the page ("Planner p. 3",
   the Pages view's "p. %d"; the file's name is cut short before the page's part when both do not fit). Never under a
-  contact: a count seen while a pen or finger is down on the sheet is read after the lift. The pages' tiles fill in
+  contact: a count seen while a pen or finger is down on the sheet is read after the lift. A PDF before the page in
+  view taking more places does not turn the sheet away: the tile the page was anchored on stays in view (the page
+  that holds it now). The pages' tiles fill in
   as their pictures are made. A PDF's tile the sheet cannot use stays crossed out in its place at every opening (the
   tile a picture found unusable while the sheet is open has): the whole PDF's when it is refused (over 50 pages, over
   16 MB, a password, no PDF) or past the tiles PDFs may give, and a page's that is marked, so the user sees which file
