@@ -437,6 +437,10 @@ call the copy since issue #146 (each its own section, above).
   asks nothing.
 - **Files' previews of a PDF are not darkened** (they show the file as it is), nor are the pages KOReader draws by
   version 1 (Annotate this page, DjVu, comics), which come at KOReader's own contrast.
+- **A notebook KOReader made (version 1) is filled at Off**: it has no `gamma=` line, and KOReader drew its pages at
+  the reader's contrast, so where that was darker the pages a fill adds are lighter than KOReader's; a request's
+  `gamma=` does not change a fill. Having such a fill follow the request's level would need the mark to say where its
+  level came from: not built, the owner's call.
 - **A lighter level** (KOReader's contrast under 1) is not offered: a reader's contrast under 1.25 sends no line, and
   the setting decides.
 - **Going back to 2.1 in the middle of an import** that began at 1.5 or 2.0: 2.1 takes the import up (it passes the

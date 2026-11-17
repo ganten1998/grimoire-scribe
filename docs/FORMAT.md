@@ -828,9 +828,10 @@ waits, and within 10 s of the end of a previous run's import):
   when it has one, Whole books), the first slice keeps it in the import's state, and the notebook keeps it in its
   `source.ini` as one line after the file record, `gamma=1.5` or `gamma=2.0` (no line at Off). Each of these lines
   is read strictly: `1.0`, `1.5` or `2.0`, and any other value is no gamma. A fill (below) draws the pages it adds at
-  its notebook's own `gamma=` (no line: Off), whatever the setting says, and leaves the line as it was. The same PDF
-  again with every page is "PDF already imported." at any level: no page is drawn again (a notebook moved to the
-  trash no longer holds the PDF, which then imports afresh at the setting).
+  its notebook's own `gamma=` (no line: Off), whatever the setting or a request says, and leaves the line as it was;
+  a notebook KOReader made by version 1 has no line, so a fill adds its pages at Off even where KOReader drew its
+  own darker. The same PDF again with every page is "PDF already imported." at any level: no page is drawn again (a
+  notebook moved to the trash no longer holds the PDF, which then imports afresh at the setting).
 - **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
   as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
   per page, and `links=1` when the import wrote `doclinks.ini`, so KOReader's Open this book does not ask for

@@ -3174,9 +3174,11 @@ KOReader plugin carry the reader's contrast.
   annotate.rs and every version since 1.1 write the lines of `source.ini` they do not know back as they were, so the
   line stays through KOReader's version 1 pages, an older version's saves and a raw zip. A fill draws the pages it
   adds at its notebook's own level (`gamma_among`, read when the fill is decided), whatever the setting or the
-  request says: a notebook made before 2.2, at Off or by KOReader has no line and is filled at Off, so a notebook's
-  pages are drawn alike. The same PDF again with every page is "PDF already imported." at any level: a PDF already
-  imported is not drawn again by a change of the setting.
+  request says: a notebook made before 2.2 or at Off has no line and is filled at Off, as its import drew it. A
+  notebook KOReader made (version 1) has no line either and is filled at Off, though KOReader drew its pages at the
+  reader's contrast: where that was darker, the pages a fill adds are lighter than KOReader's. The same PDF again
+  with every page is "PDF already imported." at any level: a PDF already imported is not drawn again by a change of
+  the setting.
 - **Read strictly**: settings.ini, a mark, an import's state, a notebook's `source.ini` and KOReader's request each
   say a level as `1.0`, `1.5` or `2.0` (`Gamma::parse`), and any other value is no gamma. settings.ini writes an
   unknown value back as it was, as it does `files_sort`'s.
