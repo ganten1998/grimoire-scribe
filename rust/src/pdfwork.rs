@@ -35,8 +35,18 @@
 //!                                   1), i its place among the page's links (the order the PDF drew them)
 //!   `Q <x0> <y0> .. <x3> <y3>`      the quad of the link just before it, corners in 1/16 px, signed
 //!   `O <page> <hex>`                an outline title (UTF-8, hex) that names this page: at most one a page
-//!   `F <uri> <other> <dead> <capped>`  what the walk left out: web links, other actions, links without a
-//!                                   place to go or an area, links past the worker's cap
+//!   `W <src> <x> <y> <w> <h> <i> <address>`  a web link (2.2): its page from 1, its area as an L record's, i its
+//!                                   place among the page's web links, the address as it is (weblinks_address_ok:
+//!                                   http or https, printable ASCII without a space, a plain host, at most 200
+//!                                   bytes). Sent after every page's L and Q records, at most WEBLINKS_PER_PAGE a
+//!                                   page and WEBLINKS_MAX in all (what a notebook keeps), so they never take a
+//!                                   page link's room
+//!   `U <capped> <off> <long>`       what the walk left out of the web links (2.2): those past those caps or the
+//!                                   records' room, those whose area falls off the page, and (counted in F's
+//!                                   first count too) the http or https addresses longer than 200 bytes
+//!   `F <uri> <other> <dead> <capped>`  what the walk left out: web links whose address the rules refuse, other
+//!                                   actions, links without a place to go or an area, page links past the worker's
+//!                                   cap
 
 use crate::sandbox::*;
 
@@ -119,6 +129,8 @@ pub enum Rec {
     Link(WireLink),
     Quad([i32; 8]),
     Name { page: u32, text: Vec<u8> },
+    Web(WireWeb),
+    WebLeft(WebLeft),
     Left(LeftOut),
 }
 
@@ -134,16 +146,43 @@ pub struct WireLink {
     pub index: u32,
 }
 
+/// A web link as the worker sends it (W record, 2.2): its page, area (page pixels), place among the page's web links
+/// and its address, which the writer takes only by weblinks_address_ok.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WireWeb {
+    pub src: u32,
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+    pub index: u32,
+    pub address: String,
+}
+
+/// What the link walk left out of the web links it kept the addresses of (U record, 2.2), for the log.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WebLeft {
+    /// past WEBLINKS_PER_PAGE on their page, WEBLINKS_MAX in all, or the walk's room after the page links
+    pub capped: u32,
+    /// their area off the page (sent, they would take a page's room in the walk)
+    pub off: u32,
+    /// refused for an http or https address over WEBLINK_ADDRESS_MAX bytes (LeftOut.uri counts them too)
+    pub long: u32,
+}
+
 /// What the link walk left out (F record), for the log.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LeftOut {
+    /// web links whose address the rules refuse (weblinks_address_ok); the others are W records since 2.2
     pub uri: u32,
     pub other: u32,
     pub dead: u32,
+    /// page links past the worker's cap (web links past theirs are WebLeft's)
     pub capped: u32,
 }
 
-/// The most link records a worker sends (the notebook keeps at most 14,400 in the end).
+/// The most link records a worker sends, web links included (the notebook keeps at most 14,400 document links and
+/// 3,600 web links in the end).
 pub const LINKS_MAX: usize = 60_000;
 /// Corners and areas stay within this many pixels of the page (a hostile file's numbers go no further).
 pub const LINK_COORD_MAX: i32 = 200_000;
@@ -218,6 +257,16 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
             Ok(Rec::Quad(q))
         }
         ("O", 3) => Ok(Rec::Name { page: num(1)?, text: unhex(t[2]).ok_or(bad)? }),
+        ("W", 8) => {
+            let sn = |i: usize| t.get(i).and_then(|x| snumber(x)).ok_or(Violation("record"));
+            let (w, h) = (sn(4)?, sn(5)?);
+            // (the address is one word: the rules take no space, and nothing outside printable ASCII)
+            if w < 1 || h < 1 || !crate::weblinks::weblinks_address_ok(t[7].as_bytes()) {
+                return Err(bad);
+            }
+            Ok(Rec::Web(WireWeb { src: num(1)?, x: sn(2)?, y: sn(3)?, w, h, index: num(6)?, address: t[7].to_string() }))
+        }
+        ("U", 4) => Ok(Rec::WebLeft(WebLeft { capped: num(1)?, off: num(2)?, long: num(3)? })),
         ("F", 5) => Ok(Rec::Left(LeftOut { uri: num(1)?, other: num(2)?, dead: num(3)?, capped: num(4)? })),
         ("E", 2 | 3) => Ok(Rec::Err(match (t[1], t.get(2)) {
             ("password", None) => ErrCode::Password,
@@ -237,7 +286,7 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
 // ---- what the link walk found, as the writer keeps it ----
 
 /// The links, names and counts of a walk, every record checked as it is taken (a worker that lies can only lie
-/// inside these bounds). It is also what the work folder's `links.part` and `names.part` hold, in the
+/// inside these bounds). It is also what the work folder's `links.part`, `names.part` and `webs.part` hold, in the
 /// records' own grammar, so the last slice reads them back through the same checks.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Collected {
@@ -245,6 +294,10 @@ pub struct Collected {
     pub links: Vec<(WireLink, Option<[i32; 8]>)>,
     /// page from 1 and its name (UTF-8, at most 95 bytes)
     pub names: Vec<(u32, Vec<u8>)>,
+    /// the web links (2.2), each address by weblinks_address_ok
+    pub webs: Vec<WireWeb>,
+    pub web_left: WebLeft,
+    seen_web_left: bool,
     pub left: LeftOut,
     seen_left: bool,
 }
@@ -259,7 +312,7 @@ impl Collected {
                 if l.src < 1 || l.src > pages || l.dst < 1 || l.dst > pages || off {
                     return bad("a link outside its pages");
                 }
-                if self.links.len() >= LINKS_MAX {
+                if self.links.len() + self.webs.len() >= LINKS_MAX {
                     return bad("too many links");
                 }
                 self.links.try_reserve(1).map_err(|_| Violation("out of memory"))?;
@@ -280,6 +333,23 @@ impl Collected {
                 self.names.push((page, text));
                 Ok(())
             }
+            Rec::Web(l) => {
+                let off = l.x.abs().max(l.y.abs()) > LINK_COORD_MAX || l.w > 2 * LINK_COORD_MAX || l.h > 2 * LINK_COORD_MAX;
+                if l.src < 1 || l.src > pages || off || !crate::weblinks::weblinks_address_ok(l.address.as_bytes()) {
+                    return bad("a web link outside its page");
+                }
+                if self.links.len() + self.webs.len() >= LINKS_MAX {
+                    return bad("too many links");
+                }
+                self.webs.try_reserve(1).map_err(|_| Violation("out of memory"))?;
+                self.webs.push(l);
+                Ok(())
+            }
+            Rec::WebLeft(l) if !self.seen_web_left => {
+                self.web_left = l;
+                self.seen_web_left = true;
+                Ok(())
+            }
             Rec::Left(l) if !self.seen_left => {
                 self.left = l;
                 self.seen_left = true;
@@ -289,7 +359,8 @@ impl Collected {
         }
     }
 
-    /// links.part: the L and Q records, then F.
+    /// links.part: the L and Q records, then F. Only records 2.1.0's grammar has (the web links are in webs.part),
+    /// so an import 2.2 began and 2.1.0 finishes keeps its links and names.
     pub fn links_text(&self) -> String {
         let mut t = String::new();
         for (l, q) in &self.links {
@@ -308,6 +379,18 @@ impl Collected {
         self.names.iter().map(|(p, n)| format!("O {p} {}\n", n.iter().map(|b| format!("{b:02x}")).collect::<String>())).collect()
     }
 
+    /// webs.part (2.2): the W records, then U, a part of their own, which no version before 2.2 reads. Empty for a
+    /// walk that found no web link to keep.
+    pub fn webs_text(&self) -> String {
+        if self.webs.is_empty() && self.web_left == WebLeft::default() {
+            return String::new();
+        }
+        let mut t: String = self.webs.iter().map(|l| format!("W {} {} {} {} {} {} {}\n", l.src, l.x, l.y, l.w, l.h, l.index, l.address)).collect();
+        let w = self.web_left;
+        t.push_str(&format!("U {} {} {}\n", w.capped, w.off, w.long));
+        t
+    }
+
     /// Reads the two parts back, strictly: None for any line the grammar or the page count refuses.
     pub fn from_parts(links: &[u8], names: &[u8], pages: u32) -> Option<Collected> {
         let mut c = Collected::default();
@@ -317,6 +400,23 @@ impl Collected {
             }
         }
         Some(c)
+    }
+
+    /// Reads webs.part back into a walk read from the other two, as strictly: W records, then U. On any line refused
+    /// the walk keeps no web link and false is returned (its links and names stay).
+    pub fn take_webs(&mut self, webs: &[u8], pages: u32) -> bool {
+        for line in webs.split(|&b| b == b'\n').filter(|l| !l.is_empty()) {
+            let ok = match parse_record(line) {
+                Ok(r @ Rec::Web(_)) if !self.seen_web_left => self.take(r, pages).is_ok(),
+                Ok(r @ Rec::WebLeft(_)) => self.take(r, pages).is_ok(),
+                _ => false,
+            };
+            if !ok {
+                (self.webs, self.web_left) = (Vec::new(), WebLeft::default());
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -344,6 +444,93 @@ pub fn settle_gray(rgb: &[u8], tol: u8) -> Option<Vec<u8>> {
 /// The luma of a pixel (the weights hayro's own gray conversion in the S1 probe used).
 pub fn luma(r: u8, g: u8, b: u8) -> u8 {
     ((r as u32 * 77 + g as u32 * 151 + b as u32 * 28) >> 8) as u8
+}
+
+// ---- darker lines (2.2, issue #173) ----
+
+/// Darker lines: a gamma on the levels of a gray page, for faint planners on e-ink. Each level becomes
+/// 255 (level / 255)^g, rounded to the nearest whole level, so white stays white, black stays black and every gray
+/// between goes darker. Only a page stored gray is changed: a page kept in colour (one `settle_gray` refuses, a page
+/// mixed gray and colour among them) is left exactly as it is (the owner's ruling, 2026-11-17). The writer applies it
+/// to the gray page it already holds (`darken`); the worker and its protocol know nothing of it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Gamma {
+    /// the page as it is rendered (gamma 1.0)
+    #[default]
+    Off,
+    /// gamma 1.5
+    Medium,
+    /// gamma 2.0
+    Strong,
+}
+
+impl Gamma {
+    /// The values a file says a level with (settings.ini `pdf_gamma`, a notebook's source.ini `gamma=`, KOReader's
+    /// request `gamma=`, an import's mark and state), by `index`.
+    pub const NAMES: [&'static str; 3] = ["1.0", "1.5", "2.0"];
+
+    /// A value from a file, read strictly: `1.5` and `2.0` are their levels; `1.0`, and anything else (another
+    /// spelling, another number, a space), is no gamma.
+    pub fn parse(v: &[u8]) -> Gamma {
+        match v {
+            b"1.5" => Gamma::Medium,
+            b"2.0" => Gamma::Strong,
+            _ => Gamma::Off,
+        }
+    }
+
+    pub fn index(self) -> i32 {
+        self as i32
+    }
+
+    /// The level of an index (settings.ini's, `index`); any other number is no gamma.
+    pub fn from_index(i: i32) -> Gamma {
+        match i {
+            1 => Gamma::Medium,
+            2 => Gamma::Strong,
+            _ => Gamma::Off,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        Gamma::NAMES[self as usize]
+    }
+
+    /// What each level becomes, computed in whole numbers (so every build makes the same bytes): 2.0 is
+    /// round(v^2 / 255); 1.5 is round(sqrt(v^3 / 255)), the largest n with (2n - 1)^2 255 <= 4 v^3. Neither ever
+    /// falls on a half, so the rounding has no tie to break.
+    pub fn table(self) -> [u8; 256] {
+        let mut t = [0u8; 256];
+        let mut n: u64 = 0;
+        for (i, out) in t.iter_mut().enumerate() {
+            let v = i as u64;
+            *out = match self {
+                Gamma::Off => i as u8,
+                Gamma::Strong => ((2 * v * v + 255) / 510) as u8,
+                Gamma::Medium => {
+                    while n < 255 && 255 * (2 * n + 1) * (2 * n + 1) <= 4 * v * v * v {
+                        n += 1;
+                    }
+                    n as u8
+                }
+            };
+        }
+        t
+    }
+}
+
+/// Darker lines on a page the writer holds: a gray page's levels through `g`'s table, in place. A colour page
+/// (3 channels) is left exactly as it is, and so is any page at `Gamma::Off`. Returns whether the page was a gray one
+/// the gamma went over.
+pub fn darken(p: &mut PagePixels, g: Gamma) -> bool {
+    if g == Gamma::Off || p.ch != 1 {
+        return false;
+    }
+    let t = g.table();
+    for v in p.px.iter_mut() {
+        *v = t[*v as usize];
+    }
+    true
 }
 
 // ====================================================================================================
@@ -921,8 +1108,9 @@ mod links {
             map
         }
 
-        /// Where an annotation or outline item goes: /A (GoTo, Named) first, else /Dest. `Err(())` for an
-        /// action Grimoire leaves out (counted by the caller), `Ok(None)` for none that resolves.
+        /// Where an annotation or outline item goes: /A (GoTo, Named) first, else /Dest. `Err` for an action
+        /// that goes to no page (a URI's with its address when the rules take it, else counted by the caller),
+        /// `Ok(None)` for none that resolves.
         fn target(&mut self, d: &Dict<'a>, src: u32) -> Result<Option<u32>, Kind> {
             if let Some(act) = d.get::<Dict<'a>>("A") {
                 let Some(s) = act.get::<Name<'a>>("S") else { return Err(Kind::Other) };
@@ -942,7 +1130,13 @@ mod links {
                     };
                 }
                 if name_is(&s, b"URI") {
-                    return Err(Kind::Uri);
+                    // (the address as weblinks_address_ok takes it, its ends trimmed; a string the rules refuse, or
+                    // none, is a web link left out)
+                    let u = act.get::<hayro::hayro_syntax::object::String<'a>>("URI");
+                    if u.as_ref().is_some_and(|u| crate::weblinks::weblinks_address_long(u.as_bytes())) {
+                        return Err(Kind::UriLong);
+                    }
+                    return Err(Kind::Uri(u.and_then(|u| crate::weblinks::weblinks_address_from(u.as_bytes()))));
                 }
                 return Err(Kind::Other);
             }
@@ -954,8 +1148,17 @@ mod links {
     }
 
     enum Kind {
-        Uri,
+        /// a web link, with its address when the rules take it
+        Uri(Option<String>),
+        /// a web link refused for an http or https address over 200 bytes
+        UriLong,
         Other,
+    }
+
+    /// Where a link annotation goes: a page (L records), or an address (W records, 2.2).
+    enum Goes {
+        Page(u32),
+        Web(String),
     }
 
     fn pt(fit: Affine, x: f64, y: f64) -> Option<(f64, f64)> {
@@ -1029,7 +1232,10 @@ mod links {
         b.iter().map(|x| format!("{x:02x}")).collect()
     }
 
-    /// Answers the LINKS command: L (and Q) records page by page, O records, then F.
+    /// Answers the LINKS command: L (and Q) records page by page, then the W records and U, O records, then F. The
+    /// page links are sent exactly as if the PDF had no web link: the web links wait for a second pass after them
+    /// (at most WEBLINKS_PER_PAGE a page and WEBLINKS_MAX in all, what a notebook keeps), under what is left of
+    /// LINKS_MAX and the 3 MiB, so a web link never takes a page link's room.
     pub(super) fn walk(pdf: &Pdf, pages: &[Page<'_>], w: i32, h: i32) {
         let mut page_of = HashMap::new();
         for (i, p) in pages.iter().enumerate() {
@@ -1040,11 +1246,14 @@ mod links {
         let mut wk = Walk { pdf, pages, page_of, tree: None, dests: None, left: LeftOut::default() };
         let mut out = Out { buf: String::new(), bytes: 0 };
         let mut sent = 0usize;
+        // (the W records kept for the second pass, and those left out)
+        let (mut webs, mut web_left): (Vec<String>, WebLeft) = (Vec::new(), WebLeft::default());
         for (i, page) in pages.iter().enumerate() {
             let src = i as u32 + 1;
             let Some(annots) = page.raw().get::<Array<'_>>("Annots") else { continue };
             let fit = page_fit(page, w, h);
             let mut index = 0u32;
+            let mut web_index = 0u32;
             for item in annots.raw_iter().take(ANNOTS_PER_PAGE) {
                 let Some(Object::Dict(a)) = wk.resolve(item) else { continue };
                 match a.get::<Name<'_>>("Subtype") {
@@ -1055,15 +1264,21 @@ mod links {
                 if a.get::<i32>("F").is_some_and(|f| f & (2 | 32) != 0) {
                     continue;
                 }
-                let dst = match wk.target(&a, src) {
-                    Ok(Some(d)) if d != src => d,
+                let goes = match wk.target(&a, src) {
+                    Ok(Some(d)) if d != src => Goes::Page(d),
                     // a link to its own page goes nowhere
                     Ok(_) => {
                         wk.left.dead += 1;
                         continue;
                     }
-                    Err(Kind::Uri) => {
+                    Err(Kind::Uri(Some(address))) => Goes::Web(address),
+                    Err(Kind::Uri(None)) => {
                         wk.left.uri += 1;
+                        continue;
+                    }
+                    Err(Kind::UriLong) => {
+                        wk.left.uri += 1;
+                        web_left.long += 1;
                         continue;
                     }
                     Err(Kind::Other) => {
@@ -1122,21 +1337,53 @@ mod links {
                     continue;
                 }
                 for (corners, polygon) in shapes {
-                    if sent >= LINKS_MAX || out.bytes > 3 << 20 {
-                        wk.left.capped += 1;
-                        continue;
-                    }
                     let (x, y, bw, bh) = box_of(&corners);
-                    out.put(&format!("L {src} {dst} {x} {y} {bw} {bh} {index}\n"));
-                    if polygon {
-                        let q: Vec<String> = corners.iter().flat_map(|c| [clamp_px(c.0 * 16.0).to_string(), clamp_px(c.1 * 16.0).to_string()]).collect();
-                        out.put(&format!("Q {}\n", q.join(" ")));
+                    match &goes {
+                        Goes::Page(dst) => {
+                            if sent >= LINKS_MAX || out.bytes > 3 << 20 {
+                                wk.left.capped += 1;
+                                continue;
+                            }
+                            out.put(&format!("L {src} {dst} {x} {y} {bw} {bh} {index}\n"));
+                            if polygon {
+                                let q: Vec<String> = corners.iter().flat_map(|c| [clamp_px(c.0 * 16.0).to_string(), clamp_px(c.1 * 16.0).to_string()]).collect();
+                                out.put(&format!("Q {}\n", q.join(" ")));
+                            }
+                            index += 1;
+                            sent += 1;
+                        }
+                        // (a web link's area is its quad's box: no polygon; kept for after the page links, and
+                        // only with something of it on the page, as the writer takes it)
+                        Goes::Web(address) => {
+                            let on = (x as i64 + bw as i64).min(w as i64) - (x as i64).max(0) >= 1 && (y as i64 + bh as i64).min(h as i64) - (y as i64).max(0) >= 1;
+                            if !on {
+                                web_left.off += 1;
+                                continue;
+                            }
+                            if web_index as usize >= crate::weblinks::WEBLINKS_PER_PAGE || webs.len() >= crate::weblinks::WEBLINKS_MAX || webs.try_reserve(1).is_err() {
+                                web_left.capped += 1;
+                                continue;
+                            }
+                            webs.push(format!("W {src} {x} {y} {bw} {bh} {web_index} {address}\n"));
+                            web_index += 1;
+                        }
                     }
-                    index += 1;
-                    sent += 1;
                 }
             }
         }
+        // the web links, after every page link, in what room the page links left
+        for line in &webs {
+            if sent >= LINKS_MAX || out.bytes > 3 << 20 {
+                web_left.capped += 1;
+                continue;
+            }
+            out.put(line);
+            sent += 1;
+        }
+        if !webs.is_empty() || web_left != WebLeft::default() {
+            out.put(&format!("U {} {} {}\n", web_left.capped, web_left.off, web_left.long));
+        }
+        drop(webs);
         // the outline names pages that have no name: depth first, the first item pointing at a page
         let mut named = vec![false; pages.len() + 1];
         let first = wk.catalog().and_then(|c| c.get::<Dict<'_>>("Outlines")).and_then(|o| o.get::<Dict<'_>>("First"));
@@ -1375,7 +1622,7 @@ impl Session {
             }
             match parse_record(&line) {
                 Ok(Rec::ProbeDone) => return Ok(got),
-                Ok(r @ (Rec::Link(_) | Rec::Quad(_) | Rec::Name { .. } | Rec::Left(_))) => {
+                Ok(r @ (Rec::Link(_) | Rec::Quad(_) | Rec::Name { .. } | Rec::Web(_) | Rec::WebLeft(_) | Rec::Left(_))) => {
                     if let Err(v) = got.take(r, self.pages) {
                         self.w.kill_and_reap();
                         return Err(v.0);
@@ -1724,6 +1971,79 @@ mod tests {
         assert!(settle_gray(&[255, 250, 235], GRAY_TOLERANCE).is_none());
         // a faint JPEG cast is gray
         assert!(settle_gray(&[200, 203, 201], GRAY_TOLERANCE).is_some());
+    }
+
+    // Darker lines (2.2, issue #173): each level on a gray page, against the formula computed in floating point.
+    #[test]
+    fn darker_lines_take_a_gray_page_through_its_gamma() {
+        let ramp: Vec<u8> = (0..=255u8).collect();
+        for (g, e) in [(Gamma::Medium, 1.5f64), (Gamma::Strong, 2.0)] {
+            let mut p = PagePixels { w: 16, h: 16, ch: 1, px: ramp.clone() };
+            assert!(darken(&mut p, g));
+            for (v, &out) in p.px.iter().enumerate() {
+                let want = (255.0 * (v as f64 / 255.0).powf(e)).round() as u8;
+                assert_eq!(out, want, "level {v} at gamma {e}");
+                assert!(out as usize <= v, "never lighter");
+            }
+            // white and black stay; the levels keep their order
+            assert_eq!((p.px[0], p.px[255]), (0, 255));
+            assert!(p.px.windows(2).all(|w| w[0] <= w[1]));
+        }
+        // a mid gray, a faint line and a planner's pale gray at each level
+        let at = |g: Gamma, v: u8| g.table()[v as usize];
+        assert_eq!((at(Gamma::Off, 128), at(Gamma::Medium, 128), at(Gamma::Strong, 128)), (128, 91, 64));
+        assert_eq!((at(Gamma::Medium, 200), at(Gamma::Strong, 200)), (177, 157));
+        assert_eq!((at(Gamma::Medium, 207), at(Gamma::Strong, 207)), (187, 168));
+    }
+
+    // Off is the page as it was, byte for byte; a colour page, and a page mixed gray and colour (stored in colour),
+    // are never changed.
+    #[test]
+    fn darker_lines_leave_off_and_colour_pages_as_they_are() {
+        let ramp: Vec<u8> = (0..=255u8).collect();
+        let mut p = PagePixels { w: 16, h: 16, ch: 1, px: ramp.clone() };
+        assert!(!darken(&mut p, Gamma::Off));
+        assert_eq!(p.px, ramp);
+        assert_eq!(Gamma::Off.table().to_vec(), ramp);
+        // a colour page: three channels, untouched at every level
+        let colour: Vec<u8> = (0..16 * 16).flat_map(|i| [(i % 256) as u8, 40, 200]).collect();
+        // a page gray everywhere but one red pixel: the writer keeps it in colour, and so does darken
+        let mut mixed: Vec<u8> = (0..16 * 16).flat_map(|i| {
+            let v = (i % 256) as u8;
+            [v, v, v]
+        }).collect();
+        mixed[3 * 100] = 255;
+        mixed[3 * 100 + 1] = 0;
+        mixed[3 * 100 + 2] = 0;
+        assert!(settle_gray(&mixed, GRAY_TOLERANCE).is_none(), "a page with one coloured pixel stays in colour");
+        for px in [colour, mixed] {
+            for g in [Gamma::Off, Gamma::Medium, Gamma::Strong] {
+                let mut p = PagePixels { w: 16, h: 16, ch: 3, px: px.clone() };
+                assert!(!darken(&mut p, g));
+                assert_eq!(p.px, px, "{g:?}");
+            }
+        }
+        // a blank page (all white) is white at every level
+        let mut b = blank_page(8, 8);
+        assert!(darken(&mut b, Gamma::Strong));
+        assert!(b.px.iter().all(|&v| v == 255));
+    }
+
+    // A level comes from a file (settings.ini, request.ini, source.ini, a mark, a state): only the three known values
+    // are taken, and anything else is no gamma.
+    #[test]
+    fn darker_lines_read_only_the_three_known_values() {
+        assert_eq!(Gamma::parse(b"1.5"), Gamma::Medium);
+        assert_eq!(Gamma::parse(b"2.0"), Gamma::Strong);
+        assert_eq!(Gamma::parse(b"1.0"), Gamma::Off);
+        for bad in [&b""[..], b"2", b"1", b"1.50", b"2.00", b" 1.5", b"1.5 ", b"1,5", b"+1.5", b"3.0", b"0.8", b"1.5\n", b"1.5\r", b"medium", b"Strong", b"0x2", b"\xff"] {
+            assert_eq!(Gamma::parse(bad), Gamma::Off, "{:?}", String::from_utf8_lossy(bad));
+        }
+        for g in [Gamma::Off, Gamma::Medium, Gamma::Strong] {
+            assert_eq!(Gamma::parse(g.name().as_bytes()), g);
+            assert_eq!(Gamma::from_index(g.index()), g);
+        }
+        assert_eq!((Gamma::from_index(-1), Gamma::from_index(3), Gamma::from_index(i32::MAX)), (Gamma::Off, Gamma::Off, Gamma::Off));
     }
 
     #[test]

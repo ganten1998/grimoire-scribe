@@ -151,9 +151,36 @@ fn nothing_drawn_when_it_cannot_be_encoded() {
     canvas_free(&mut c);
 }
 
+// A web link's card (2.2): every address the rules keep has its code (200 bytes of any printable ASCII fit version
+// 10 at level M), drawn in the card's 600 px box; ui_qr_matches, the runner's check, reads the drawn code back
+// module for module against the text's own, its negative too, and tells a module changed or another text.
+fn every_web_address_has_its_code_and_the_check_reads_it() {
+    let longest = format!("HTTPS://e.org/{}", "~!".repeat(93));
+    check!(longest.len() == WEBLINK_ADDRESS_MAX && weblinks_address_ok(longest.as_bytes()));
+    let mut c = Canvas::default();
+    canvas_init(&mut c, 700, 700);
+    for (text, negative) in [(longest.as_str(), false), (longest.as_str(), true), ("https://example.org/grimoire", false)] {
+        canvas_mark(&mut c);
+        let sym = ui_qr(&mut c, Rect { x: 50, y: 50, w: 600, h: 600 }, text, negative);
+        check!(!rect_is_empty(sym) && sym.w / ui_qr_modules(text) >= 9);
+        check!(ui_qr_matches(&c, sym, text, negative));
+        check!(!ui_qr_matches(&c, sym, text, !negative));
+        check!(!ui_qr_matches(&c, sym, "https://example.org/other", negative));
+        // one module flipped (the middle one's centre pixel)
+        let m = sym.w / ui_qr_modules(text);
+        let (x, y) = (sym.x + sym.w / 2 / m * m + m / 2, sym.y + sym.h / 2 / m * m + m / 2);
+        let i = (y * c.stride + x) as usize;
+        c.px[i] = 255 - c.px[i];
+        check!(!ui_qr_matches(&c, sym, text, negative));
+    }
+    check!(!ui_qr_matches(&c, Rect { x: 0, y: 0, w: 10, h: 10 }, "https://e.org", false));
+    canvas_free(&mut c);
+}
+
 #[test]
 fn test_qr() {
     run!(share_url_symbol);
     run!(nothing_drawn_when_it_cannot_be_encoded);
+    run!(every_web_address_has_its_code_and_the_check_reads_it);
     done();
 }

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-17 11:00-0600\n"
+"POT-Creation-Date: 2026-11-17 14:32-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1370,6 +1370,8 @@ msgstr ""
 #. TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
 #. file... opens): this copies it into grimoire/templates, to write on as paper (a row of
 #. about 800 px at 44 px).
+#. TRANSLATORS: (also) a PDF's card in Files: this copies the PDF into grimoire/templates, where each of
+#. its pages becomes a template, to write on as paper (a row of about 800 px at 44 px).
 #: rust/src/browser.rs
 msgid "Use as template"
 msgstr ""
@@ -1858,7 +1860,10 @@ msgstr ""
 
 #. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
 #. that (116 px at 34 px, as Pin).
+#. TRANSLATORS: also the only row of a web link's card (the address and its QR code): closes the card (about
+#. 600 px at 44 px).
 #: rust/src/editor.rs rust/src/i18n.rs rust/src/keyboard.rs rust/src/library.rs
+#: rust/src/linkcard.rs
 msgid "Done"
 msgstr ""
 
@@ -3868,6 +3873,14 @@ msgstr ""
 msgid "Pen button: %s"
 msgstr ""
 
+#. TRANSLATORS: Settings' System category row that opens the darker lines choices, with the one in
+#. use ("Darker lines in imported PDFs: Medium"): how dark the gray pages of a PDF imported from now
+#. on are drawn. A PDF already imported stays as it is.
+#: rust/src/library.rs
+#, c-format
+msgid "Darker lines in imported PDFs: %s"
+msgstr ""
+
 #: rust/src/library.rs
 #, c-format
 msgid "Mirror PDFs to %s (USB)"
@@ -4199,6 +4212,12 @@ msgstr ""
 msgid "Eraser"
 msgstr ""
 
+#. TRANSLATORS: the title of the list of how dark the gray pages of a PDF imported from now on are drawn
+#. (Settings > System): Off, Medium, Strong.
+#: rust/src/library.rs
+msgid "Darker lines in imported PDFs"
+msgstr ""
+
 #: rust/src/library.rs
 msgid "Kindle"
 msgstr ""
@@ -4256,7 +4275,8 @@ msgid "Links"
 msgstr ""
 
 #. TRANSLATORS: Settings > System > About > a link, above the link's QR code.
-#: rust/src/library.rs
+#. TRANSLATORS: also a web link's card, above the address's QR code (about 680 px at 34 px).
+#: rust/src/library.rs rust/src/linkcard.rs
 msgid "Scan with a phone's camera"
 msgstr ""
 
@@ -4526,7 +4546,9 @@ msgstr ""
 
 #. TRANSLATORS: under a page's label in the Pages view, the page of the book it holds (a page
 #. annotated from KOReader): "p. 12". 355 px at 34 px.
-#: rust/src/mapview.rs rust/src/pagesview.rs
+#. TRANSLATORS: (also) after the name of a PDF in grimoire/templates, under a tile of the Templates sheet: which
+#. of the PDF's pages the tile is ("Planner p. 3"). %d is the page's number.
+#: rust/src/mapview.rs rust/src/pagesview.rs rust/src/tplsheet.rs
 #, c-format
 msgid "p. %d"
 msgstr ""
@@ -5175,6 +5197,24 @@ msgstr ""
 
 #: rust/src/settingsmenu.rs
 msgid "Takes away only what it touches"
+msgstr ""
+
+#. TRANSLATORS: Settings' System category, the row that opens the darker lines choices, with the one in use
+#. ("Darker lines in imported PDFs: Off"), and its list's three choices: the gray pages of a PDF imported from
+#. now on are drawn as they are, a little darker, or darker still (faint lines read better on the Kindle).
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Off"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Medium"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgctxt "darker lines"
+msgid "Strong"
 msgstr ""
 
 #: rust/src/settingsmenu.rs

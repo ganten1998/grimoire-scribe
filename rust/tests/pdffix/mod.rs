@@ -565,6 +565,102 @@ pub fn tabs() -> Vec<u8> {
     make_linked(&pages, &links, &extra)
 }
 
+/// Three pages of 465 x 620 points (one point is 4 px on the Scribe's page) with web links (2.2, issue #174). Page 1:
+/// a box near the top with a link to https://example.org/grimoire, the tab of tabs() going to page 3 (a document
+/// link), and a box below with a `javascript:` link (refused). Page 2: an address on two lines (two quads, a link
+/// each, one address) and a `mailto:` link (refused). Page 3: an `http://` address with spaces around it in the
+/// file (trimmed). The scenarios tap them.
+pub fn weblinks() -> Vec<u8> {
+    let pages: Vec<PageSpec> = (0..3).map(|k| PageSpec::new(465.0, 620.0, &weblinks_content(k + 1))).collect();
+    let quad = |x0: f64, y0: f64, x1: f64, y1: f64| [x0, y1, x1, y1, x0, y0, x1, y0]; // as Acrobat orders a quad's corners
+    let mut two = Lnk::new([40.0, 360.0, 420.0, 440.0], Act::Uri("https://example.org/a/long/address/that/goes/on/two/lines"));
+    two.quads = vec![quad(40.0, 400.0, 420.0, 440.0), quad(40.0, 360.0, 200.0, 400.0)];
+    let links = vec![
+        vec![
+            Lnk::new([40.0, 480.0, 300.0, 520.0], Act::Uri("https://example.org/grimoire")),
+            Lnk::new([380.0, 500.0, 460.0, 540.0], Act::Page(3)),
+            Lnk::new([40.0, 380.0, 300.0, 420.0], Act::Uri("javascript:alert(1)")),
+        ],
+        vec![two, Lnk::new([40.0, 200.0, 300.0, 240.0], Act::Uri("mailto:someone@example.org"))],
+        vec![Lnk::new([40.0, 480.0, 300.0, 520.0], Act::Uri("  http://example.com/notes  "))],
+    ];
+    make_linked(&pages, &links, &Extra::default())
+}
+
+fn weblinks_content(k: usize) -> String {
+    let mut c = String::new();
+    c.push_str("0 G 2 w 20 20 425 580 re S\n");
+    c.push_str(&format!("BT /F1 18 Tf 40 580 Td (Web links {k}) Tj ET\n"));
+    match k {
+        1 => {
+            c.push_str(&gray_rect(0.85, 40.0, 480.0, 260.0, 40.0));
+            c.push_str("0 g BT /F1 14 Tf 50 495 Td (example.org/grimoire) Tj ET\n");
+            c.push_str(&gray_rect(0.7, 380.0, 500.0, 80.0, 40.0)); // the tab
+            c.push_str(&gray_rect(0.85, 40.0, 380.0, 260.0, 40.0));
+            c.push_str("0 g BT /F1 14 Tf 50 395 Td (a script: refused) Tj ET\n");
+        }
+        2 => {
+            c.push_str(&gray_rect(0.85, 40.0, 400.0, 380.0, 40.0));
+            c.push_str(&gray_rect(0.85, 40.0, 360.0, 160.0, 40.0));
+            c.push_str("0 g BT /F1 14 Tf 50 415 Td (example.org/a/long/address/that/goes/on/) Tj ET\n");
+            c.push_str("0 g BT /F1 14 Tf 50 375 Td (two/lines) Tj ET\n");
+            c.push_str(&gray_rect(0.85, 40.0, 200.0, 260.0, 40.0));
+            c.push_str("0 g BT /F1 14 Tf 50 215 Td (mail: refused) Tj ET\n");
+        }
+        _ => {
+            c.push_str(&gray_rect(0.85, 40.0, 480.0, 260.0, 40.0));
+            c.push_str("0 g BT /F1 14 Tf 50 495 Td (example.com/notes) Tj ET\n");
+        }
+    }
+    c
+}
+
+/// The longest address a web link keeps, of wide letters, whose real host ends it: `https://www.example.org.` then
+/// labels of 60, 60 and 40 `W`s and `.evil.example/` (200 bytes).
+pub fn weblinks_wide_address() -> String {
+    let w = |n: usize| "W".repeat(n);
+    format!("https://www.example.org.{}.{}.{}.evil.example/", w(60), w(60), w(40))
+}
+
+/// One page of 465 x 620 points (one point is 4 px on the Scribe's page) with two web links (2.2, issue #174): a box
+/// near the top with weblinks_wide_address(), and a box below with an address whose `\` a browser reads as `/`
+/// (refused). The scenario shows the first's card in the look whose letters are widest.
+pub fn weblinks_wide() -> Vec<u8> {
+    let mut c = String::new();
+    c.push_str("0 G 2 w 20 20 425 580 re S\n");
+    c.push_str("BT /F1 18 Tf 40 580 Td (Wide web links) Tj ET\n");
+    c.push_str(&gray_rect(0.85, 40.0, 480.0, 260.0, 40.0));
+    c.push_str("0 g BT /F1 14 Tf 50 495 Td (the longest address) Tj ET\n");
+    c.push_str(&gray_rect(0.85, 40.0, 380.0, 260.0, 40.0));
+    c.push_str("0 g BT /F1 14 Tf 50 395 Td (a backslash: refused) Tj ET\n");
+    let pages = vec![PageSpec::new(465.0, 620.0, &c)];
+    let wide: &'static str = Box::leak(weblinks_wide_address().into_boxed_str());
+    let links = vec![vec![
+        Lnk::new([40.0, 480.0, 300.0, 520.0], Act::Uri(wide)),
+        Lnk::new([40.0, 380.0, 300.0, 420.0], Act::Uri("https://evil.example\\\\@trusted.example/")),
+    ]];
+    make_linked(&pages, &links, &Extra::default())
+}
+
+/// Three pages of 465 x 620 points (one point is 4 px on the Scribe's page; 2.2, issue #174). Page 1: a small tab
+/// (10 x 10 points, smaller than a finger: its touch area grows) to page 3, and a web link over the whole page drawn
+/// after it. Page 2: the same tab and no web link. The scenario taps where they overlap.
+pub fn weblinks_overlap() -> Vec<u8> {
+    let content = |k: usize| {
+        let mut c = String::new();
+        c.push_str("0 G 2 w 20 20 425 580 re S\n");
+        c.push_str(&format!("BT /F1 18 Tf 40 580 Td (Overlap {k}) Tj ET\n"));
+        if k < 3 {
+            c.push_str(&gray_rect(0.5, 20.0, 400.0, 10.0, 10.0)); // the small tab
+        }
+        c
+    };
+    let pages: Vec<PageSpec> = (1..=3).map(|k| PageSpec::new(465.0, 620.0, &content(k))).collect();
+    let tab = || Lnk::new([20.0, 400.0, 30.0, 410.0], Act::Page(3));
+    let links = vec![vec![tab(), Lnk::new([0.0, 0.0, 465.0, 620.0], Act::Uri("https://whole.example/"))], vec![tab()], vec![]];
+    make_linked(&pages, &links, &Extra::default())
+}
+
 fn planner_content_small(k: usize) -> String {
     let mut c = String::new();
     c.push_str("0 G 2 w 20 20 425 580 re S\n");
@@ -586,5 +682,11 @@ pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
         ("junk/Broken.pdf", junk()),
         ("pick/Planner.pdf", planner(2)),
         ("tabs/Tabs Planner.pdf", tabs()),
+        // (2.2, issue #172: a template PDF past the 50 pages a template PDF may have, beside one within them)
+        ("tpl-cap/Long Planner.pdf", planner(51)),
+        ("tpl-cap/Weekly.pdf", planner(2)),
+        ("weblinks/Links.pdf", weblinks()),
+        ("weblinks_wide/Wide.pdf", weblinks_wide()),
+        ("weblinks_overlap/Overlap.pdf", weblinks_overlap()),
     ]
 }

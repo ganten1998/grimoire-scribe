@@ -205,6 +205,10 @@ pub struct Settings {
     /// Memory only, never saved: settings.ini's `home=` named no home (a value `Home::parse` refuses), so home is
     /// Notebooks, and the Library says "Home folder not found." once as it first shows.
     pub home_refused: bool,
+    /// Darker lines in imported PDFs (2.2, issue #173): the gamma a PDF imported from then on draws its gray pages
+    /// at, by `pdfwork::Gamma`'s index (settings.ini `pdf_gamma`, `Gamma::NAMES`: absent at Off, the default; a value
+    /// this build does not have is Off and is written back as it was).
+    pub pdf_gamma: i32,
 }
 
 /// settings.ini files_sort's values, by Settings.files_sort (2.2).
@@ -4956,6 +4960,8 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"files_sort" => s.files_sort = keep_named("files_sort", v, &FILES_SORT_NAMES),
         b"files_show" => s.files_show = keep_named("files_show", v, &FILES_SHOW_NAMES),
         b"files_view" => s.files_view = keep_named("files_view", v, &FILES_VIEW_NAMES),
+        // 2.2: darker lines in imported PDFs (issue #173), read strictly: only the three known values
+        b"pdf_gamma" => s.pdf_gamma = keep_named("pdf_gamma", v, &crate::pdfwork::Gamma::NAMES),
         // 2.2: the home folder (issue #160), read strictly (home.rs). A value that names no home is not used and
         // not kept: home is Notebooks, the Library says so once, and the next save leaves the line out. (The
         // value is never logged: it may hold a name.)
@@ -5367,6 +5373,10 @@ pub fn settings_save(s: &Settings) -> i32 {
     if crate::home::Home::parse(s.home.as_bytes()).is_some() {
         put_unless_default(&mut b, "home", s.home.as_str(), "");
     }
+    // 2.2: darker lines in imported PDFs (issue #173), a line only away from Off (or a value this build does not
+    // have, written back as it was).
+    let g = crate::pdfwork::Gamma::from_index(s.pdf_gamma);
+    put_unless_default(&mut b, "pdf_gamma", g.name(), crate::pdfwork::Gamma::Off.name());
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

@@ -2,6 +2,11 @@
 
 ## 2.1.1 (unreleased)
 
+- **Web links in PDFs** (#174). A PDF's web links, left out until now, are kept when you import the PDF: tap one and
+  a card shows the address and a QR code to scan with your phone's camera, which opens it there (the Kindle opens
+  nothing itself). Only http and https addresses of up to 200 characters whose host is written plainly are kept.
+  Turn on Areas in the Links bar to see where they are. A notebook with web links opens in earlier versions as
+  before, without them; they are back when you return.
 - **KOReader hands PDFs over by their path** (#142). With the KOReader plugin updated (Settings > KOReader >
   Install / update Grimoire plugin, then restart KOReader), Open this book in Grimoire on a PDF no longer has
   KOReader draw every page: Grimoire imports the PDF itself, in colour where the PDF has colour, with the notice
@@ -104,6 +109,18 @@
   drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
   once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
   Deleting `grimoire/fonts/.cache` still has every font checked again.
+- **Darker lines in imported PDFs** (#173). Settings > System > Darker lines in imported PDFs (Off, Medium, Strong)
+  draws the gray pages of a PDF imported from then on darker, for faint planners; pages in colour stay as they are, and
+  missing pages added to a notebook later are drawn at the level it was imported at (Off for a notebook made before 2.2
+  or by KOReader). KOReader's Open this book passes the reader's contrast the same way when the reader draws the PDF
+  darker. On a KOReader before 2023.10, Open with from the file browser now takes a book's contrast as that KOReader
+  keeps it (it read the inverse before).
+- **PDFs as templates** (#172). A PDF in `grimoire/templates` gives a template for each of its pages: More layouts...
+  shows a tile a page ("Planner p. 3"), drawn once in the background by the same separate, sandboxed reader as a PDF
+  import, after any import. A page works as a picture template does, in colour where the PDF has colour. In Files, a
+  PDF's card offers Use as template. A PDF of more than 50 pages, over 16 MB, with a password, or that cannot be read
+  is not used, and shows its tile crossed out (so does a page that cannot be drawn); the sheet takes 200 PDF pages in
+  all.
 - **Send a PDF from the Share page** (#175). While Share is open, its page in a phone's or a computer's browser has
   a Send a PDF to the Kindle button. Once the PDF has arrived, the Kindle asks "Import "2027 Planner.pdf" (12.3 MB)?"
   with a code of four digits under it, which the page that sent it shows too, and keeps it only if you tap Import:

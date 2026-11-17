@@ -25,6 +25,9 @@ pub struct Template {
     pub bad: bool,
     /// its preview (1/6 of the page), once template_thumb read it
     pub thumb: Canvas,
+    /// a page of a PDF in the folder (2.2, issue #172: bgwork_tplpdf.rs), from 1: `path` is that page's picture in the
+    /// folder's cache. 0 for a picture, and for a whole PDF whose pages are not counted yet (`path` the PDF's)
+    pub page: u32,
 }
 
 
