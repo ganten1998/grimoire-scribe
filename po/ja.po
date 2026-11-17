@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 16:16-0600\n"
+"POT-Creation-Date: 2026-11-16 19:48-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -1167,7 +1167,7 @@ msgstr "ファイルから..."
 #. in bold), and the title of the file picker it opens (the Library's header, about 1400 px at 56 px):
 #. pick a font file anywhere on the Kindle, its own fonts folder too, and it is copied into
 #. grimoire/fonts.
-#: rust/src/browser.rs
+#: rust/src/browser.rs rust/src/library.rs
 msgid "Add a font..."
 msgstr ""
 
