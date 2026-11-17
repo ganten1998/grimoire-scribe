@@ -2993,14 +2993,16 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   toast, "Home folder not found." (the screen does not say why), and home is Notebooks again in settings.ini at
   once. The value is not kept, unlike `files_sort`'s (which a later version may have written): kept, it would be
   tried and said at every start, and for a Library folder that is gone the one Reset row in reach would be Files'
-  Go to sheet, behind a card that is hidden by default. A home that goes away while Grimoire runs (over USB) stays
-  set until Grimoire next goes there. A Files screen that shows
-  it gives way as it is next used: a tap on a folder in it (its row, its card's Open, a part of the path bar) says
-  "Couldn't open folder." and a card's act "File changed. Try again.", and either reads the folder shown again,
-  which, gone, gives way to the nearest folder above that opens (`folder_failed`, `changed_since`, `reread`); Esc
-  there goes up the same way, without asking "Exit Grimoire?", once the home folder no longer opens as a home (it
-  is walked again on the key: a folder gone, or a link in its place; `Browser::at_home_root`). Until then its rows
-  are as they were listed. The next start, the `home` action or the Go to sheet's Home row finds it gone, as above.
+  Go to sheet, behind a card that is hidden by default. Only a folder gone or refused is put back so: a walk that
+  failed on a read error (`FsErr::Io`, `home_folder_check`) keeps the setting, and the Library's top shows for that
+  run with the same toast and the error in the log. A home that goes away while Grimoire runs (over USB) stays set
+  until Grimoire next goes there. A Files screen that shows it gives way as it is next used: a tap on a folder in it
+  (its row, its card's Open, a part of the path bar) says "Couldn't open folder." and a card's act "File changed.
+  Try again.", and either reads the folder shown again, which, gone, gives way to the nearest folder above that
+  opens (`folder_failed`, `changed_since`, `reread`); Esc there goes up the same way, without asking "Exit
+  Grimoire?", once the home folder no longer opens as a home (it is walked again on the key: a folder gone, or a
+  link in its place; `Browser::at_home_root`). Until then its rows are as they were listed. The next start, the
+  `home` action or the Go to sheet's Home row finds it gone, as above.
 - **Set and reset.** Files' Go to sheet has a first row, "Home: %s" (Notebooks; a Library folder by its own name; a
   place of Files' root by the place's name, any other folder by its own), that goes there. After its folders comes
   Set as home, for the folder shown, unless it is home already or can never be (the storage's root, the trash, a
@@ -3032,8 +3034,9 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   Files' Delete of the home folder or of a folder it is in (`trash_card`, then `home_follows`), and the Library's
   Remove folder on the folder that is home. A Restore in Files' Trash puts the folder back, not home: it is set
   again by hand. (A folder removed or deleted outside Grimoire is found gone, as above.)
-- **Logs**: `home: the home folder was not found: home is Notebooks again`, and as settings.ini is read `settings:
-  home= names no home (N bytes): Notebooks`; never the value, which may hold a name.
+- **Logs**: `home: the home folder was not found: home is Notebooks again`, `home: the home folder could not be read
+  (<error>): the Library's top for now, home kept`, and as settings.ini is read `settings: home= names no home (N
+  bytes): Notebooks`; never the value, which may hold a name.
 - **Strings**: Home: %s, Set as home, Reset home to Notebooks, Home folder not found. ("Notebooks", "Couldn't open
   folder.", "File changed. Try again." and "Exit Grimoire?" were there.)
 - **Tests**: `home.rs`'s unit tests (the shapes and the value each is kept as, hostile values, the walk on a tree with

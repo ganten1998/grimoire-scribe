@@ -14,9 +14,10 @@
 //! (`FsStorage::folder`: each part opened from the one before, never through a link, on the storage's own device,
 //! in no refused place, and not Grimoire's trash). Nothing joins the value to a path and opens that, and nothing is
 //! listed, read or made at a home that fails: the screens (library.rs) then show the Library's top, say "Home folder
-//! not found." once, and put the setting back to Notebooks.
+//! not found." once, and put the setting back to Notebooks (or keep it, when the walk failed on a read error and
+//! not because the folder is gone or refused).
 
-use crate::fsview::{FsStorage, StoragePath, FS_PATH_MAX};
+use crate::fsview::{FsErr, FsStorage, StoragePath, FS_PATH_MAX};
 use crate::prelude::*;
 
 /// A settings.ini `home=` value is shorter than this: `files/` and a storage path (shorter than FS_PATH_MAX).
@@ -68,13 +69,23 @@ impl Home {
 /// Whether the folder `p` of the storage `st` can be home now: a path settings.ini can keep as it is (one that
 /// `Home::parse` gives back), which Files' own walk reaches as a folder (`FsStorage::folder`).
 pub fn home_folder_ok(st: &FsStorage, p: &StoragePath) -> bool {
-    Home::parse(Home::Files(p.clone()).value().as_bytes()) == Some(Home::Files(p.clone())) && st.folder(p).is_ok()
+    home_folder_check(st, p).is_ok()
 }
 
-/// The same on the storage Files browses (opened for this one look), false when there is none.
-pub fn home_folder_there(p: &StoragePath) -> bool {
-    let Some(root) = crate::pdfimport::storage_root() else { return false };
-    FsStorage::open(&root, &store_root()).is_ok_and(|st| home_folder_ok(&st, p))
+/// The same with why not: `FsErr::Refused` for a path settings.ini cannot keep, else what the walk says. Every error
+/// but `FsErr::Io` says the folder is gone or refused; `Io` is a read that failed for another reason.
+pub fn home_folder_check(st: &FsStorage, p: &StoragePath) -> Result<(), FsErr> {
+    if Home::parse(Home::Files(p.clone()).value().as_bytes()) != Some(Home::Files(p.clone())) {
+        return Err(FsErr::Refused);
+    }
+    st.folder(p).map(|_| ())
+}
+
+/// The same on the storage Files browses (opened for this one look); `FsErr::Io` when there is none or it does not
+/// open.
+pub fn home_folder_there(p: &StoragePath) -> Result<(), FsErr> {
+    let root = crate::pdfimport::storage_root().ok_or(FsErr::Io(libc::ENODEV))?;
+    home_folder_check(&FsStorage::open(&root, &store_root())?, p)
 }
 
 #[cfg(test)]

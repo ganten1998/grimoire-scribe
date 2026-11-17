@@ -6,7 +6,7 @@ use crate::about::AboutView;
 use crate::settingsmenu;
 use crate::ui::{ui_row, ui_row_page, ui_row_pager, Row as UiRow};
 use crate::browser::{BrowseMode, Browser, BrowserResult, FilesPrefs, PickSpec};
-use crate::fsview::StoragePath;
+use crate::fsview::{FsErr, StoragePath};
 use crate::home::{home_folder_there, Home};
 
 #[repr(i32)]
@@ -7961,7 +7961,7 @@ fn files_result(a: &mut App, r: BrowserResult) {
         // as a folder that does not open. Nothing else is said: the folder that is home has no Back, and the rows
         // read the other way
         BrowserResult::SetHome(p) => {
-            if home_folder_there(&p) {
+            if home_folder_there(&p).is_ok() {
                 home_save(a, Home::Files(p));
                 app_toast_dismiss(a);
             } else {
@@ -8215,44 +8215,46 @@ fn home_go(a: &mut App) {
         }
     }
     reload(a);
+    // (why not: gone or refused, FsErr::Io for a read that failed otherwise)
     let found = match &home {
-        None => false,
-        Some(Home::Notebooks) => true,
-        Some(Home::Library(f)) => lib(a).folders.iter().any(|x| x == f),
+        None => Err(FsErr::Refused),
+        Some(Home::Notebooks) => Ok(()),
+        Some(Home::Library(f)) => lib(a).folders.iter().any(|x| x == f).then_some(()).ok_or(FsErr::NotFound),
         Some(Home::Files(p)) => home_files(a, p),
     };
-    if !found {
-        home_lost(a);
+    if let Err(e) = found {
+        home_lost(a, e);
     }
 }
 
-/// Files, the place, at the folder `p` that is home: opened there, or taken there when it is up. False, with
+/// Files, the place, at the folder `p` that is home: opened there, or taken there when it is up. Why not, with
 /// nothing opened at `p`, when the walk does not reach it as a folder that can be home (`home_folder_there`,
-/// looked at before Files is opened).
-fn home_files(a: &mut App, p: &StoragePath) -> bool {
-    if !home_folder_there(p) {
-        return false;
-    }
+/// looked at before Files is opened); `FsErr::Io` when Files does not open, or does not enter the folder the walk
+/// has just reached.
+fn home_files(a: &mut App, p: &StoragePath) -> Result<(), FsErr> {
+    home_folder_there(p)?;
     let up = lib(a).files.open && lib(a).files.mode == BrowseMode::Place;
     if !(up || files_place(a)) {
-        return false;
+        return Err(FsErr::Io(libc::ENODEV));
     }
     if !with_files(a, |b, _| b.enter_home(p)) {
-        return false;
+        return Err(FsErr::Io(libc::EIO));
     }
     // (a start's first screen there, in Covers: no preview is asked for until the user first reaches the main menu)
     let start = lib(a).home_pending;
     lib(a).files.hold_previews(start);
     lib(a).pressed = None;
     a.toast_floor = 0;
-    true
+    Ok(())
 }
 
 /// Home was gone or refused when Grimoire went there (2.2, issue #160): the Library's top is the place shown,
 /// "Home folder not found." is said once, and home is Notebooks again in settings.ini, at once. The value that
 /// failed is not kept: kept, it would be tried and said at every start, with no row in reach to reset it for
-/// someone who never shows Files. (The screen does not say why it changed.)
-fn home_lost(a: &mut App) {
+/// someone who never shows Files. (The screen does not say why it changed.) A walk that failed on a read error
+/// (`FsErr::Io`), not because the folder is gone or refused, keeps the setting: the Library's top for this run (the
+/// main menu no longer opens at home in it), the same toast, and the error in the log.
+fn home_lost(a: &mut App, why: FsErr) {
     if lib(a).files.open && lib(a).files.mode == BrowseMode::Place {
         lib(a).files.close();
         app_notice_clear(a, NoticeKey::Loading);
@@ -8262,11 +8264,16 @@ fn home_lost(a: &mut App) {
     let moved = !s.cur_folder.is_empty();
     s.cur_folder.clear();
     s.page = 0;
-    home_save(a, Home::Notebooks);
+    if let FsErr::Io(e) = why {
+        lib(a).home_pending = false;
+        qlog!("home: the home folder could not be read (%s): the Library's top for now, home kept", &strerror(e));
+    } else {
+        home_save(a, Home::Notebooks);
+        qlog!("home: the home folder was not found: home is Notebooks again");
+    }
     if moved {
         reload(a);
     }
-    qlog!("home: the home folder was not found: home is Notebooks again");
     app_toast(a, home_not_found(), 4000);
 }
 
@@ -10247,6 +10254,35 @@ mod tests {
         library_enter(&mut a);
         assert!(a.toast_visible && a.toast.as_str() == "Home folder not found." && !a.settings.home_refused);
         assert_eq!(home_line(&root), None);
+        home_done(a, root);
+    }
+
+    // A home inside Files the walk could not read for another reason than its being gone or refused (here a folder
+    // that does not open for this user: EACCES) keeps the setting: the Library's top for this run, the toast, and
+    // settings.ini as it was; the main menu does not open at home again in this run. Readable again, the next start
+    // opens there. (Root reads any folder: this has nothing to show then.)
+    #[test]
+    fn a_home_that_does_not_read_is_kept() {
+        use std::os::unix::fs::PermissionsExt;
+        let (mut a, root) = home_app("unread");
+        let locked = root.join("documents/Locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_dir(&locked).is_err() {
+            home_start(&mut a, "files/documents/Locked");
+            assert!(lib(&mut a).cur_folder.is_empty() && !files_shown(&a), "the Library's top");
+            assert!(a.toast_visible && a.toast.as_str() == "Home folder not found.");
+            assert_eq!(a.settings.home.as_str(), "files/documents/Locked", "kept");
+            assert_eq!(home_line(&root).as_deref(), Some("files/documents/Locked"));
+            assert!(!lib(&mut a).home_pending, "not at home again in this run");
+            a.toast_visible = false;
+            library_enter(&mut a);
+            assert!(!files_shown(&a) && !a.toast_visible);
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+            home_start(&mut a, "files/documents/Locked");
+            assert!(files_shown(&a) && files_place_now(&mut a) == "documents/Locked" && !a.toast_visible);
+        }
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
         home_done(a, root);
     }
 
