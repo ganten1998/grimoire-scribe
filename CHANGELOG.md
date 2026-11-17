@@ -54,7 +54,12 @@
   on the small text files, and makes its temporary files afresh each time. A small text file whose read fails
   partway through counts as one that was not read, so a cut-short `settings.ini` or `notebook.ini` is never
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   parsed as a shorter file and written back so. A `settings.ini` it cannot read is kept as
+=======
+  parsed as a shorter file and written back so; a page file that reads only in part does not open as a shorter
+  page (it is not opened, and is left as it is). A `settings.ini` it cannot read is kept as
+>>>>>>> Stashed changes
 =======
   parsed as a shorter file and written back so; a page file that reads only in part does not open as a shorter
   page (it is not opened, and is left as it is). A `settings.ini` it cannot read is kept as

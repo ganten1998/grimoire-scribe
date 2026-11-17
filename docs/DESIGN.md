@@ -606,6 +606,9 @@ error is never parsed as a shorter file and saved back so. Page files and pictur
 own, and a read that fails partway leaves them unread too: a page file that is there but does not read is not
 opened (the editor says so) and is left as it is. A settings.ini that is there but was not read is moved to
 `settings.ini.unread` before the next save. An entry at a page's name that is no plain file is set
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are read with
 `util::read_system_file`, which follows links. The scans of `import/`, `templates/` and `photos/` take only

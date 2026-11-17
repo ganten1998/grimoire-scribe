@@ -805,9 +805,15 @@ pub fn open_read_nofollow(path: &str) -> std::io::Result<(std::fs::File, std::fs
 
 /// A whole file of the data folder, or None: read_file for files with no limit of their own (pages, pictures,
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 /// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). (The C returns
 /// what it read when a read fails midway, as fread does; read_file does too, for now: whether a page file
 /// should is docs/BACKLOG.md's question. read_file_max does not.)
+=======
+/// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). A read that
+/// fails after the open (EINTR is retried) is None, never the part read: a page file that reads only in part
+/// does not open as a shorter page. (read_system_file keeps what it read, as the C's fread does.)
+>>>>>>> Stashed changes
 =======
 /// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). A read that
 /// fails after the open (EINTR is retried) is None, never the part read: a page file that reads only in part
@@ -1248,6 +1254,7 @@ mod tests {
     }
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     // A read that fails partway is not read: none of what was read is handed back as the file.
     #[test]
     fn read_file_max_takes_nothing_from_a_read_that_fails_partway() {
@@ -1265,6 +1272,8 @@ mod tests {
             }
         }
 =======
+=======
+>>>>>>> Stashed changes
     // A reader that gives its bytes, then fails as a file with an I/O error would.
     struct FailsAfter(&'static [u8]);
     impl std::io::Read for FailsAfter {
@@ -1289,6 +1298,9 @@ mod tests {
 
     #[test]
     fn read_file_max_takes_nothing_from_a_read_that_fails_partway() {
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         // (the bytes before the error would parse as a shorter file)
         assert_eq!(read_file_max_from(FailsAfter(b"invert=1\n"), 9, 64), None);
