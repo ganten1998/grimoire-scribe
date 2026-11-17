@@ -2356,7 +2356,7 @@ fn route_upload(c: usize) {
         return upload_refuse(c, 400, "more than its length", "more bytes than its length");
     }
     if upload_state() != UploadState::None {
-        // (two senders at once: neither is kept, so one can never take the other's place under the question)
+        // (two sends at once: both end, and neither is kept)
         upload_end(UploadEnd::Another);
         return upload_refuse(c, 409, "another PDF is being sent", "a second upload came while one was under way");
     }

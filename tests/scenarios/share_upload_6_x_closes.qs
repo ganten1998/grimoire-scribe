@@ -6,8 +6,8 @@
 # copy: tests/fixtures/pdf/planner grimoire/send
 # Send a PDF from the Share page (2.2, issue #175): Share's X stays live while the Kindle asks. It is the question's
 # Cancel, and Share closes, even right as the question appears (a refusal waits for nothing). Here the next send comes
-# at once after each answer (the quiet time made 0), as from a sender who sends again and again: its question is up
-# before the user's next tap, and X still closes Share. Esc does the same. Nothing is kept.
+# at once after each answer (the quiet time made 0), as if sends kept coming: its question is up before the user's
+# next tap, and X still closes Share. Esc does the same. Nothing is kept.
 # rust-only
 wait 300
 tap 1345 95

@@ -6,9 +6,9 @@ why. Newest decisions first within each section.
 
 ## Send a PDF from the Share page (2.2, issue #175): what waits, and what is for the owner
 
-Built: `POST /upload` while Share is open, the page's token, the limits, one temporary file removed on every way
-out, the Kindle's question, Import into `grimoire/import`, the page's button (docs/DESIGN.md, "Send a PDF from the
-Share page"). The calls taken, each the owner's to change:
+Built: `POST /upload` while Share is open, the page's token, the send's code, the limits and the 5 seconds after a
+send not imported, one temporary file removed on every way out, the Kindle's question, Import into `grimoire/import`,
+the page's button (docs/DESIGN.md, "Send a PDF from the Share page"). The calls taken, each the owner's to change:
 
 - **The size limit is 64 MB** (`UPLOAD_MAX`, the import's limit where the private mapping is refused), so every PDF
   sent imports on every Kindle. The Scribe maps PDFs and imports up to 512 MB copied over USB; raising the limit to
@@ -18,10 +18,16 @@ Share page"). The calls taken, each the owner's to change:
   asking, and the page may not hear the answer) is a change in `client_waiting`. Left: a browser gone in the instant
   between Import and the answer shows "Not imported." for a kept PDF. A client that closes its sending side after the
   body (some command-line tools) is taken as gone.
-- **A second send while one is under way ends both**, rather than refusing the second alone: a sender on the same
-  Wi-Fi can end yours, but can never put their PDF under the question you expect for your own.
-- **A tap outside the question does nothing** (Files' Delete question takes it as Keep it); Cancel and Esc are its
-  ways out.
+- **A second send while one is under way ends both**, rather than refusing the second alone, and the Kindle's
+  question goes with "Not imported.".
+- **The send's code is four digits** (`upload::new_code`): it ties the question to the page that sent the PDF and is
+  no password, so four are enough; more would be harder to read and compare on two screens.
+- **After a send that is not imported, the next waits 5 seconds** (`UPLOAD_QUIET_MS`): longer than the toast "Not
+  imported.", short enough to send again soon after a Cancel by mistake.
+- **Share's X closes Share while the Kindle asks**, as the question's Cancel, and so does Esc. A tap elsewhere outside
+  the question does nothing (Files' Delete question takes it as Keep it).
+- **A name is cleaned, not refused**: a character a file may not have becomes `_`, one that draws as nothing goes,
+  `.pdf` is added; "Untitled.pdf" only for a name that cleans to nothing.
 - **The token is new each time Share opens**: a page loaded before Share was closed must be reloaded ("Open Share on
   the Kindle, then reload this page.").
 - **The body is raw, its name in a header**: no multipart form to parse. Sending from a tool means the same headers
@@ -29,14 +35,13 @@ Share page"). The calls taken, each the owner's to change:
 
 Waiting:
 
-- **Questions again and again**: while Share is open someone on the Wi-Fi can put a question up again after each
-  Cancel; closing Share stops it. No pause after a Cancel is built.
 - **Nothing on the Kindle while the body comes**: the question shows once the PDF is all in; until then only the page
   shows progress.
 - **Not run on a Scribe** (TESTING.md, "2.2, Send a PDF from the Share page (issue #175): device checks"): a phone's
-  and a computer's browser over the Kindle's Wi-Fi, the rename on its storage, the time a 64 MB send takes.
+  and a computer's browser over the Kindle's Wi-Fi, the code on both screens, a phone that locks while the Kindle
+  asks, the rename on its storage, the time a 64 MB send takes.
 - **The wiki's Privacy and Importing pages** (outside the repository) do not say yet that the Share page takes a PDF.
-- **Japanese** for the six new strings: nebuff's (#55); they show in English until then.
+- **Japanese** for the eight new strings: nebuff's (#55); they show in English until then.
 
 ## Files' rename, delete and restore (2.2, issue #144): what waits
 

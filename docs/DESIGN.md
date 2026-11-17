@@ -3149,10 +3149,10 @@ Files (`browser.rs`) has the rows that set it and the home folder as the top.
 
 While the Share screen is open, its page (the index) has a Send a PDF to the Kindle button. The browser sends the
 file; once all of it is in, the Kindle asks "Import "2027 Planner.pdf" (12.3 MB)?" over the Share screen with the
-send's code under it ("Code 4821", which the page shows too), and only Import keeps it: the PDF goes into
-`grimoire/import`, where the Library's import takes it as any PDF copied in. Share
-has no password, so anyone on the same Wi-Fi can load its page while it is open: the question on the Kindle is the
-gate, and everything before it is built so that a PDF nobody said yes to leaves nothing behind.
+send's code under it ("Code 4821", which the page that sent it shows too), and only Import keeps it: the PDF goes
+into `grimoire/import`, where the Library's import takes it as any PDF copied in. Share has no password, so anyone on
+the same Wi-Fi can load its page while it is open: the question on the Kindle, with the send's code, is the gate, and
+everything before it is built so that a PDF nobody said yes to leaves nothing behind.
 
 **The request** (upload.rs; httpd.rs's `route_upload`). `POST /upload` with the PDF's bytes as the body and a
 Content-Length, the file's name percent-encoded in `X-Grimoire-Name`, the page's token in `X-Grimoire-Token`. A raw
@@ -3266,15 +3266,17 @@ What reaches the share server from the network, and who:
 |---|---|---|---|
 | Share's pages and downloads (every GET but `/live`) | the Share screen is open | anyone on the network: no password | Host must name the Kindle by address; 16 connections, a 4096-byte request, 30 s idle; renders forked, 2 at a time, others queued 2 minutes at most |
 | Live view (`/live` and its streams, `POST /live/key`) | Live view is on | a browser paired with the Kindle's one-use code or QR token (pair.c) | sessions in an HttpOnly SameSite=Strict cookie; the key POST is bodyless, its event in a custom header, its preflight refused |
-| Send a PDF (`POST /upload`) | the Share screen is open | anyone who loaded the Share page (its token) | the rules above: nothing kept without Import on the Kindle |
+| Send a PDF (`POST /upload`) | the Share screen is open | anyone who loaded the Share page (its token) | one send at a time, 64 MB at most, one Content-Length and each header the rules read once; the body only into one temporary file; the Kindle asks with the send's code, which only the sending page has; nothing kept without Import on the Kindle; 5 s before the next send after one not imported |
 
-**What an attacker on the same Wi-Fi can still do** while Share is open: load the page and its token (as they could
-already read and download every notebook); send a PDF, which the Kindle asks about under a name and size they choose,
-and which, if Import is tapped, the sandboxed import parses as any PDF copied in; end a send under way by sending one
-of their own (neither is kept); put a question up again after each Cancel until Share is closed; hold the server's
-connections. **What they cannot**: have anything kept without Import on the Kindle; have a byte written outside the
-temporary file before it, or a name taken as a path; replace a file in `import/`; send while Share is closed; send
-from a page of another site the user visits.
+**The rules, in short.** While Share is open, a browser that loaded its page may send one PDF at a time; with Share
+closed nothing is taken. The server takes only what the rules above allow, looks at nothing of a body but its first
+five bytes before the user's yes, and writes nothing but the one temporary file until then. Every PDF is asked about
+on the Kindle before anything is kept, under the name its file will have, with its size and the send's code, which
+only the page that sent it shows. A question that ends without an answer is taken away first, and after a send that
+is not imported the next is taken only after `UPLOAD_QUIET_MS`. Only Import keeps a PDF: it goes into
+`grimoire/import` under a name that is never a path and never replaces a file, and the sandboxed import parses it as
+any PDF copied in. Share's X and Esc close Share at any time, which ends a send and takes no more. A page of another
+site the user visits cannot send at all.
 
 - **Strings**: `Import "%s" (%s)?`, Send a PDF to the Kindle, Confirm on the Kindle., Not imported., Another PDF is
   being sent. Try again., Open Share on the Kindle, then reload this page., `Wait %d seconds, then send again.`,
