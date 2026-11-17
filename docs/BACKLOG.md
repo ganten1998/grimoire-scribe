@@ -64,7 +64,8 @@ Waiting, each for its own issue:
   does ("Exit Grimoire?" is asked at a home inside Files, which has no Back button, and at the Library's top); no
   Set folder as home on a file's card (the Go to sheet's row sets the folder shown); a home inside Files opens Files
   even while its card is hidden; a home that is gone goes back to Notebooks at once, not kept for a folder that may
-  come back. Not tried on the Scribe: docs/TESTING.md, "2.2, Home (issue #160): device checks".
+  come back; a home folder deleted in Grimoire puts home back to Notebooks at once and quietly (a Restore does not
+  make it home again). Not tried on the Scribe: docs/TESTING.md, "2.2, Home (issue #160): device checks".
 - **Rename and Trash on screen** and **Restore** in the Trash place: built with issue #144 (above).
 - **After the previews (issue #145)**: the details a card can only have from the worker (a PDF's pages, a
   picture's size, a font's coverage) and a preview on a file's card; Covers as the default for Templates and Photos

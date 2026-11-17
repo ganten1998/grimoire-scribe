@@ -2990,8 +2990,8 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
   toast, "Home folder not found." (the screen does not say why), and home is Notebooks again in settings.ini at
   once. The value is not kept, unlike `files_sort`'s (which a later version may have written): kept, it would be
   tried and said at every start, and for a Library folder that is gone the one Reset row in reach would be Files'
-  Go to sheet, behind a card that is hidden by default. A home that goes away while Grimoire runs (over USB, a
-  Delete in Files, a Library folder removed) stays set until Grimoire next goes there. A Files screen that shows
+  Go to sheet, behind a card that is hidden by default. A home that goes away while Grimoire runs (over USB) stays
+  set until Grimoire next goes there. A Files screen that shows
   it gives way as it is next used: a tap on a folder in it (its row, its card's Open, a part of the path bar) says
   "Couldn't open folder." and a card's act "File changed. Try again.", and either reads the folder shown again,
   which, gone, gives way to the nearest folder above that opens (`folder_failed`, `changed_since`, `reread`); Esc
@@ -3024,8 +3024,11 @@ there and keeps it; Files (`browser.rs`) has the rows that set it and the home f
 - **A rename takes home along.** A rename of the home folder, or of a folder it is in, done in Grimoire puts home
   where that folder is now: Files' Rename (`home_follows`, after `rename_to`) and the Library's Rename folder, Move
   folder and Merge, Merge into it or Keep both under its new name (`home_follow`). A folder whose name only begins
-  the same is another folder, and a new path settings.ini could not keep leaves home as it was, to be found gone. A
-  home folder moved to the trash in Files is gone until Restore puts it back at its path.
+  the same is another folder, and a new path settings.ini could not keep leaves home as it was, to be found gone.
+- **A delete in Grimoire puts home back to Notebooks**, at once and with nothing said beyond the delete's own words:
+  Files' Delete of the home folder or of a folder it is in (`trash_card`, then `home_follows`), and the Library's
+  Remove folder on the folder that is home. A Restore in Files' Trash puts the folder back, not home: it is set
+  again by hand. (A folder removed or deleted outside Grimoire is found gone, as above.)
 - **Logs**: `home: the home folder was not found: home is Notebooks again`, and as settings.ini is read `settings:
   home= names no home (N bytes): Notebooks`; never the value, which may hold a name.
 - **Strings**: Home: %s, Set as home, Reset home to Notebooks, Home folder not found. ("Notebooks", "Couldn't open

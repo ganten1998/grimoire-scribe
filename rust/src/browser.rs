@@ -569,10 +569,11 @@ pub struct Browser {
     tiles_stale: Rect,
     /// Home (2.2, issue #160) as settings.ini has it, given by the host once Files is open and whenever it changes
     /// (`set_home`): the folder that is home has no Back button and nothing further up for Back, and the Go to
-    /// sheet and a folder's card offer Set as home and Reset home to Notebooks by it. A rename of the home folder,
-    /// or of a folder it is in, done here: where home is now, for the host (`home_follows`)
+    /// sheet and a folder's card offer Set as home and Reset home to Notebooks by it. A rename or a delete of the
+    /// home folder, or of a folder it is in, done here: where home is now (Notebooks after a delete), for the host
+    /// (`home_follows`)
     home: Home,
-    home_renamed: Option<StoragePath>,
+    home_moved: Option<Home>,
 }
 
 /// Covers: while a screen's previews are still coming, the tiles that changed are drawn together at most once this
@@ -2203,8 +2204,8 @@ impl Browser {
         if let Some(h) = self.home_path().filter(|h| path_under(h, &rn.path)) {
             let moved = StoragePath::new(&[to.as_bytes(), &h.as_bytes()[rn.path.as_bytes().len()..]].concat());
             if let Some(m) = moved.filter(|m| Home::parse(Home::Files(m.clone()).value().as_bytes()).is_some()) {
-                self.home = Home::Files(m.clone());
-                self.home_renamed = Some(m);
+                self.home = Home::Files(m);
+                self.home_moved = Some(self.home.clone());
             }
         }
         if !self.entry_changed(&old, Some(new)) {
@@ -2228,11 +2229,12 @@ impl Browser {
         }
     }
 
-    /// The host's part of a rename of the home folder, or of a folder it is in (`home_renamed`, 2.2, issue #160):
-    /// settings.ini has home where that folder is now, so Grimoire still opens there.
+    /// The host's part of a rename or a delete of the home folder, or of a folder it is in (`home_moved`, 2.2, issue
+    /// #160): settings.ini has home where that folder is now, so Grimoire still opens there; after a delete, no home
+    /// line (Notebooks), with nothing said.
     fn home_follows(&mut self, a: &mut App) {
-        let Some(to) = self.home_renamed.take() else { return };
-        a.settings.home.set(&Home::Files(to).value());
+        let Some(to) = self.home_moved.take() else { return };
+        a.settings.home.set(&to.value());
         settings_save(&a.settings);
     }
 
@@ -2292,6 +2294,11 @@ impl Browser {
         let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
         st.trash(&path, &stat).map_err(|e| refusal(e, Act::Trash, b"", b""))?;
         self.sizes_again();
+        // (home, when it is the folder deleted or inside it, is Notebooks from now on: `home_follows`)
+        if self.home_path().is_some_and(|h| path_under(h, &path)) {
+            self.home = Home::Notebooks;
+            self.home_moved = Some(Home::Notebooks);
+        }
         if !path.split_last().is_some_and(|(_, name)| self.entry_changed(name, None)) {
             self.reread();
         }
@@ -3202,6 +3209,7 @@ impl Browser {
             B_DELETE_YES => {
                 match self.trash_card() {
                     Ok(msg) => {
+                        self.home_follows(a);
                         self.redraw_full(a);
                         app_toast(a, &msg, 2500);
                     }
@@ -5449,9 +5457,10 @@ mod tests {
 
     // A rename of the home folder in Files, or of a folder it is in, takes home along: Files knows it under its new
     // path at once, and settings.ini has it (the host's part, home_follows). A folder whose name only begins the same
-    // is another folder. A home folder moved to the trash is gone until it is put back.
+    // is another folder. A delete of the home folder, or of a folder it is in, puts home back to Notebooks at once
+    // (no line in settings.ini); a Restore puts the folder back, not home.
     #[test]
-    fn a_rename_in_files_takes_home_along_and_a_delete_does_not() {
+    fn a_rename_in_files_takes_home_along_and_a_delete_resets_it() {
         let (base, _g) = storage("homerename");
         let ph = format!("{base}/grimoire/photos");
         for d in ["Trip/Day 1", "Trips"] {
@@ -5469,7 +5478,7 @@ mod tests {
         b.open_card(row_of(&b, "Trips"));
         assert!(b.rename_begin().is_ok());
         assert_eq!(b.rename_to(b"Tours"), Ok(Some(sp("grimoire/photos/Tours"))));
-        assert!(b.home == files_home("grimoire/photos/Trip") && b.home_renamed.is_none());
+        assert!(b.home == files_home("grimoire/photos/Trip") && b.home_moved.is_none());
         // the home folder renamed
         b.open_card(row_of(&b, "Trip"));
         assert_eq!(card_named(&mut b, "Trip").1, ["Open", "Reset home to Notebooks", "Rename", "Delete", "Cancel"]);
@@ -5481,7 +5490,7 @@ mod tests {
         let mut on_disk = Settings::default();
         settings_load(&mut on_disk);
         assert_eq!(on_disk.home.as_str(), "files/grimoire/photos/Voyage");
-        assert!(b.home_renamed.is_none());
+        assert!(b.home_moved.is_none());
         // a folder home is in, renamed: the rest of home's path stays
         b.set_home(files_home("grimoire/photos/Voyage/Day 1"));
         b.open_card(row_of(&b, "Voyage"));
@@ -5492,18 +5501,38 @@ mod tests {
         b.home_follows(&mut a);
         assert_eq!(a.settings.home.as_str(), "files/grimoire/photos/Trip/Day 1");
         assert!(b.enter_home(&sp("grimoire/photos/Trip/Day 1")));
-        // the home folder into the trash: home is as it was, and no longer there; put back, it is home again
+        // another folder into the trash: home stays
+        std::fs::create_dir_all(format!("{ph}/Other")).unwrap();
         b.set_home(files_home("grimoire/photos/Trip"));
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "Other"));
+        assert!(b.trash_card().is_ok());
+        assert!(b.home == files_home("grimoire/photos/Trip") && b.home_moved.is_none());
+        // the home folder into the trash: home is Notebooks at once; put back, the folder is there, and not home
+        b.open_card(row_of(&b, "Trip"));
+        assert!(b.trash_card().is_ok());
+        assert_eq!(b.home, Home::Notebooks);
+        b.home_follows(&mut a);
+        assert!(a.settings.home.is_empty());
+        let mut on_disk = Settings::default();
+        settings_load(&mut on_disk);
+        assert!(on_disk.home.is_empty(), "settings.ini has no home line");
+        assert_eq!(b.at, Some(sp("grimoire/photos")));
+        assert!(b.go(sp("grimoire/trash")));
+        while !b.rows.is_empty() {
+            b.open_card(0);
+            assert!(b.restore_card().is_ok());
+        }
+        assert!(b.enter_home(&sp("grimoire/photos/Trip")) && !b.at_home() && b.home == Home::Notebooks);
+        // a folder home is in, into the trash: the same
+        b.set_home(files_home("grimoire/photos/Trip/Day 1"));
+        a.settings.home.set("files/grimoire/photos/Trip/Day 1");
         assert!(b.go(sp("grimoire/photos")));
         b.open_card(row_of(&b, "Trip"));
         assert!(b.trash_card().is_ok());
-        assert_eq!(b.home, files_home("grimoire/photos/Trip"));
-        assert!(!b.enter_home(&sp("grimoire/photos/Trip")));
-        assert_eq!(b.at, Some(sp("grimoire/photos")));
-        assert!(b.go(sp("grimoire/trash")));
-        b.open_card(0);
-        assert!(b.restore_card().is_ok());
-        assert!(b.enter_home(&sp("grimoire/photos/Trip")) && b.at_home());
+        assert_eq!(b.home, Home::Notebooks);
+        b.home_follows(&mut a);
+        assert!(a.settings.home.is_empty());
         canvas_free(&mut a.screen);
     }
 }

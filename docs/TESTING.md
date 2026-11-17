@@ -3242,8 +3242,9 @@ Files' card shown (New > From a file... > Show Files in Library), on a folder ma
 7. **Renamed in Grimoire**: make an empty folder over USB, `/mnt/us/grimoire/photos/Home probe 3` (Documents is read
    only, so Rename is offered in Grimoire's own folders). Files > Photos > its card > Set as home, then its card >
    Rename to `Home probe 4`: settings.ini names `files/grimoire/photos/Home probe 4`, and a restart opens Files
-   there. Delete it from its card in Photos: the next start shows the toast, and Restore in Files > Trash puts it
-   back (set it again to make it home).
+   there. Delete it from its card in Photos: only "Moved to grimoire/trash" is said, settings.ini has no home line
+   at once, and the next start opens at the Library's top with no toast. Restore in Files > Trash puts the folder
+   back, not as home (set it again to make it home).
 8. **A Library folder**: a folder's menu in the Library > Set as home; restart: the Library opens in it, with its
    Back button; Esc goes up to the Library's top, as that button does. Rename it from its menu: the next start opens in it under its new name.
    Its menu > Reset home to Notebooks: the next start opens at the top.

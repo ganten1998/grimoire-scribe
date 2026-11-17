@@ -7562,6 +7562,10 @@ fn act(a: &mut App, h: &Hit) {
             if let Some(it) = it {
                 if store_remove_folder(it.folder.as_str()) == 0 {
                     export_mirror_prune_folder(it.folder.as_str(), &app_mirror_dir());
+                    // (the folder that is home removed: home is Notebooks from now on, with nothing said, 2.2)
+                    if matches!(home_of(a), Home::Library(f) if store_folder_contains(it.folder.as_str(), &f)) {
+                        home_save(a, Home::Notebooks);
+                    }
                 }
             }
             lib(a).modal = Modal::None;
@@ -10342,8 +10346,9 @@ mod tests {
     }
 
     // A folder's menu in the Library sets it as home, and on the folder that is home puts home back to Notebooks
-    // (said by the row itself the next time the menu opens: no toast). A home folder removed is found gone the next
-    // time Grimoire goes home.
+    // (said by the row itself the next time the menu opens: no toast). The home folder removed with its menu's Remove
+    // folder puts home back to Notebooks at once, with nothing said; one removed otherwise is found gone the next time
+    // Grimoire goes home.
     #[test]
     fn a_library_folders_menu_sets_and_resets_home() {
         let (mut a, root) = home_app("folder");
@@ -10375,7 +10380,16 @@ mod tests {
         assert!(a.settings.home.is_empty() && home_line(&root).is_none());
         assert_eq!(home_menu_row(&mut a, "School").arg, 0, "Set as home again");
         close_modal(&mut a);
-        // a home folder removed (an empty one) is found gone when Grimoire goes home
+        // the home folder (an empty one) removed with its menu's Remove folder: Notebooks at once, nothing said
+        assert_eq!(store_add_folder("Gone"), 0);
+        home_save(&mut a, Home::Library("Gone".into()));
+        reload(&mut a);
+        assert_eq!(home_menu_row(&mut a, "Gone").arg, 1);
+        act(&mut a, &Hit { id: H_FMORE_REMOVE, ..Default::default() });
+        assert!(!lib(&mut a).folders.iter().any(|f| f == "Gone"));
+        assert!(a.settings.home.is_empty() && home_line(&root).is_none() && !a.toast_visible);
+        assert!(library_shortcut(&mut a, SHORTCUT_HOME) && !a.toast_visible);
+        // a home folder removed otherwise (an empty one) is found gone when Grimoire goes home
         assert_eq!(store_add_folder("Empty"), 0);
         home_save(&mut a, Home::Library("Empty".into()));
         assert_eq!(store_remove_folder("Empty"), 0);

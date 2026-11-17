@@ -44,7 +44,7 @@
   folder's menu, makes that folder the place Grimoire opens at each start and where the `home` action goes; Reset
   home to Notebooks puts it back. At a home inside Files there is no Back button, and Esc asks "Exit Grimoire?" as
   at the Library's top. A home that is gone shows the Library with "Home folder not found." and is Notebooks again;
-  a home folder renamed in Grimoire stays home.
+  a home folder renamed in Grimoire stays home, and one deleted in Grimoire puts home back to Notebooks.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
