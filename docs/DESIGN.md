@@ -581,7 +581,7 @@ exit. `store_add_page` never writes over an existing `p<id>.qpg`: it takes the n
 Reads of the data folder take plain files only. What is read there through `util::read_file`,
 `util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and import
 scans, the marks, the share zip's raw copies, the clipboard, the compaction lists, the shortcut files, the PDF
-cache's records, an import's `links.part` and `names.part`, a notebook's `nav.ini`, `links.ini` and
+cache's records, an import's `links.part`, `names.part` and `webs.part`, a notebook's `nav.ini`, `links.ini` and
 `doclinks.ini`) is read only when the entry at the name itself is a plain file (a link, a folder or anything
 else there reads as a file that is not there, or, for the shortcut files and a notebook's `nav.ini`,
 `links.ini` and `doclinks.ini`, as one that is there and does not read: nothing of it is used, and an edit
@@ -589,8 +589,8 @@ that would write a sidecar that does not read (a page's name, a link) is refused
 over), and the open never waits. Folders on the way to a file may be links (the data root, `notebooks/`, a
 platform's folders, a test's folder): only the last name is held to this. The small text files are read up to
 a limit (`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB;
-an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes and names.part
-406,000, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
+an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes, names.part
+406,000 and webs.part 4,194,304, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
 picture and a header; and, by the same bound in its own reader, a compaction list 64 KiB, which a read that
 fails midway leaves unread rather than cut short); page files and pictures have none of `read_file`'s own. A
 settings.ini that is there but was not read is moved to `settings.ini.unread` before the next save.
@@ -1489,7 +1489,9 @@ code made from it, and nothing else.
 - **The worker** (`pdfwork.rs`, `Walk::target`): a URI action's string is read and, when the rules take it, each
   quad (or the Rect) of the annotation goes out as `W <src> <x> <y> <w> <h> <i> <address>`, the area as an `L`
   record's (its box; no polygon), `i` its place among the page's web links. Web and page links share `LINKS_MAX`
-  and the walk's 3 MiB of records. `links.part` carries the `W` records after the `L` and `Q` lines.
+  and the walk's 3 MiB of records. The first slice keeps the `W` records in `webs.part`, a part of their own
+  (`WEBS_PART`, only for a PDF with a web link), never in `links.part`, which 2.1.0 reads: an import 2.2 began and
+  2.1.0 finishes keeps its tabs and names, without its web links.
 - **The writer** (`pdfimport.rs`, `put_weblinks`): the last slice of a new notebook writes `weblinks.ini` in the
   work folder when there is a web link (`weblinks_fill`: validated, one of each, the same address with its area
   within 2 px; 256 a page; then `weblinks_water`, 90% of `WEBLINKS_MAX`, 4,000, the densest pages first); a fill's

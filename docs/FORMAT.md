@@ -70,7 +70,7 @@ root/.cache/files/                      Files' previews of the files its Covers 
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
 `folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
 `bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
-`import/.attempts`, an import's work files `links.part` and `names.part`, `clipboard.qpg`, the shortcut files
+`import/.attempts`, an import's work files `links.part`, `names.part` and (2.2) `webs.part`, `clipboard.qpg`, the shortcut files
 (`shortcuts.ini`, `controller.ini`, `shortcuts/`, `gestures.ini`, `live-keys.ini`) and the PDF cache's
 records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
 is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
@@ -81,8 +81,8 @@ the check's verdicts, marks and previews (Your own fonts).
 The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
 `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
 4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, an import's `links.part` up to 4,194,314
-bytes and its `names.part` up to 406,000 (the most one worker's walk can have the first slice write: "Imports:
-PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
+bytes, its `names.part` up to 406,000 and its `webs.part` (2.2) up to 4,194,304 (the most one worker's walk can
+have the first slice write: "Imports: PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
 8000 x 8000, and a header). Page files and pictures have no limit of this kind. A `folders.ini` over its limit
 reads as an empty list; what the other readers do with a file that is not read is in their sections.
 
@@ -959,14 +959,16 @@ waits, and within 10 s of the end of a previous run's import):
   `import/done/` like a drop, and the scan leaves it to its pick while the pick's job is queued or running.
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
-  the work folder as `links.part` (the `L` and `Q` records, the `W` records of web links (2.2), then `F`) and
-  `names.part` (the `O` records), in the
+  the work folder as `links.part` (the `L` and `Q` records, then `F`), `names.part` (the `O` records) and, from
+  2.2 and only for a PDF with a web link, `webs.part` (the `W` records of its web links: never in `links.part`,
+  which 2.1.0 reads), in the
   worker's own record grammar, read back strictly by the last slice, each only as a plain file of at most its
   size: `links.part` 4,194,314 bytes (a worker's 4 MiB of records, line for line, and the `F` line the slice
   writes itself when the walk sent none), `names.part` 406,000 (an `O` line of at most 203 bytes for each of
-  at most 2000 pages); a part that does not read leaves the notebook without links and names. The commit
+  at most 2000 pages), `webs.part` 4,194,304; a part that does not read leaves the notebook without links and
+  names (`webs.part`: without web links, its links and names kept). The commit
   writes `doclinks.ini` (below), `weblinks.ini` (2.2, below: only when the PDF has a web link) and `nav.ini` from
-  them, before `notebook.ini`, and removes the two parts. A
+  them, before `notebook.ini`, and removes the parts. A
   worker that dies, stalls or lies in the walk costs the notebook its links and names only (logged); the
   pages do not depend on it. What is read:
   an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
@@ -2092,7 +2094,7 @@ What 2.1.0 and the versions before it do with the web links of 2.2 (Web links; r
 |---|---|
 | `weblinks.ini` | never read or written: the notebook opens with its pages, ink, names, links and document links, without the web links (a tap there does nothing); its raw zips leave the file out; the file stays in the notebook's folder, as it was, for 2.2 |
 | `doclinks.ini` of a PDF with web links | the same bytes as for the PDF without them: read whole, nothing carried |
-| `W` records in an unfinished import's `links.part` (2.2 began the import, 2.1.0 finishes it) | `links.part` does not read there: the notebook is made with its pages and without its links and names ("its links and names do not read", logged) |
+| an unfinished import's `webs.part` (2.2 began the import, 2.1.0 finishes it) | never read: `links.part` and `names.part` hold only records 2.1.0 knows, so the notebook is made with its pages, its document links and its names, without its web links; `webs.part` stays in the notebook's folder, unread |
 
 What 2.1.0 does with what a version that numbers its font verdicts 2 writes (read in its code at the tag):
 

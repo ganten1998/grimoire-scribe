@@ -727,15 +727,63 @@ fn the_workers_web_records_are_checked_and_survive_the_work_folder() {
     assert!(c.take(web(1, "http://a b"), 2).is_err());
     assert!(c.take(Rec::Web(WireWeb { src: 1, x: 999_999, y: 0, w: 1, h: 1, index: 0, address: "https://e.org".into() }), 2).is_err());
     assert!(c.take(Rec::Left(LeftOut { uri: 3, other: 0, dead: 0, capped: 0 }), 2).is_ok());
-    let back = Collected::from_parts(c.links_text().as_bytes(), b"", 2).unwrap();
+    // (links.part holds no W record: webs.part, a part of their own, does)
+    assert!(!c.links_text().contains("W "));
+    let mut back = Collected::from_parts(c.links_text().as_bytes(), b"", 2).unwrap();
+    assert!(back.webs.is_empty() && back.take_webs(c.webs_text().as_bytes(), 2));
     assert_eq!(back.webs, c.webs);
     assert_eq!(back.left, c.left);
+    // webs.part takes W records only, as strictly: a refused line leaves no web link
+    let mut other = back.clone();
+    assert!(!other.take_webs(b"W 1 4 8 40 20 0 https://e.org\nF 0 0 0 0\n", 2) && other.webs.is_empty());
+    assert!(!other.take_webs(b"W 1 4 8 40 20 0 data:x\n", 2) && other.webs.is_empty());
     // the grammar: eight words, signed areas of at least 1 px, the address by the rules
     assert_eq!(parse_record(b"W 1 -4 8 40 20 0 https://e.org/p?q=1"), Ok(Rec::Web(WireWeb { src: 1, x: -4, y: 8, w: 40, h: 20, index: 0, address: "https://e.org/p?q=1".into() })));
     for bad in [&b"W 1 4 8 40 20 0 ftp://e.org"[..], b"W 1 4 8 0 20 0 https://e.org", b"W 1 4 8 40 20 0", b"W 1 4 8 40 20 0 https://e.org x", b"W 1 4 8 40 20 0 https://e.org\x01"] {
         assert!(parse_record(bad).is_err(), "{}", String::from_utf8_lossy(bad));
     }
     assert!(Collected::from_parts(b"W 1 4 8 40 20 0 data:x\nF 0 0 0 0\n", b"", 2).is_none(), "a part is read as strictly");
+}
+
+// The first slice keeps a PDF's web links in webs.part, a part of their own, and links.part holds only the records
+// 2.1.0's grammar has (L, Q and F: parse_record's arms for them are the same at the tag), so an import 2.2 began and
+// a version before it finishes keeps its tabs and names. Finished without webs.part (what such a version does: it
+// never reads it), the notebook has its links and names and no web link; finished with it, the web links too, and
+// no part is left in the notebook's folder. A PDF without web links leaves no webs.part.
+#[test]
+fn the_web_links_wait_in_a_part_of_their_own() {
+    let e = setup("web-part");
+    let extra = Extra { outline: vec![OutItem::new("Start", 1)], ..Default::default() };
+    let links = |web: bool| {
+        let mut v = vec![Lnk::new(r(0), Act::Page(2))];
+        if web {
+            v.push(Lnk::new(r(1), Act::Uri("https://example.org/one")));
+            v.push(Lnk::new(r(2), Act::Uri("https://example.org/two")));
+        }
+        v
+    };
+    for keep_webs in [false, true] {
+        // (a page more the second time: the same file would be "already imported")
+        let n = 3 + keep_webs as usize;
+        let pdf = make_linked(&plain_pages(n), &on(1, n, links(true)), &extra);
+        let (id, src, work) = e.first_slice(&format!("Web{keep_webs}.pdf"), &pdf);
+        let lt = std::fs::read_to_string(format!("{work}/links.part")).unwrap();
+        assert!(lt.lines().all(|l| l.starts_with("L ") || l.starts_with("Q ") || l.starts_with("F ")), "{lt}");
+        let wt = std::fs::read_to_string(format!("{work}/webs.part")).unwrap();
+        assert_eq!(wt.lines().filter(|l| l.starts_with("W 1 ")).count(), 2, "{wt}");
+        if !keep_webs {
+            std::fs::remove_file(format!("{work}/webs.part")).unwrap();
+        }
+        e.finish(&id, &src);
+        assert_eq!(links_and_name(&id), (1, true), "the tab and the name, with webs.part or without");
+        assert_eq!(weblinks_load(&id).links.len(), if keep_webs { 2 } else { 0 });
+        let dir = format!("{}/notebooks/{id}", e.root);
+        for part in ["links.part", "names.part", "webs.part"] {
+            assert!(!std::path::Path::new(&format!("{dir}/{part}")).exists(), "{part} is not left in the notebook");
+        }
+    }
+    let (_, _, work) = e.first_slice("NoWeb.pdf", &make_linked(&plain_pages(3), &on(1, 3, links(false)), &extra));
+    assert!(!std::path::Path::new(&format!("{work}/webs.part")).exists(), "no web link, no webs.part");
 }
 
 /// The files of notebook `id`'s folder, by name (the page files and pictures left out).

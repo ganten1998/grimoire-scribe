@@ -265,7 +265,7 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
 // ---- what the link walk found, as the writer keeps it ----
 
 /// The links, names and counts of a walk, every record checked as it is taken (a worker that lies can only lie
-/// inside these bounds). It is also what the work folder's `links.part` and `names.part` hold, in the
+/// inside these bounds). It is also what the work folder's `links.part`, `names.part` and `webs.part` hold, in the
 /// records' own grammar, so the last slice reads them back through the same checks.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Collected {
@@ -331,7 +331,8 @@ impl Collected {
         }
     }
 
-    /// links.part: the L and Q records, the W records, then F.
+    /// links.part: the L and Q records, then F. Only records 2.1.0's grammar has (the web links are in webs.part),
+    /// so an import 2.2 began and 2.1.0 finishes keeps its links and names.
     pub fn links_text(&self) -> String {
         let mut t = String::new();
         for (l, q) in &self.links {
@@ -339,9 +340,6 @@ impl Collected {
             if let Some(q) = q {
                 t.push_str(&format!("Q {}\n", q.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(" ")));
             }
-        }
-        for l in &self.webs {
-            t.push_str(&format!("W {} {} {} {} {} {} {}\n", l.src, l.x, l.y, l.w, l.h, l.index, l.address));
         }
         let l = self.left;
         t.push_str(&format!("F {} {} {} {}\n", l.uri, l.other, l.dead, l.capped));
@@ -353,6 +351,11 @@ impl Collected {
         self.names.iter().map(|(p, n)| format!("O {p} {}\n", n.iter().map(|b| format!("{b:02x}")).collect::<String>())).collect()
     }
 
+    /// webs.part (2.2): the W records, a part of their own, which no version before 2.2 reads.
+    pub fn webs_text(&self) -> String {
+        self.webs.iter().map(|l| format!("W {} {} {} {} {} {} {}\n", l.src, l.x, l.y, l.w, l.h, l.index, l.address)).collect()
+    }
+
     /// Reads the two parts back, strictly: None for any line the grammar or the page count refuses.
     pub fn from_parts(links: &[u8], names: &[u8], pages: u32) -> Option<Collected> {
         let mut c = Collected::default();
@@ -362,6 +365,22 @@ impl Collected {
             }
         }
         Some(c)
+    }
+
+    /// Reads webs.part back into a walk read from the other two, as strictly: W records only. On any line refused
+    /// the walk keeps no web link and false is returned (its links and names stay).
+    pub fn take_webs(&mut self, webs: &[u8], pages: u32) -> bool {
+        for line in webs.split(|&b| b == b'\n').filter(|l| !l.is_empty()) {
+            let ok = match parse_record(line) {
+                Ok(r @ Rec::Web(_)) => self.take(r, pages).is_ok(),
+                _ => false,
+            };
+            if !ok {
+                self.webs = Vec::new();
+                return false;
+            }
+        }
+        true
     }
 }
 
