@@ -26,7 +26,6 @@
 - [ショートカット](Shortcuts-ja)
 - [困ったときは](Troubleshooting-ja)
 - [プライバシー](Privacy-ja)
-- [コントリビュート](Contributing-ja)
 - [ソースからビルド](Building-from-Source-ja)
 - [翻訳](Translating-ja)
 
@@ -42,6 +41,5 @@
 - [Skróty](Shortcuts-pl)
 - [Rozwiązywanie problemów](Troubleshooting-pl)
 - [Prywatność](Privacy-pl)
-- [Współtworzenie](Contributing-pl)
 - [Budowanie ze źródeł](Building-from-Source-pl)
 - [Tłumaczenie](Translating-pl)
