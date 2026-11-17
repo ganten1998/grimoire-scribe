@@ -3221,18 +3221,20 @@ and `files_21_add_font_full` cover the logic on the Mac (docs/DESIGN.md, Add a f
 floor and a failing write simulated; `make l10n-check`'s `fonts-add` runs (Classic) and `fonts-card` runs
 (Gothic) check that the sheet, the pick and both cards fit in every language. What only the Scribe can tell (read grimoire.log over SSH; it names no file):
 
-1. **The Kindle's own fonts folder**: on firmware 5.9.6 or later, copy a `.ttf` text font into the storage's
-   `fonts/` over USB (or use one the Kindle's own font feature added there). Open Grimoire, Settings (Classic) >
-   Display > Font: under "Your fonts (grimoire/fonts)" the last row is Add a font... (under the folder's text while
-   it is empty). Tap it: the picker's title is "Add a font...", and its first row is Kindle fonts, with `fonts` under
-   it. Inside, each font is a row with its size and date; a tap opens its card: Add to fonts, Cancel (no Rename, no
-   Delete). Note that nothing in the picker is drawn in the font itself.
-2. **The copy and the check**: Add to fonts: the sheet comes back, the row an hourglass while the copy runs, then
-   the new file's row says "Checking..." with "Checking 1 font..." above the buttons, then shows its name drawn in
-   itself. The font in use has not changed: tap the row to apply it, and every screen comes back in it. Note the
-   times in grimoire.log (`bg: a file copied into fonts: N KB in T ms`, then the check's lines), and that the pen
-   and the sheet stay quick meanwhile. Over USB afterwards, `fonts/` holds what it held before (the same names and
-   sizes), and `grimoire/fonts` holds the copy and no `.grimoire-copy-*.part`.
+1. **The Kindle's own fonts folder**: copy a `.ttf` text font into the storage's `fonts/` over USB (or use one the
+   Kindle's own font feature added there), and note what the two folders hold: over SSH, `ls -la /mnt/us/fonts
+   /mnt/us/grimoire/fonts` (`-a` lists dot-names too, which a computer's file browser may hide). Open Grimoire,
+   Settings (Classic) > Display > Font: under "Your fonts (grimoire/fonts)" the last row is Add a font... (under
+   the folder's text while it is empty). Tap it: the picker's title is "Add a font...", and its first row is Kindle
+   fonts, with `fonts` under it. Inside, each font is a row with its size and date; a tap opens its card: Add to
+   fonts, Cancel (no Rename, no Delete). Note that nothing in the picker is drawn in the font itself.
+2. **The copy and the check**: Add to fonts: the sheet comes back, the row an hourglass while the copy runs (for a
+   moment: a font copies in well under a second), then the new file's row says "Checking..." with "Checking 1
+   font..." above the buttons, then shows its name drawn in itself. The font in use has not changed: tap the row to
+   apply it, and every screen comes back in it. Note the times in grimoire.log (`bg: a file copied into fonts: N KB
+   in T ms`, then the check's lines), and that the pen and the sheet stay quick meanwhile. Afterwards, over SSH,
+   `ls -la /mnt/us/fonts /mnt/us/grimoire/fonts`: `fonts/` holds what it held at step 1 (the same names, sizes and
+   dates), and `grimoire/fonts` holds the copy and no `.grimoire-copy-*.part`.
 3. **From Documents**: copy an `.otf` into `documents/` over USB and add it the same way through Documents; then
    add the first font again: the copy is "<name> 2" and the first file is as it was.
 4. **Files**: with the Files card shown, Files > Kindle fonts > a font's card: Add to fonts and Cancel; Add to
@@ -3246,11 +3248,13 @@ floor and a failing write simulated; `make l10n-check`'s `fonts-add` runs (Class
 7. **Nearly full storage** (optional, only with a storage to spare that can be filled and emptied safely): with
    under 100 MB free plus the font's size, Add to fonts says "Couldn't copy file. Is the storage full?" at once and
    the picker stays up; nothing is added to `grimoire/fonts`.
-8. **Power cut during a copy** (optional): add a large font (near 20 MB) and hold the power button to restart while
-   the row is an hourglass. After the restart, over USB, `grimoire/fonts` holds the whole font under its name, or a
-   `.grimoire-copy-<n>.part` file and no font of that name, or neither; Settings > Font lists no row for a `.part`
-   file, and a later Add to fonts removes it (the next one, unless a process running then has the number <n>:
-   then the first one an hour after the cut).
+8. **What a copy cut short leaves**: a copy lasts well under a second, so what a power cut in the middle of one
+   would leave is put there by hand instead. With Grimoire closed, over SSH, `cd /mnt/us/grimoire/fonts`, then
+   `cp /mnt/us/fonts/<a font>.ttf .grimoire-copy-2147483647.part` (a whole copy) and `head -c 5000
+   /mnt/us/fonts/<a font>.ttf > .grimoire-copy-2147483646.part` (the start of one; no process has either number).
+   Start Grimoire: Settings > Font lists no row for either, and no check counts them (a font check's last line in
+   grimoire.log, `... font file(s) in all`, counts the folder's fonts alone). Add any font (step 2), then `ls -la
+   /mnt/us/grimoire/fonts`: the font is there, and neither `.part` file.
 9. **Rotate** with the sheet up and with the picker up over it: both lay out again; the row is after the last font
    (two abreast sideways), and Back at the picker's root returns to the sheet.
 10. **Over a notebook**: open a notebook, Settings from its panel > Display > Font: the sheet has no Add a font...
