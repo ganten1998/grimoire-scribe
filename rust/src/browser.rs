@@ -27,6 +27,7 @@
 use crate::bgwork_copy::{copy_refusal, copy_request, CopyFail, CopyTo};
 use crate::bgwork_previews::{CoverTiles, TileShow, PREVIEW_H, PREVIEW_W};
 use crate::fsview::*;
+use crate::home::{home_folder_ok, Home};
 use crate::prelude::*;
 
 // Hit ids.
@@ -551,6 +552,9 @@ pub struct Browser {
     /// the tiles the last whole draw found changed since they were drawn before (a card opened or closed over
     /// them refreshes them with its own rect)
     tiles_stale: Rect,
+    /// Home (2.2, issue #160) as settings.ini has it, given by the host once Files is open and whenever it changes
+    /// (`set_home`)
+    home: Home,
 }
 
 /// Covers: while a screen's previews are still coming, the tiles that changed are drawn together at most once this
@@ -726,6 +730,43 @@ impl Browser {
 
     pub fn view(&self) -> i32 {
         self.view
+    }
+
+    /// Home as settings.ini has it now (2.2, issue #160): the host's, given once Files is open and whenever the
+    /// setting changes.
+    pub fn set_home(&mut self, home: Home) {
+        self.home = home;
+    }
+
+    /// The folder that is home, while home is inside Files and this is Files (a picker has no home).
+    fn home_path(&self) -> Option<&StoragePath> {
+        match &self.home {
+            Home::Files(p) if self.mode == BrowseMode::Place => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Whether the folder shown is the home folder.
+    pub fn at_home(&self) -> bool {
+        self.at.is_some() && self.at.as_ref() == self.home_path()
+    }
+
+    /// Enters the folder `p` that is home (the host's, as Grimoire starts), from wherever Files is: checked first as a
+    /// home is (`home_folder_ok`: Files' own walk, never the trash), then entered as a tap on it would be. False, with
+    /// nothing changed and nothing said, when it is refused or gone: the host then goes to Notebooks, and says so.
+    pub fn enter_home(&mut self, p: &StoragePath) -> bool {
+        if !self.storage.as_ref().is_some_and(|st| home_folder_ok(st, p)) {
+            return false;
+        }
+        // (a place of the root is entered as its row enters it: Back's way up from the folders in it ends there)
+        let from_root = self.mode_places().iter().any(|&k| self.place_path(k).as_ref() == Some(p));
+        if !self.enter(p.clone(), from_root, now_ms()) {
+            self.toast = None;
+            return false;
+        }
+        keyboard_close(&mut self.kb);
+        self.renaming = None;
+        true
     }
 
     fn pick(&self) -> bool {
@@ -3472,6 +3513,10 @@ impl Browser {
                 }
             }
             "making" => out.push_str(if self.covers.making() { "1" } else { "0" }),
+            // Home (2.2, issue #160): home as Files was told it (the settings.ini value, empty for Notebooks), and
+            // whether the folder shown is the home folder
+            "home" => out.push_str(&self.home.value()),
+            "at_home" => out.push_str(if self.at_home() { "1" } else { "0" }),
             "asked" => out.push_str(&self.covers.asked().to_string()),
             _ => {
                 let Some((what, n)) = key.split_once('.') else { return false };
@@ -5084,5 +5129,40 @@ mod tests {
     #[test]
     fn no_em_dash() {
         assert!(!include_str!("browser.rs").contains('\u{2014}'));
+    }
+
+    // ---- home (2.2, issue #160) ----
+
+    fn files_home(p: &str) -> Home {
+        Home::Files(sp(p))
+    }
+
+    // Files goes to the folder that is home only through the walk, and only to a folder that can be home: a folder
+    // gone, a file where it was, a link, the trash and the storage's root leave Files where it was, with nothing said
+    // (the host says "Home folder not found." and goes to Notebooks).
+    #[test]
+    fn files_enters_home_only_through_the_walk() {
+        let (base, _g) = storage("homeenter");
+        for d in ["documents/Planners", "grimoire/trash/files-20261101-000000-abcd", "Notes"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        std::fs::write(format!("{base}/documents/file.pdf"), b"%PDF-1.4\n").unwrap();
+        std::os::unix::fs::symlink("Planners", format!("{base}/documents/Linked")).unwrap();
+        std::os::unix::fs::symlink("/etc", format!("{base}/documents/etc")).unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("Notes")));
+        for bad in ["documents/Nowhere", "documents/file.pdf", "documents/Linked", "documents/etc", "documents/Linked/x", "grimoire/trash", "grimoire/trash/files-20261101-000000-abcd", "grimoire/notebooks", ""] {
+            assert!(!b.enter_home(&sp(bad)), "{bad}");
+            assert_eq!(b.at, Some(sp("Notes")), "{bad}: Files stays where it was");
+            assert!(b.toast.is_none(), "{bad}: nothing is said here");
+        }
+        assert!(!std::path::Path::new(&format!("{base}/documents/Nowhere")).exists(), "nothing is made at a home that is gone");
+        // a folder that is there: entered, as a tap on it would
+        b.set_home(files_home("documents/Planners"));
+        assert!(b.enter_home(&sp("documents/Planners")));
+        assert!(b.at_home());
+        assert_eq!(b.crumbs(), "Files > Documents > Planners");
     }
 }

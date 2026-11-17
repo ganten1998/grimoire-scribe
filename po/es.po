@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 14:58-0600\n"
+"POT-Creation-Date: 2026-11-16 19:58-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -4321,6 +4321,13 @@ msgstr "No se pudo guardar el cambio."
 #: rust/src/library.rs
 msgid "Another import is still going. This one starts after it."
 msgstr "Hay otra importación en curso. Esta empezará cuando termine."
+
+#. TRANSLATORS: a toast as Grimoire starts (or goes home): the folder set as home is not there any more, or is
+#. not one Grimoire opens, so the Library's top level shows and home is Notebooks again. One line of about
+#. 1000 px at 44 px in bold.
+#: rust/src/library.rs
+msgid "Home folder not found."
+msgstr "No se encontró la carpeta de inicio."
 
 #. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
 #. Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.

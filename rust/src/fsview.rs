@@ -401,6 +401,27 @@ impl FsStorage {
         stat_at(dir.as_raw_fd(), &c)
     }
 
+    /// The folder at `p` for a setting that names one to open at (home, 2.2, issue #160): reached by the walk Files
+    /// itself enters folders with (`open_dir`, not as a pick: no link on the way, the root's device, no refused
+    /// zone, not Grimoire's notebooks), never the storage root itself, and never Grimoire's trash or what is in it
+    /// (nothing is entered there). Its stat. Nothing is listed, read or made.
+    pub fn folder(&self, p: &StoragePath) -> Result<FsStat, FsErr> {
+        if p.is_root() {
+            return Err(FsErr::Refused);
+        }
+        let fd = self.open_dir(p, false)?;
+        // (the trash by its identity: with no link on the way, only the path's first parts can lead to it, as many
+        // as its own path has)
+        if let (Some(t), Some(id)) = (self.trash_dir(), self.trash) {
+            let n = t.components().count();
+            let head: Vec<&[u8]> = p.components().take(n).collect();
+            if head.len() == n && StoragePath::new(&head.join(&b'/')).is_none_or(|q| self.stat(&q, false).is_ok_and(|s| (s.dev, s.ino) == id)) {
+                return Err(FsErr::Refused);
+            }
+        }
+        fstat_fd(fd.as_raw_fd())
+    }
+
     /// The size of the storage in bytes, None when it cannot tell.
     pub fn total_bytes(&self) -> Option<u64> {
         // SAFETY: sv is written by fstatvfs before it is read.

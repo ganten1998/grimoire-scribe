@@ -6,6 +6,8 @@ use crate::about::AboutView;
 use crate::settingsmenu;
 use crate::ui::{ui_row, ui_row_page, ui_row_pager, Row as UiRow};
 use crate::browser::{BrowseMode, Browser, BrowserResult, FilesPrefs, PickSpec};
+use crate::fsview::StoragePath;
+use crate::home::{home_folder_there, Home};
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -469,6 +471,14 @@ pub struct LibraryState {
     map_picker: NotebookPicker,
     map_keep: Option<MapKeep>,
     map_return: bool,
+    /// Home (2.2, issue #160; home.rs). The main menu has not been used yet in this run: while that is so it
+    /// opens at home as it comes in front (library_enter), and the first contact, gesture or action on it ends
+    /// that. A home inside Files that waited as Grimoire started: for What's new (open over the Library at the
+    /// first start after an update; its closing goes home, close_modal), and once for the notebook KOReader
+    /// started Grimoire on (home_waits).
+    home_pending: bool,
+    home_deferred: bool,
+    home_held: bool,
 }
 
 /// The C's S (a->lib).
@@ -6353,7 +6363,14 @@ fn close_modal(a: &mut App) {
         else {lib(a).modal=Modal::Settings;redraw(a,RefreshMode::Ui);}
         return;
     }
-    lib(a).modal = Modal::None;
+    let was = std::mem::replace(&mut lib(a).modal, Modal::None);
+    // (What's new was over the Library at a start whose home is inside Files, 2.2, issue #160: home now)
+    if was == Modal::About && std::mem::take(&mut lib(a).home_deferred) {
+        home_go(a);
+        redraw(a, RefreshMode::Full);
+        input_touch_context(library_touch_view(a));
+        return;
+    }
     redraw(a, RefreshMode::Ui);
 }
 
@@ -7750,15 +7767,24 @@ fn files_open_picture(a: &mut App, to: crate::bgwork_copy::CopyTo) {
 /// Files, the place (2.2): from the Files card, its menu's Open, and the `files` action (whether or not the card is
 /// in the Library), over the Library as it is.
 fn files_open_place(a: &mut App) {
+    let ok = files_place(a);
+    files_opened(a, ok);
+}
+
+/// Files, the place, opened at its root with what the settings say of it, and nothing drawn: false when there is no
+/// storage to browse.
+fn files_place(a: &mut App) -> bool {
     let prefs = files_prefs(a);
     let view = a.settings.files_view;
-    let ok = with_files(a, |b, _| {
+    let home = home_of(a);
+    with_files(a, |b, _| {
         let ok = b.open(PickSpec::place(), prefs);
         // (Files' View, the list or Covers: the place's alone, a picker is always a list)
         b.set_view(view);
+        // (home as settings.ini has it, 2.2, issue #160)
+        b.set_home(home);
         ok
-    });
-    files_opened(a, ok);
+    })
 }
 
 fn files_opened(a: &mut App, ok: bool) {
@@ -7931,6 +7957,7 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
     if a.scr != ScreenId::Library || a.lib.is_none() {
         return false;
     }
+    lib(a).home_pending = false; // (a key's or a button's action on the main menu: it is in use)
     if action == SHORTCUT_SAVE {
         library_save(a);
         return true;
@@ -8018,6 +8045,120 @@ fn library_home(a: &mut App) {
     s.page = 0;
     reload(a);
     redraw(a, RefreshMode::Full);
+}
+
+/// Home as settings.ini has it (2.2, issue #160; home.rs): Notebooks, the Library's top, without the line.
+fn home_of(a: &App) -> Home {
+    Home::parse(a.settings.home.as_bytes()).unwrap_or_default()
+}
+
+/// Home is `home` from now on: settings.ini has it (no line for Notebooks), and Files is told.
+fn home_save(a: &mut App, home: Home) {
+    a.settings.home.set(&home.value());
+    a.settings.home_refused = false;
+    settings_save(&a.settings);
+    lib(a).files.set_home(home);
+}
+
+/// Whether the Library, as it comes in front now, opens at home (2.2, issue #160): the main menu has not been used
+/// yet in this run, and a home is set (or one was, that settings.ini's line no longer names). With no home set
+/// nothing here does anything: such a start is as it always was.
+fn home_due(a: &App, relayout: bool) -> bool {
+    !relayout && a.lib.as_deref().is_some_and(|s| s.home_pending) && (a.settings.home_refused || !a.settings.home.is_empty())
+}
+
+/// Whether a home inside Files waits as the Library comes in front at a start (the Library's cards show
+/// meanwhile). For What's new, open over the Library at the first start after an update: its closing goes home
+/// (close_modal). And once for a notebook KOReader started Grimoire on (a page to annotate, a book): it opens over
+/// the Library's cards as before (app.rs, book_tick, which opens nothing over Files), and home opens when the main
+/// menu next comes in front. (The hand-over's one wait is taken at the first start even under What's new, so that
+/// the main menu in front after that notebook opens at home.)
+fn home_waits(a: &mut App) -> bool {
+    if a.settings.home_refused || !matches!(home_of(a), Home::Files(_)) {
+        return false;
+    }
+    let s = lib(a);
+    let held = app_handed_over() && !std::mem::replace(&mut s.home_held, true);
+    if s.modal == Modal::About {
+        s.home_deferred = true;
+        return true;
+    }
+    held
+}
+
+/// Goes home (2.2, issue #160) and reads the Library's lists; the caller draws. The Library's top, one of its
+/// folders, or a folder inside Files, which opens there over the Library as it was. A home that is not there, or
+/// that Grimoire does not enter, is `home_lost`. A Library folder is a name in the Library's own list, just read;
+/// a folder inside Files is checked through fsview's walk before Files is opened at it (`home_files`).
+fn home_go(a: &mut App) {
+    let refused = std::mem::take(&mut a.settings.home_refused);
+    let home = (!refused).then(|| home_of(a));
+    let s = lib(a);
+    match &home {
+        Some(Home::Files(_)) => {}
+        Some(Home::Library(f)) => {
+            s.cur_folder.set(f);
+            s.page = 0;
+        }
+        _ => {
+            s.cur_folder.clear();
+            s.page = 0;
+        }
+    }
+    reload(a);
+    let found = match &home {
+        None => false,
+        Some(Home::Notebooks) => true,
+        Some(Home::Library(f)) => lib(a).folders.iter().any(|x| x == f),
+        Some(Home::Files(p)) => home_files(a, p),
+    };
+    if !found {
+        home_lost(a);
+    }
+}
+
+/// Files, the place, at the folder `p` that is home: opened there, or taken there when it is up. False, with
+/// nothing opened at `p`, when the walk does not reach it as a folder that can be home (`home_folder_there`,
+/// looked at before Files is opened).
+fn home_files(a: &mut App, p: &StoragePath) -> bool {
+    if !home_folder_there(p) {
+        return false;
+    }
+    let up = lib(a).files.open && lib(a).files.mode == BrowseMode::Place;
+    if !(up || files_place(a)) {
+        return false;
+    }
+    if !with_files(a, |b, _| b.enter_home(p)) {
+        return false;
+    }
+    lib(a).pressed = None;
+    a.toast_floor = 0;
+    true
+}
+
+/// Home was gone or refused when Grimoire went there (2.2, issue #160): the Library's top is the place shown,
+/// "Home folder not found." is said once, and home is Notebooks again in settings.ini, at once. The value that
+/// failed is not kept: kept, it would be tried and said at every start, with no row in reach to reset it for
+/// someone who never shows Files. (The screen does not say why it changed.)
+fn home_lost(a: &mut App) {
+    if lib(a).files.open && lib(a).files.mode == BrowseMode::Place {
+        lib(a).files.close();
+        app_notice_clear(a, NoticeKey::Loading);
+        app_notice_clear(a, NoticeKey::Previews);
+    }
+    let s = lib(a);
+    let moved = !s.cur_folder.is_empty();
+    s.cur_folder.clear();
+    s.page = 0;
+    home_save(a, Home::Notebooks);
+    if moved {
+        reload(a);
+    }
+    qlog!("home: the home folder was not found: home is Notebooks again");
+    // TRANSLATORS: a toast as Grimoire starts (or goes home): the folder set as home is not there any more, or is
+    // not one Grimoire opens, so the Library's top level shows and home is Notebooks again. One line of about
+    // 1000 px at 44 px in bold.
+    app_toast(a, tr("Home folder not found."), 4000);
 }
 
 /// Whether the Graph (or its notebooks' browser) is up over the Library: a key pressed now is the Graph's.
@@ -8227,6 +8368,7 @@ pub fn library_init(a: &mut App) {
     s.learn_row = -1;
     s.buttons_group = -1;
     s.gestures_group = -1;
+    s.home_pending = true;
 }
 
 pub fn library_free(a: &mut App) {
@@ -8281,7 +8423,16 @@ pub fn library_enter(a: &mut App) {
         about_open(s);
         s.modal = Modal::About;
     }
-    reload(a);
+    // Home (2.2, issue #160): while the main menu has not been used in this run, it opens at home as it comes in
+    // front. With no home set this is the plain reload it always was.
+    if !relayout {
+        lib(a).home_deferred = false;
+    }
+    if home_due(a, relayout) && !home_waits(a) {
+        home_go(a);
+    } else {
+        reload(a);
+    }
     // PDFs copied into grimoire/import/ while Grimoire ran: looked at when the Library comes in front, at most
     // every 10 s (pdfimport.rs; not on a re-layout).
     if !relayout {
@@ -8340,6 +8491,11 @@ pub fn library_touch_view(a: &App) -> TgView {
 }
 
 pub fn library_event(a: &mut App, ev: &InEvent) {
+    // (a contact or a gesture on the main menu: it is in use, and comes back from a notebook where it was left,
+    // not at home)
+    if a.scr == ScreenId::Library && (app_pointer_phase(ev) == 0 || ev.type_ == InType::Gesture) {
+        lib(a).home_pending = false;
+    }
     library_event_in(a, ev);
     // (a keyboard opened or closed; the editor pushes its own as it enters)
     if a.scr == ScreenId::Library {
@@ -9187,6 +9343,9 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "%s", NAMES[bt_state() as usize]);
     } else if key == "folder" {
         csnprintf!(out, cap, "%s", &s.cur_folder);
+    } else if key == "home.pending" {
+        // 1 while the main menu has not been used in this run (it opens at home as it comes in front, 2.2)
+        csnprintf!(out, cap, "%d", s.home_pending as i32);
     } else if key == "folders" {
         csnprintf!(out, cap, "%s", &s.folders.join(", "));
     } else if key == "mirror" {
@@ -9800,6 +9959,239 @@ mod tests {
         canvas_free(&mut a.screen);
         std::env::remove_var("GRIMOIRE_STORAGE");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- home (2.2, issue #160) ----
+
+    // A storage with Grimoire's folder in it and a folder of the Kindle's (documents/Planners/2026); three notebooks,
+    // A at the Library's top, B in School and C in School/2026; and the app as a start leaves it before the Library
+    // first enters.
+    fn home_app(name: &str) -> (App, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("grimoire-home-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("documents/Planners/2026")).unwrap();
+        std::env::set_var("GRIMOIRE_STORAGE", &root);
+        assert_eq!(store_init(root.join("grimoire").to_str().unwrap()), 0);
+        for (n, folder) in [("A", ""), ("B", "School"), ("C", "School/2026")] {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(n, folder, PAPER_BLANK, &mut nb), 0);
+        }
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        a.running = true;
+        settings_default(&mut a.settings);
+        lib(&mut a).modal = Modal::None;
+        (a, root)
+    }
+
+    fn home_done(mut a: App, root: std::path::PathBuf) {
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        std::env::remove_var("GRIMOIRE_STORAGE");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The Library as it comes in front at a start with settings.ini's home= as `value` (read as the file's line is).
+    fn home_start(a: &mut App, value: &str) {
+        let s = lib(a);
+        s.files.close();
+        s.cur_folder.clear();
+        s.modal = Modal::None;
+        s.home_pending = true;
+        a.toast_visible = false;
+        a.settings.home.clear();
+        a.settings.home_refused = false;
+        match Home::parse(value.as_bytes()) {
+            Some(h) => {
+                a.settings.home.set(&h.value());
+            }
+            None => a.settings.home_refused = true,
+        }
+        settings_save(&a.settings);
+        library_enter(a);
+    }
+
+    fn files_place_now(a: &mut App) -> String {
+        let (mut out, h) = (String::new(), a.h);
+        assert!(lib(a).files.probe(h, "place", &mut out));
+        out
+    }
+
+    fn home_line(root: &std::path::Path) -> Option<String> {
+        let text = std::fs::read_to_string(root.join("grimoire/settings.ini")).unwrap_or_default();
+        text.lines().find_map(|l| l.strip_prefix("home=")).map(|v| v.to_string())
+    }
+
+
+    // Grimoire opens the main menu at home: the Library's top with no home set (nothing changes then, and nothing is
+    // written), a Library folder, a folder inside one, or a folder of the Kindle's storage, where Files opens over
+    // the Library.
+    #[test]
+    fn the_main_menu_opens_at_home() {
+        let (mut a, root) = home_app("start");
+        let _ = std::fs::remove_file(root.join("grimoire/settings.ini"));
+        library_enter(&mut a);
+        assert!(lib(&mut a).cur_folder.is_empty() && !files_shown(&a) && !a.toast_visible);
+        assert_eq!(lib(&mut a).items.len(), 2, "School and A");
+        assert!(!root.join("grimoire/settings.ini").exists(), "a start with no home writes no settings");
+        home_start(&mut a, "notebooks");
+        assert!(lib(&mut a).cur_folder.is_empty() && !files_shown(&a) && !a.toast_visible);
+        home_start(&mut a, "notebooks/School");
+        assert_eq!(lib(&mut a).cur_folder.as_str(), "School");
+        assert_eq!(lib(&mut a).items.len(), 2, "2026 and B");
+        assert!(!files_shown(&a) && !a.toast_visible);
+        // (the folder that is home keeps its Back button: the Library has no path bar to lead up from it)
+        assert!(lib(&mut a).hits.h.iter().any(|h| h.id == H_BACK));
+        home_start(&mut a, "notebooks/School/2026");
+        assert_eq!(lib(&mut a).cur_folder.as_str(), "School/2026");
+        assert!(!a.toast_visible);
+        home_start(&mut a, "files/documents/Planners");
+        assert!(files_shown(&a) && lib(&mut a).files.mode == BrowseMode::Place && lib(&mut a).files.at_home());
+        assert_eq!(files_place_now(&mut a), "documents/Planners");
+        assert!(lib(&mut a).cur_folder.is_empty() && !a.toast_visible);
+        assert_eq!(home_line(&root).as_deref(), Some("files/documents/Planners"), "home stays as it was set");
+        home_done(a, root);
+    }
+
+    // A home that is gone, or that Grimoire does not enter, or a line that names no home: the Library's top, "Home
+    // folder not found." once, and settings.ini without the line from then on. Nothing is made at the path, and the
+    // next time the Library comes in front says nothing.
+    #[test]
+    fn a_home_that_is_gone_or_refused_is_notebooks_with_one_toast() {
+        let (mut a, root) = home_app("gone");
+        std::fs::write(root.join("documents/file.pdf"), b"%PDF-1.4\n").unwrap();
+        std::os::unix::fs::symlink("Planners", root.join("documents/Linked")).unwrap();
+        std::os::unix::fs::symlink("/etc", root.join("documents/etc")).unwrap();
+        std::fs::create_dir_all(root.join("system/fonts")).unwrap();
+        std::fs::create_dir_all(root.join(".hidden")).unwrap();
+        let outside = root.parent().unwrap().join(format!("grimoire-home-outside-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&outside);
+        for bad in [
+            // gone
+            "notebooks/Nowhere",
+            "notebooks/School/Nowhere",
+            "files/documents/Nowhere",
+            "files/documents/Planners/2026/Nowhere",
+            // a file where a folder was, a link in the path (to a folder of the storage, and out of it)
+            "files/documents/file.pdf",
+            "files/documents/Linked",
+            "files/documents/Linked/2026",
+            "files/documents/etc",
+            // places Grimoire never opens at
+            "files/grimoire/trash",
+            "files/grimoire/notebooks",
+            "files/system/fonts",
+            "files/.hidden",
+            // lines that name no home
+            "/etc",
+            "files/../etc",
+            "files//etc",
+            "files/",
+            "files/documents/../../outside",
+            "somewhere",
+        ] {
+            home_start(&mut a, bad);
+            assert!(lib(&mut a).cur_folder.is_empty() && !files_shown(&a), "{bad}: the Library's top");
+            assert_eq!(lib(&mut a).items.len(), 2, "{bad}: School and A");
+            assert!(a.toast_visible, "{bad}: said");
+            assert_eq!(a.toast.as_str(), "Home folder not found.", "{bad}");
+            assert!(a.settings.home.is_empty() && !a.settings.home_refused, "{bad}: home is Notebooks again");
+            assert_eq!(home_line(&root), None, "{bad}: settings.ini has no home line");
+            // the Library in front again with nothing done in it (a notebook KOReader opened at the start, closed):
+            // nothing more is said
+            a.toast_visible = false;
+            library_enter(&mut a);
+            assert!(!a.toast_visible && lib(&mut a).cur_folder.is_empty() && !files_shown(&a), "{bad}: once");
+        }
+        assert!(!root.join("documents/Nowhere").exists() && !outside.exists(), "nothing is made at a home that fails");
+        // the file's own line, read as a start reads it: a hostile value is not kept, and it is said once
+        std::fs::write(root.join("grimoire/settings.ini"), b"mirror_pdf=1\nhome=/mnt/us/documents\n").unwrap();
+        settings_load(&mut a.settings);
+        assert!(a.settings.home.is_empty() && a.settings.home_refused);
+        lib(&mut a).home_pending = true;
+        library_enter(&mut a);
+        assert!(a.toast_visible && a.toast.as_str() == "Home folder not found." && !a.settings.home_refused);
+        assert_eq!(home_line(&root), None);
+        home_done(a, root);
+    }
+
+    // Home is where the main menu opens, not where it comes back to: once a contact, a gesture or an action has
+    // reached it, the Library comes in front where it was left (a notebook closed). Until then it opens at home
+    // again (a notebook KOReader started Grimoire on, closed).
+    #[test]
+    fn home_is_where_the_menu_opens_until_it_is_used() {
+        let (mut a, root) = home_app("pending");
+        home_start(&mut a, "notebooks/School");
+        assert_eq!(lib(&mut a).cur_folder.as_str(), "School");
+        // nothing done: in front again, at home again, wherever it was put meanwhile
+        lib(&mut a).cur_folder.clear();
+        library_enter(&mut a);
+        assert_eq!(lib(&mut a).cur_folder.as_str(), "School");
+        // a tap on its Back (a contact): the top, and that is where a notebook's closing comes back to
+        let back = lib(&mut a).hits.h.iter().find(|h| h.id == H_BACK).copied().expect("Back, in a folder");
+        let (x, y) = ((back.r.x + back.r.w / 2) as f32, (back.r.y + back.r.h / 2) as f32);
+        for type_ in [InType::TouchDown, InType::TouchUp] {
+            library_event(&mut a, &InEvent { type_, x, y, ..Default::default() });
+        }
+        assert!(lib(&mut a).cur_folder.is_empty() && !lib(&mut a).home_pending);
+        library_enter(&mut a);
+        assert!(lib(&mut a).cur_folder.is_empty(), "where it was left, not home");
+        // an action counts as a contact does
+        lib(&mut a).home_pending = true;
+        assert!(!library_shortcut(&mut a, SHORTCUT_UNDO) && !lib(&mut a).home_pending);
+        // a pen hovering over it does not
+        lib(&mut a).home_pending = true;
+        library_event(&mut a, &InEvent { type_: InType::PenHover, x: 500.0, y: 900.0, ..Default::default() });
+        assert!(lib(&mut a).home_pending);
+        home_done(a, root);
+    }
+
+    // A home inside Files waits as Grimoire starts: for What's new (the first start after an update), which shows
+    // over the Library and whose closing goes home; and once for a notebook KOReader started Grimoire on, which
+    // opens over the Library's cards as before, home opening when the main menu next comes in front.
+    #[test]
+    fn a_home_in_files_waits_for_whats_new_and_for_koreaders_notebook() {
+        let (mut a, root) = home_app("waits");
+        a.settings.home.set("files/documents/Planners");
+        a.settings.whatsnew_due = true;
+        library_enter(&mut a);
+        assert!(lib(&mut a).modal == Modal::About && !files_shown(&a) && lib(&mut a).home_deferred);
+        // (its Dismiss is a contact on the main menu)
+        lib(&mut a).home_pending = false;
+        close_modal(&mut a);
+        assert!(lib(&mut a).modal == Modal::None && files_shown(&a) && files_place_now(&mut a) == "documents/Planners");
+        assert!(!lib(&mut a).home_deferred);
+        // a Library folder that is home shows under What's new at once
+        lib(&mut a).files.close();
+        a.settings.home.set("notebooks/School");
+        a.settings.whatsnew_due = true;
+        lib(&mut a).home_pending = true;
+        library_enter(&mut a);
+        assert!(lib(&mut a).modal == Modal::About && lib(&mut a).cur_folder.as_str() == "School" && !lib(&mut a).home_deferred);
+        close_modal(&mut a);
+        assert!(!files_shown(&a));
+        // KOReader started Grimoire on a book: the Library's cards stay in front for its notebook, once
+        a.settings.home.set("files/documents/Planners");
+        lib(&mut a).cur_folder.clear();
+        lib(&mut a).home_pending = true;
+        std::env::set_var("GRIMOIRE_HOST", "koreader");
+        std::env::set_var("GRIMOIRE_BOOK", "1");
+        library_enter(&mut a);
+        assert!(!files_shown(&a) && library_cards_in_front(&a) && lib(&mut a).home_pending);
+        library_enter(&mut a);
+        assert!(files_shown(&a) && files_place_now(&mut a) == "documents/Planners", "the main menu next in front: home");
+        // the same start under What's new: its one wait is taken there, so home opens after that notebook
+        lib(&mut a).files.close();
+        lib(&mut a).home_held = false;
+        lib(&mut a).home_pending = true;
+        a.settings.whatsnew_due = true;
+        library_enter(&mut a);
+        assert!(lib(&mut a).modal == Modal::About && !files_shown(&a) && lib(&mut a).home_held);
+        library_enter(&mut a);
+        assert!(files_shown(&a) && files_place_now(&mut a) == "documents/Planners", "after the notebook: home");
+        std::env::remove_var("GRIMOIRE_HOST");
+        std::env::remove_var("GRIMOIRE_BOOK");
+        home_done(a, root);
     }
 
     // A node whose notebook does not open (its notebook.ini gone since the index read it): the Graph again,

@@ -871,6 +871,43 @@ fn files_keys() {
     unlink(&path);
 }
 
+// The home folder (2.2, issue #160): absent by default and written only while it is not Notebooks; read strictly
+// (home.rs), so a line that names no home is Notebooks, marked for the Library's one toast, and not written back
+// (unlike files_sort's: kept, it would be said at every start). No file or folder is looked at to read it.
+fn home_key() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    let any_home_line = |p: &str| read_file(p).is_some_and(|t| find(&t, "\nhome=").is_some());
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.home.is_empty() && !s.home_refused);
+    check!(settings_save(&s) == 0 && !any_home_line(&path));
+    for v in ["notebooks/School", "notebooks/School/2026", "files/documents/Planners", "files/documents/Not there"] {
+        check!(write_file_atomic(&path, format!("home={v}\n").as_bytes()) == 0);
+        check!(settings_load(&mut s) == 0 && s.home.as_str() == v && !s.home_refused);
+        check!(settings_save(&s) == 0 && has_pins_line(&path, &format!("home={v}")));
+    }
+    // Notebooks, said either way, is no line
+    check!(write_file_atomic(&path, b"home=notebooks\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.home.is_empty() && !s.home_refused);
+    check!(settings_save(&s) == 0 && !any_home_line(&path));
+    // a line that names no home: refused, and gone at the next save
+    for v in ["/mnt/us/documents", "files/../etc", "files//etc", "files/", "notebooks/", "Files/documents", "files/doc\tuments", "files/a/./b"] {
+        check!(write_file_atomic(&path, format!("invert=1\nhome={v}\n").as_bytes()) == 0);
+        check!(settings_load(&mut s) == 0 && s.home.is_empty() && s.home_refused);
+        check!(settings_kept("home").is_none());
+        check!(settings_save(&s) == 0 && !any_home_line(&path) && has_pins_line(&path, "invert=1"));
+    }
+    let long = format!("home=files/{}\n", "a/".repeat(400));
+    check!(write_file_atomic(&path, long.as_bytes()) == 0);
+    check!(settings_load(&mut s) == 0 && s.home.is_empty() && s.home_refused);
+    // set, and set back to Notebooks
+    s.home.set("files/grimoire/photos/Trip");
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "home=files/grimoire/photos/Trip"));
+    s.home.clear();
+    check!(settings_save(&s) == 0 && !any_home_line(&path));
+    unlink(&path);
+}
+
 // What's new after every update (the owner's rule of 2026-11-05): due when a file a Grimoire saved
 // names another version's notes as seen, whatever whatsnew_hide says (the 2.0.0 betas' box, read and
 // written back as it was); not due for this version's, nor for a file without settings_version.
@@ -1358,6 +1395,7 @@ fn test_store() {
     run!(shape_corner_key);
     run!(font_key);
     run!(files_keys);
+    run!(home_key);
     run!(whatsnew_due_after_every_update);
     run!(gesture_keys);
     run!(rotation_lock_key);
