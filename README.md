@@ -1,3 +1,7 @@
+<p align="center">
+  <strong>English</strong> | <a href="README.ja.md">日本語</a> | <em>More languages coming soon</em>
+</p>
+
 <h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
@@ -11,8 +15,7 @@ Scribe's pressure and tilt, folders, and three easy ways to get your pages onto 
 or PNG. Everything stays on the Kindle in open files: no account, no cloud, no tracking.
 
 It comes dressed like a castle in an old console game: pixel blackletter titles, pixel type,
-carved-stone frames and pointed arches
-(a plain **Classic** style is one tap away in Settings).
+carved-stone frames and pointed arches (a plain **Classic** style is one tap away in Settings).
 
 Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 
@@ -36,6 +39,18 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 The pages above were drawn on a Kindle Scribe in Grimoire; the last picture is Live view, the
 Kindle's screen in a computer's browser as you write.
 
+## Why Grimoire
+
+- **It is yours, on your Kindle.** Notebooks are open files in a `grimoire` folder, not a service.
+  No account, no cloud, no tracking, and nothing to log in to.
+- **The paper fits the page, not the other way round.** Rule, Cornell, dot grid, graph, music,
+  tab, isometric, hexagon, Seyes and custom music: mix them, stack them, give every page its own.
+- **The pens behave like pens.** Pressure and tilt are tuned to the Scribe, from a grainy charcoal
+  to a broad-edge calligraphy nib, with white ink, a precise eraser and pens you can pin.
+- **Your work comes back out.** Wi-Fi Share, mirrored PDFs over USB, or `tools/grimoire-pull`;
+  the same renderer, so a page looks the same on the Kindle, in a PNG and in a PDF.
+- **It is free software.** GPL-3.0, built to be forked, translated and lived in.
+
 ## Support Grimoire
 
 Grimoire is free, open source and made by one person, with a lot of care. If it has earned a place
@@ -55,626 +70,37 @@ no scriptlets, KOReader can open Grimoire instead (see the table).
 | Kindle | Status |
 |---|---|
 | Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Used daily on 5.20.1.0.2 and runs on 5.20.1 (Vera) |
-| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** Used daily on 5.20.1.0.2 and also runs on 5.20.1 (Vera). If the screen is upside down, see Troubleshooting. |
-| Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see Does it work in KOReader?). |
-| Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see Moving between versions). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
+| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** Used daily on 5.20.1.0.2 and also runs on 5.20.1 (Vera). If the screen is upside down, see [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting). |
+| Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader)). |
+| Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see [Moving between versions](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting#moving-between-versions)). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
 
 Firmware 5.20.1 is the newest as of October 2026. Check that your jailbreak survives it before
 updating; most people keep OTA updates blocked.
 
-## Install
+## Documentation
 
-The release also includes a KPM package for `kindlehf` Scribes. See [KPM installation and release pipeline](docs/KPM.md) for local installation, data preservation and preview/stable feeds.
+The full manual lives in the wiki, in **English** and **日本語**:
 
-1. Download `Grimoire-<version>.zip` from the
-   [Releases](https://github.com/ganten1998/grimoire-scribe/releases) page and unzip it. You get a `documents` folder with two files
-   (optional KOReader plugin and patches folders for manual installation: see Does
-   it work in KOReader?).
-2. Connect the Kindle to your computer. The Scribe uses MTP: on a Mac, use
-   [OpenMTP](https://openmtp.ganeshrvel.com) (or `brew install --cask openmtp`); on Windows and
-   Linux it shows up as a device.
-3. Copy **both files** into the Kindle's `documents` folder:
-   - `Grimoire.sh`, the app (it carries everything inside it)
-   - `Grimoire - reset pen calibration.sh`, a rescue switch you will hopefully never need
-4. Eject the Kindle. **Grimoire** appears in your Library with a gothic cover (indexing can take
-   a minute). Tap it.
+- [English wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home)
+- [日本語の wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-ja)
 
-The first launch takes a few seconds while it unpacks itself into a `grimoire` folder. To
-**update**, copy the new `Grimoire.sh` over the old one; your notebooks and settings stay. Going
-back to an older version works the same way (see Moving between versions).
+| Page | What it covers |
+|---|---|
+| [Install](https://github.com/ganten1998/grimoire-scribe/wiki/Install) | Requirements, the release zip, KPM, updating and uninstalling |
+| [Using Grimoire](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire) | The Library, paper, pens, the toolbar, the Index, links, Live view, Wi-Fi, sleep and the passcode |
+| [Fonts and Language](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language) | English, Spanish and Japanese, the Classic fonts, and your own fonts |
+| [Importing](https://github.com/ganten1998/grimoire-scribe/wiki/Importing) | Templates, pictures, PDFs and pages you already have |
+| [Getting Pages Off the Kindle](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting) | Wi-Fi Share, Effects, USB PDFs and SSH |
+| [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader) | Opening Grimoire from KOReader, annotating books, and the optional plugin |
+| [Shortcuts](https://github.com/ganten1998/grimoire-scribe/wiki/Shortcuts) | Keyboards and controllers, and `shortcuts.ini` |
+| [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting) | Known issues, common fixes, and moving between versions |
+| [Privacy](https://github.com/ganten1998/grimoire-scribe/wiki/Privacy) | What stays on the Kindle, and what Share exposes |
+| [Contributing](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing) | Bugs, feature requests, pull requests, LLM use and the wiki |
+| [Building from Source](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source) | Toolchains, make targets and tests |
+| [Translating](https://github.com/ganten1998/grimoire-scribe/wiki/Translating) | Improving Spanish or Japanese, and adding a language |
 
-**Coming from Quire** (Grimoire's old name)? Copy the new files and tap Grimoire once. It moves
-your notebooks and settings from `quire/` to `grimoire/` and removes the old Quire launcher.
-
-## Using it
-
-- **Library**: notebooks as covers with thumbnails, in folders that nest (a folder moved or renamed onto one that is there asks: merge, keep both or cancel). Tap the `...` on a
-  notebook to rename, move or delete it (deleted notebooks go to `grimoire/trash`, nothing is
-  ever erased outright).
-- **Names** can have accents: the keyboard's **áé** key opens a page of accented letters (enough
-  for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish, Norwegian, Swedish and
-  Finnish). Shift gives the next letter its capital; tap it twice for caps on (a bar under the
-  key's label, every letter a capital until a third tap) and **abc** returns to the letters. With
-  Grimoire in Spanish, the letters page has **ñ** too, after l. In Japanese that key is **あ**, a
-  phone's flick pad: a tap types the row's first kana and a swipe left, up, right or down the
-  rest, **゛小** cycles the kana typed last (か to が, は to ば to ぱ, つ to づ to っ), **カ**
-  switches to katakana and **、** holds 、。？！ on its flicks.
-- **Delete held down** deletes one character after another, on every keyboard (names, Find, the page number
-  pads, the count pad): a tap deletes one, and a finger or the pen kept on the key deletes the next after about
-  0.4 s, then about 15 a second until it lifts or slides off. The count pad's - and + count on the same way,
-  up to its limits.
-- **The caret**: every keyboard but the count pad has **◀** and **▶** at the right end of its text line, which
-  move the caret a letter (held, one after another, as delete does); a tap on the text puts the caret there
-  and a drag across it selects. Typing and delete act at the caret, and replace or take a selection. The key
-  beside them opens the edit page: **Select all**, **Cut**, **Copy**, **Paste**, and **Start** and **End** for
-  the caret. What you cut or copy stays until Grimoire closes and pastes into any keyboard; it is apart from
-  the lasso's ink. With a keyboard attached (and shortcuts enabled, below), the arrows, Home and End move the
-  caret (with Shift, they select) and Ctrl or Cmd with A, C, X and V select all, copy, cut and paste.
-- **Paper**: narrow, medium and wide rule (without or with a margin), Cornell, dot grid, graph,
-  sheet music, guitar tab, blank, cross grid, isometric, hexagon, Seyes rule, and **Custom
-  music**: stack treble, bass, alto, tenor, drum and plain staves, 4 to 8 line tabs and lyric
-  lines (or start from grand staff or a 4 to 7 string bass tab), and choose how many systems fit
-  on a page. Each page can have its own paper.
-- **Pens**: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
-  calligraphy pen, highlighter. Hold a pen on the toolbar for its sizes: a card of four widths
-  in millimetres (the eraser's also has Whole strokes / Precise). Every pen's pressure and tilt response can be tuned
-  (Settings > Pen sensitivity). The eraser takes away whole strokes, or set to **Precise** only
-  what it touches (see White ink, pinned pens and templates); the eraser end of the Premium Pen
-  works too.
-  - **Charcoal** is grainy and crumbly, darker the harder you press; lay the pen low and it
-    shades broad and soft with the side of the stick.
-  - **The calligraphy pen** is a broad-edge nib that sits at 90 degrees to the way the pen
-    leans, like a real one: lean toward the bottom right (a right hand) and you get the classic
-    45 degree italic, thick going down to the right and hairline going up; lean toward the bottom
-    left (a left hand) and the nib mirrors. Hold the pen upright and it keeps the 45 degree nib.
-- **The floating toolbar** holds tools, undo/redo, clear page, pages, paper and the Library. Drag
-  it anywhere; tap the corner arrows to fold it into a small box. On the last page its next-page arrow is a
-  **+**: tap it for a new page, which opens (as swiping past the last page does). Hold it (or, with a keyboard
-  attached, tap it with Shift, Ctrl, Alt or Cmd held) for the number pad Pages uses (at 1 at first): the pages are added
-  after the page you are on, on its paper, which stays open, and the Undo in Pages takes them back while they
-  are still blank. The `new-pages` shortcut opens the same pad on any page.
-- **Pen button**: hold the button while drawing to highlight (or erase; Settings). Its clicks and a
-  hold while hovering do nothing until you give them an action in Settings > Gestures (until 2.1.0-beta.1
-  the hold cleared the page, under a finger merely resting on the button). The toolbar's broom clears the
-  page: ink and outgoing links together (not a PDF's own links, its tabs); Undo restores both. Cleared by a
-  gesture or a shortcut, the page says so in a toast: "Page cleared. Undo brings it back."
-- **The Index**: swipe down with two fingers for Graph, or tap the page counter for Pages. **Graph**, **List** and
-  **Pages** share one navigation bar; Back returns to the notebook. Graph always shows every linked page of
-  every notebook, each notebook's pages an island with its name over it (a library with too many linked pages
-  to draw at once shows this notebook alone, and says so), with the view button at the bottom: **View: All** fits
-  the whole linked map, **View: Adjacent** the pages around one (linked to it, and theirs); a tap switches to the
-  other view, fitted, after a pan or pinch too. With a keyboard the arrows pan the Graph, - and + zoom it, Ctrl+0
-  fits it, V switches its view, Ctrl+A selects every page drawn and Enter opens the selected page. List shows
-  existing links. Pages has small
-  cached previews and controls for adding, copying, selecting and deleting pages. Hold a page for its card
-  (Move to..., Copy to notebook..., Rename, Delete), or hold it a moment (300 ms, before the card would open) and
-  drag it off to a gap between two pages to move it (a black bar shows the gap it goes into; no card opens); right
-  after a move, the bottom row's Undo puts the pages back, and
-  then its Redo beside it moves them again. Tap **+** (New page) for one blank page at
-  once, after the open page (or the last one ticked), on that page's paper: Pages stays open and the new page's tile says
-  "(new)" (tap the tile to open it). Hold it (or, with a keyboard attached, tap it with
-  Shift, Ctrl, Alt or Cmd held) for a number pad that asks how many: it starts at 1, so **Add 1 page** at once
-  adds one; type the count (the first digit replaces the 1) or use - and + under the digits, and press
-  **Add N pages**. **Go to page...** opens the page-number-or-name sheet over Pages, which stays behind it:
-  Cancel gives Pages back as it was, a row picked opens that page. With a keyboard, Ctrl+A ticks every page and
-  Ctrl+N opens the number pad. The Undo button then takes that page or batch back while its pages are
-  still blank, and Redo adds the same pages again. While Pages is open, the `undo` and `redo` keys, controller
-  buttons and gestures are these Undo and Redo (one step each); on the page they stay the page's own, so a
-  page's writing is never undone from Pages, nor a page move from the page. A large batch takes a moment (taps
-  meanwhile are ignored); a big one, from about 50 pages, says **Adding N pages...** until they are added, and
-  so does its Redo.
-  **The Graph from the Library**: swipe down with two fingers over the Library (or press the key bound to
-  `index-map`) for the Graph of all notebooks with no notebook open: tap a page twice to open it, and Back from there, even from another notebook a link led to, or
-  the Links bar's **Back to Graph**, comes back to the Graph. Spread two fingers to zoom it. A library with too
-  many linked pages to draw at once opens the notebooks' browser instead, to pick one notebook's Graph.
-  A notebook's or a folder's menu (its **...** button)
-  has **Leave out of the Graph**: its pages are not drawn in the Graph of all notebooks (a folder's covers
-  everything in it); **Show in the Graph** brings them back.
-  Swipe up with two fingers for the page-status panel: notebook name, page count, link areas and
-  **Name page** and **Go to page** over the notebook. Page names stay attached when pages move and appear in the PDF table of contents.
-  The toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
-- **Live view**: **Library > Share > Live view** shows what Grimoire shows, live, in a computer's
-  browser on the same Wi-Fi: open the address it gives and type its code (or scan its QR code with
-  a phone). A slim rail beside the page holds the controls: **Size** (Fit, Fit width, 25% to
-  200%; Ctrl or Cmd with the scroll wheel, a trackpad pinch, or the - + 0 keys), **Picture in
-  picture**, Monitor mode, full screen, recording, **View settings** (transparent paper, colors,
-  warmth and brightness, the pen dot, the toolbar and clock layers, latency) and **Keys**. Picture in picture floats the
-  page over your other windows; keep the original tab open meanwhile, and close the small window
-  to bring the view back. Grimoire's toasts show in the browser too, where and as the Kindle shows
-  them, and go when they go there (always: the toolbar and clock switches leave them alone).
-  A small icon in the top right corner says it is on; **Stop** on
-  its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
-  use it on a network you trust.
-- **Wi-Fi networks**: **Settings > Wi-Fi** turns Wi-Fi on or off, says which network the Kindle is
-  connected to, and lists the networks the Kindle has saved in their own order; the list scrolls. The
-  status line names the connected network. Tap one to switch to it: "Connecting to ..." until the Kindle
-  is connected to it, or "Could not connect to ..." when it refuses or has not connected in 45 seconds
-  (Grimoire changes nothing more: the Kindle's own Wi-Fi service decides what it joins next). Switching disconnects Share, Live view and SSH from
-  the network you leave. Add a network or change its password in the Kindle's settings or KOReader:
-  no Wi-Fi password reaches the app, its files or its log (its helper keeps only the networks' names), and no
-  network is added, changed or forgotten.
-- **Links**: tap the toolbar's link-plus button and draw around the area. Choose a page in this
-  notebook, or **Somewhere Else** to browse folders, pick another notebook and choose its page.
-  The selector starts in the current notebook's folder and shows cached page previews. Selection
-  strokes leave no ink. Draw a visible border separately if desired. A finger tap follows the link;
-  hold it to change its destination, redraw its area or delete it. Link edits have Undo/Redo.
-  Notebook IDs and page IDs keep cross-notebook links attached through renames, folder moves and
-  page reordering. Ordinary erasing leaves links intact; Clear page removes them with the ink.
-  Existing links to the old Index remain valid and open the unified Index.
-- **Clock and battery**: enabled by default, small and at the top left. It shows the time
-  and a small battery with its percent (a bolt over it while it charges), in a box over the page;
-  tap the corner to hide or show it. It shows on the notebook page only, never goes into a page, a PDF or
-  Live view, and waits while the pen is near. Settings > Display sets its size and which corner it
-  sits in (see docs/KINDLE.md).
-- **Pinch** to zoom up to 4x, or inward to return to the fitted page view. Grimoire turns with the Kindle (switchable).
-- **Sleep**: the power button sleeps the Kindle *inside* Grimoire, showing your page (or a pinned
-  page, or the Kindle's own screensaver). Waking brings you straight back.
-- **Leaving**: **Library > Exit**, or hold the power button 4 seconds on any screen, asleep or
-  awake. Grimoire saves your page and closes, and the Kindle comes back. If the page cannot be
-  saved (the Kindle's storage is full), a hold while awake says so and stays; hold again within a
-  minute to leave without it. Opened from KOReader, Exit reads **Back to KOReader**, and both ways
-  out take you back to KOReader.
-- **Passcode**: started from the Kindle Library, Grimoire leaves your Device Passcode on. When
-  the Kindle goes to sleep, Grimoire saves your page and hands the screen and touch input to the
-  Kindle, so its own keypad can ask for the passcode; when the Kindle reports the unlock, Grimoire
-  takes them back and shows your notebook. With a passcode set, the keypad comes before a custom
-  sleep picture, and the Kindle interface keeps running for it. Confirmed upright and sideways on
-  the Scribe 2024 with firmware 5.20.1.0.2; other firmware still needs a check. KOReader normally turns the
-  passcode off for its whole session, and Grimoire opened from KOReader leaves it that way. Start
-  Grimoire from the Library when you need the passcode.
-- **Language**: English, Spanish or Japanese, following the Kindle's own language (see Language).
-- **Fonts** (Classic): Settings' Display category has a **Font** row in the Classic style, naming the font in
-  use. It opens the Font sheet: **Terminess** (the default), **Atkinson Hyperlegible Next** (made for readers
-  with low vision: I, l and 1, O and 0 cannot be mistaken), **Noto Sans** and **Literata** (a serif made
-  for reading on screens), each named in itself, with a sample of the one in use at the top. A tap on a font
-  applies it to every screen at once and saves it; the sheet's back arrow returns to Settings and its X closes
-  Settings, both keeping the font you tapped (to go back, tap the font you had). Your pages, paper labels, the clock,
-  PDFs and pictures never change with the font, and neither do the icons; the share pages in your browser
-  use the same font (a page already open takes it when it loads again). Gothic keeps its own pixel type, so the Font row is not there. Greek, Cyrillic and other
-  letters a font lacks come from Terminess, and Japanese from DotGothic16, as in every style.
-- **Your own fonts** (Classic, since 2.1.0-beta.2): copy `.ttf` or `.otf` files into `grimoire/fonts` over USB
-  (a family unzipped into a folder of its own is fine, one folder deep; up to 200 files, 24 MB each), then open
-  Settings > Font. Under **Your fonts** each file shows its name drawn in itself once Grimoire has checked it
-  in the background ("Checking 3 fonts..." stays on the sheet meanwhile, and a file still being copied
-  waits until it is whole), or its row is greyed and says why not: "Unreadable font." (not a font, damaged, or
-  one whose letters draw nothing), "Too big (over 24 MB).", "No Latin letters." (a symbol font), "Use .ttf or
-  .otf." (a web font) or "Took too long to read.". Tap a font to use it: it applies at once and is saved.
-  Bold comes from the font's own weight axis if it has one, else from the Bold file of the same family beside
-  it, else Grimoire thickens the regular. A letter your font lacks comes from Terminess (its row says "Some
-  letters come from Terminess." when your language needs some), and kana and kanji from DotGothic16 unless your
-  font has them. Text in your font may be a little smaller or larger than in Terminess: Grimoire sizes it so
-  its capitals are about as tall and its words no wider, and a label that still does not fit ends in "...".
-  - **Whose fonts.** Your font draws Grimoire's own words only (menus, names, the keyboard). Pages, paper
-    labels, the clock, icons, PDFs and pictures never use it, and neither do the share pages (your browser gets
-    Terminess): Grimoire never copies your font into a page, a PDF or anywhere else, and never sends it
-    anywhere. It stays on this Kindle. Use fonts you have the right to use.
-  - **Back to Terminess.** Tap Terminess in the Font sheet (while a font of yours is in use the sheet's own words
-    are in Terminess, so it can always be read; a tap on Terminess also takes your font away after a start in
-    Terminess that a crash made, so the next start does not try it again), or delete the font's file over USB:
-    Grimoire is in Terminess from its next start (a running Grimoire keeps the copy it loaded), and the row says
-    "File missing." until you pick another font or put the file back, which brings the font back. If a font ever stops Grimoire before its first screen is drawn, the next start
-    is in Terminess by itself, the start after tries the font once more, and after a second failure Grimoire
-    leaves it alone until the file changes.
-
-## White ink, pinned pens and templates
-
-- **White ink**: tap the pen button on the toolbar; the picker's bottom row is **Black | White**.
-  With White, every pen draws white with its own texture, taking ink away while the paper's lines
-  stay. The pen in use shows a hollow icon while white is on.
-- **The eraser**: **Pen feel > the eraser's tab > Eraser** is **Whole strokes** (a touch takes the
-  whole stroke) or **Precise** (it takes away only what it touches). Tapping the eraser again goes
-  back to the pen you used before it. Library > Settings' pen-button row can also make holding the
-  pen button draw white.
-  Its Pen feel test pad starts with handwritten “erase me!” ink. **Reset pad** restores it;
-  **Reset tool** restores the tuned widths and Whole strokes mode.
-- **Fine pen adjustments**: in Pen feel, hold a slider briefly, then move above or below its
-  track while keeping contact. The farther away you move, the smaller each horizontal
-  adjustment becomes. Move back within a knob-height band around the track for the knob to
-  catch up and follow directly again. Release to keep the value; the next press starts normally.
-
-- **Pinned pens**: in the picker, tap **Pin**, then the pens you want on the toolbar (up to three),
-  then Done. Each gets its own button under the pen button. From another tool, including the
-  eraser, tap the top pen button once to select its pen and again to open the picker. If the
-  button shows a grid, it opens the picker directly.
-- **Templates**: copy PNG or JPG pictures into `grimoire/templates/` over USB while Grimoire is
-  closed (upright, 3:4, 1860 x 2480 is best, light lines on white work best on e-ink). In a
-  notebook, Paper > **More layouts...** shows them; New notebook has the same button. A template is
-  ready to pick once its tile shows its picture (Grimoire checks each new file in the background
-  first). Each notebook keeps its own copy of a template it uses.
-- **Pages you already have**: put a folder of page pictures (PNG or JPG, one per page, such as a
-  PDF exported as pictures with `pdftoppm -gray -png -r 200 file.pdf page`) in
-  `grimoire/import/<Name>/` and start Grimoire: it becomes the notebook <Name>, and the folder
-  moves to `grimoire/import/done/`.
-- **PDFs**: copy a PDF (a planner, a book) into `grimoire/import/` over USB, or over SSH while Grimoire
-  runs, and open the Library: a notice at the bottom says how far it is ("Importing: page 37 of 412"), and
-  the notebook appears. Its pages are the PDF's pages, in colour where the PDF has colour (the Scribe shows
-  them in gray). A PDF put in a folder there goes into the Library folder of that name, and the PDF moves
-  to `import/done/`. Up to 2000 pages and 512 MB; a longer or bigger PDF, or one with a password, is refused
-  with a message, and the same PDF a second time says "PDF already imported.". A page that cannot be read
-  becomes a blank page and the end says so ("Some pages couldn't be read."); a PDF with no page that reads is
-  not imported. A PDF that fails waits until you replace it (three tries); one that found the storage full goes
-  once there is room. KOReader's Open this book hands its PDF to this same import (see Open this book in
-  Grimoire), and still draws DjVu and comic books itself.
-- **A file anywhere on the Kindle**: Library > New > **From a file...** opens Files, titled "Import a PDF or
-  pictures": Import (`grimoire/import`, with what each file is doing: Waiting, "Importing: page 40 of 365",
-  Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
-  are never listed). A tap on a folder opens it; a tap on a PDF opens its card ("14.2 MB, Oct 30" and Import as
-  notebook, or Open its notebook when a notebook already holds that book; "has notes" shows on its row), and
-  the second tap imports it. A notebook made from a PDF remembers its file, so the card of such a PDF offers
-  Import as notebook beside Open its notebook: the very same file says "PDF already imported.", and another
-  file that only looks like the book to KOReader's key (an edited copy, say) becomes a notebook of its own.
-  A folder of pictures is imported from its `...` (or a finger held on it) card.
-  The notebook takes the file's name unless you typed one in the New notebook sheet first, and goes in that
-  sheet's folder. The file stays exactly where it was: Grimoire only reads outside its own folders, and never
-  follows a link (a file picked in Import itself is filed in `import/done/` like one dropped there). A file
-  picked while an import from an earlier run is still going is imported once that one is done.
-- **Erased ink leaves the files**: when a notebook closes, ink erased entirely is taken out of its
-  page files in the background. A stroke erased only in part stays whole in the file.
-
-## Language
-
-Grimoire speaks English, Spanish and Japanese. **Settings > Language** offers **Automatic**,
-**English**, **Español** and **日本語**. Automatic, the default, follows the language set in the
-Kindle's own Settings, and gives English for a language Grimoire does not speak yet; its row names
-the language it gives ("Automatic (English)"). So if your Kindle is set to Spanish or Japanese,
-Grimoire is in that language from the first start after you update; **Ajustes > Idioma > English**
-(Settings > Language, in Spanish) or **設定 > 言語 > English** (in Japanese) switches it back. A
-choice applies at once and stays chosen.
-
-All of Grimoire follows it: every screen, the share pages and the Effects studio, and the name a
-new notebook gets ("Notebook Oct 20", "Cuaderno 20 oct", "ノート 10月20日"). Your pages never
-change with the language: paper is drawn the same everywhere (Cornell notes keep their English
-headings), and the names you give notebooks and folders stay as you typed them. The KOReader
-plugin follows KOReader's own language.
-
-Corrections and new languages are welcome; [docs/TRANSLATING.md](docs/TRANSLATING.md) says how.
-Translations are under Grimoire's license, GPL-3.0-or-later.
-
-
-## Getting pages off the Kindle
-
-Details in [docs/EXPORT.md](docs/EXPORT.md).
-
-1. **Wi-Fi**: turn on Wi-Fi (**Settings > Wi-Fi** also picks the network) and open **Library > Share**. Point your phone's camera at the QR code
-   it shows, or type the address under it into any browser on the same network. Download a
-   notebook as PDF or zip, single pages as PNG, or everything at once. Notebook PDFs show page
-   preparation and transfer progress, then arrive in your browser's Downloads. The browser reader shows
-   one page at a time, with a page counter and number field at the top; type a number to jump. **Effects** makes
-   transparent, recolored or filtered copies (gradient signatures, warm tones, sepia, blueprint
-   and more) and shows the matching ImageMagick command. Only devices on your network can reach
-   it, and only while the Share screen is open.
-2. **USB**: every notebook you close is also saved as a PDF in `grimoire/PDFs/<folder>/`.
-3. **SSH** (for the terminal-inclined): `tools/grimoire-pull` syncs everything and renders PDFs
-   on your computer.
-
-## Does it work in KOReader?
-
-Yes: KOReader can open Grimoire and get you back to your book. With KOReader installed (the
-Kindle's `koreader`, `extensions/koreader` or `documents/koreader` folder), open
-**Grimoire > Settings > KOReader > Install / update Grimoire plugin**, then restart KOReader.
-That adds **Tools > Grimoire** to its menu. A fresh Grimoire installation leaves KOReader untouched:
-
-- **Open Grimoire**: KOReader closes and Grimoire opens in its place, without the Kindle's home
-  screen in between. In Grimoire, Library > Exit reads **Back to KOReader** (**Volver a KOReader**
-  in Spanish); it, or holding the power button 4 seconds, brings KOReader back with the book you
-  had open (or its file browser).
-- **Notebook PDFs**: KOReader's file browser in `grimoire/PDFs`.
-- **Reset pen calibration**: the same rescue as the Library's reset item.
-
-Open Grimoire is also an action for KOReader's gestures (Settings > Taps and gestures). The menu
-speaks KOReader's language, English, Spanish or Japanese (**Abrir Grimoire**, **PDF de los
-cuadernos**, **Restablecer la calibración del lápiz**; **Grimoireを開く**, **ノートのPDF**,
-**ペンのキャリブレーションをリセット**). Only a start from the Library updates the plugin, so
-after you update Grimoire, tap it in the Library once.
-
-This needs a KOReader started from its Library item or from KUAL (KOReader's `koreader.sh`
-start). A KOReader launcher that leaves the Kindle interface running is supported too: Grimoire
-pauses it for its own session and restores it before returning. Opened from KOReader, Grimoire cannot show the Kindle's own screensaver as its
-sleep screen (that needs the Kindle's screens, which KOReader keeps paused), so it shows your page
-instead. The plugin keeps KOReader's framework service alive during Grimoire on a no-framework KUAL start,
-so the power service can still handle sleep.
-
-**Library > Settings > KOReader** installs or updates the plugin, removes it, or toggles each
-of the three optional patches: diagonal screenshot gestures off, square folder corners,
-and Terminess menu fonts. The font patch includes the font. Restart KOReader after changing a patch
-or the plugin. A different patch at the same filename is preserved; no patches are applied just
-by updating Grimoire. The separate `KOReader-patches.zip` and the main zip carry the three scripts
-from 1.1.0-beta.1: screenshot gestures and corners stay unchanged; Terminess now matches
-regular/bold fonts and separates the dropdown battery icon from its percentage. Battery status and
-reading footers keep KOReader’s native font fallback, avoiding conflicting Nerd Font icons. Fonts and manual
-instructions are included. Since 2.0.0-beta.2 the font is Terminus's text and Grimoire's own icons only (a
-much smaller file). In KOReader's menus the battery symbols now come from KOReader's own symbols font too, and
-the box drawing, heart, lightning and the like that Nerd Fonts had added come from KOReader's fallback fonts.
-Grimoire brings the copy in KOReader's `fonts/Grimoire` up to date when it next starts. The menus use that
-copy whenever it is there, even with other Terminess or Terminus files in the Kindle's `fonts` folder: a full
-Nerd Font has icons of its own where KOReader's battery symbols are (a "JS" badge in place of the battery), so
-without Grimoire's copy such a font is passed over while another will do, and `koreader/crash.log` names the
-font the menus use and why. A start of Grimoire also replaces an earlier Grimoire copy of the Terminess patch
-in KOReader's `patches`, one byte for byte as Grimoire wrote it, with the current one (`grimoire.log` says so);
-a copy you changed is kept.
-
-**Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom
-image, random image or book cover, exported whenever Tools > Grimoire hands over. It also works
-on a later Library start. If no custom image is available, your page shows. A random folder picks
-one image per handover; KOReader's message/status widgets are not copied. With a Device Passcode
-set, the passcode keypad comes first.
-
-*Execute shell script* on `Grimoire.sh` in KOReader's file browser still refuses, because
-KOReader keeps the pen and the touch screen to itself (KOReader reports status 3): use Tools >
-Grimoire instead.
-
-The plugin is optional. To remove it, delete `koreader/plugins/grimoire.koplugin`; while KOReader
-stays installed, Grimoire does not put it back. To put it back, or into a KOReader installed again
-since, or where the Library cannot run scriptlets, copy the zip's
-`KOReader plugin (optional)/grimoire.koplugin` folder into the Kindle's `koreader/plugins` (with
-`Grimoire.sh` in `documents` as usual). Never copy a folder named `koreader` onto the Kindle: it
-could replace your KOReader.
-
-The notebook PDFs in `grimoire/PDFs` open in KOReader for reading. Grimoire writes a notebook's
-PDF again whenever you close the notebook after a change, and renames, moves or deletes it with
-the notebook, so highlights or notes KOReader writes into that file are lost: to mark one up, copy
-it out of `grimoire/PDFs` and open the copy.
-
-**Annotate this page.** In a book in KOReader, Tools > Grimoire > **Annotate this page in
-Grimoire** (also a gesture action) opens the page you are reading in Grimoire, ready to write on.
-Grimoire keeps one notebook per book, named after its title (leaving out characters it cannot
-show), with the pages you annotate in the book's order; annotating the same page again opens it
-with what you wrote. Library > Back to KOReader returns to the same book and page. A PDF's page is
-the whole page; an EPUB's is the screen as KOReader lays it out, so after a change of font size a
-page may come in again as a new one. A notebook's own PDF from `grimoire/PDFs` is refused, since
-annotating it would make a notebook of a notebook: open that notebook in Grimoire instead.
-
-**Photos.** Copy JPG or PNG photos into `grimoire/photos` over USB. In a notebook, open Paper and
-pick **Photos...**: the photo becomes the page's paper, fitted to the page and turned upright the
-way your phone took it, and you write on it like any page (Undo puts the old paper back). For a
-page of its own, add a new page in Pages first.
-
-**Open this book in Grimoire.** In a PDF, DjVu or comic book, Tools > Grimoire > **Open this book in
-Grimoire** (also a gesture action) puts every page of the book into its Grimoire notebook at once,
-then opens the page you are reading. In KOReader's file browser, long-press such a file and choose
-**Open with... > Grimoire** to do the same without opening it. For a DjVu or comic book KOReader draws
-each page first, about a second or two a page on a Scribe, with a message that a tap stops. A PDF goes
-straight to Grimoire instead, which reads it itself as it imports a PDF (in colour where the PDF has colour;
-the notice at the bottom counts its pages, and the Library stays usable meanwhile) and then opens the page you
-were reading. If you opened something else in the meantime, nothing opens by itself: a toast says the import is
-done, the book's notebook is a card in the Library, and it opens at that page when you tap it. Pages the
-notebook already has, with what you wrote on them, are kept as they are, so opening the same book again only
-adds what is missing; a book you opened before this version keeps the gray pages KOReader drew, and the pages
-added now are Grimoire's. It is the same notebook Annotate this page uses. A PDF's own links come along (a
-planner's tabs: a finger tap on "March" goes to March): see Document links. This needs the plugin updated (the
-Library's Install / update Grimoire plugin, then restart KOReader); a PDF that needs a password still goes the
-older way, KOReader drawing it, and so does a PDF where Grimoire does not read (a hidden folder, KOReader's own
-folders) or one over 512 MB.
-
-**Document links.** The tabs of a planner PDF are part of its pages. A tap follows one (a link you drew yourself
-comes first where they overlap); a finger held on one starts Select, as anywhere on the page. Clear page keeps
-them, a lasso around what you wrote in a day cell never takes the cell's link, and Copy page, Move to... and
-Copy to notebook... carry them (to pages that go too). The Links bar lists them as one row, "From the PDF
-(43)" (before any Linked from rows), which opens them grouped by the page they go to; Areas draws their boxes dotted. They are in a file of their own
-(`doclinks.ini`), so an older Grimoire shows the pages and your links without them.
-
-## Moving between versions
-
-Updating is one file, and so is going back. From 1.1.0-beta.1 on, Grimoire keeps what a newer
-version writes and does not understand (ink data, newer papers, extra page data, unknown lines
-in `settings.ini` and `notebook.ini`) and writes it back unchanged:
-
-- A page it cannot fully show opens **read-only**, with "This page was made by a newer version,
-  and will be viewed as read-only." Writing, erasing, clearing and changing its paper are refused
-  on it; deleting it still works. Update Grimoire to edit it.
-- A paper from a newer version shows as blank paper named **Newer paper** and stays the page's
-  paper. New pages added after such a page get it too.
-- A setting from a newer version that this one lacks works here as the nearest choice it has
-  (a switch with a third state counts as on or off), and stays in the file until you change that
-  setting.
-- A notebook or folder name longer than 95 bytes (about 47 accented letters) is cut to fit,
-  never in the middle of an accented letter.
-
-1.0.0-beta and 1.0.0-rc.1 cannot do this. Open a notebook there after a newer version wrote to
-it, and data can be lost: they set a page in a newer format aside as
-`p<id>.qpg.damaged-<time>` and show it blank (just looking at it in Pages does this), and they
-drop newer data when they save. 1.1.0-beta.1 and later bring such pages back when you open the
-notebook again, and keep both copies if the page was written again in the meantime; a page you
-deleted in the older version stays set aside. The file format and its rules are in
-[docs/FORMAT.md](docs/FORMAT.md).
-
-**Scribes of two sizes.** The 2022 and 2024 Scribes have a 1860x2480 screen, the Scribe 3 and the
-Scribe Colorsoft a bigger one, 1986x2648. From 1.1 on, a notebook keeps the page size it was made
-with: on a Scribe of the other size its pages are shown fitted to the screen, the writing on its
-lines, and its new pages, PDFs and PNGs have the notebook's size. A notebook from before 1.1 takes
-the size most of its pages have. Your pen and touch calibration follows a `grimoire` folder copied
-to a Scribe of the other size: Grimoire scales it to the new screen when it starts. Versions before
-1.1 stretch every page to their own screen instead (by the 7% between the sizes, which moves the
-writing off its lines, about two medium rules near the bottom of the page), and save it so once
-you change that page. Back in 1.1, such a page returns to its notebook's size, which puts the
-writing done in 1.1 back on its lines (ink added in the older version moves by the same ratio). So
-going back to an older version on a Scribe of the other size moves the ink on every page it edits
-there.
-
-**Language.** 1.0.0-beta and 1.0.0-rc.1 forget the Settings > Language choice the next time they
-save their settings, so back in 1.1 or later the language is Automatic again.
-
-**KOReader.** An older version leaves KOReader's Grimoire plugin where it is: Tools > Grimoire
-stays in KOReader, Notebook PDFs and Reset pen calibration still work, and Open Grimoire says
-"This Grimoire cannot open from KOReader", because a `Grimoire.sh` older than 1.1 cannot be opened
-from KOReader. Back in 1.1, Open Grimoire works again. To take the plugin out in the meantime,
-delete `koreader/plugins/grimoire.koplugin`; to have it again in 1.1, copy it in by hand (see Does
-it work in KOReader?).
-
-**Pictures as paper.** In 1.0.0-beta a page on a template, an imported page or an annotated
-page shows blank paper, with its ink. Back in 1.1, those pages get their pictures back when the
-notebook opens. Older versions also show erased ink again, as they do not know white ink or the
-precise eraser, and they drop pinned pens from `settings.ini`.
-
-## Privacy
-
-- **The Device Passcode stays on for a Library start.** Grimoire never reads or stores your
-  passcode: the Kindle's own keypad takes it, and Grimoire logs no input while the keypad has the
-  screen. This hand-over still needs confirmation on each firmware, and KOReader's own session can
-  have turned the passcode off; see Passcode above.
-- **Erased ink.** Fully erased strokes are removed by background compaction after a notebook
-  closes. A partially erased stroke remains whole in the raw page file; old exporters can show
-  its erased parts. Deleted pages and notebooks stay in `grimoire/trash` until you remove them.
-
-- **Share has no password.** Anyone on the same network can open it while the Share screen is
-  open, and nobody once you leave it. Do not open Share on a network you do not trust.
-- **grimoire.log**, which a bug report asks for, holds no serial number, account, Wi-Fi name or
-  network address, and Share notes downloads without notebook or folder names. It never names a font of
-  yours either, by file or by family: only sizes, counts and timings.
-- **Files from outside are read in a sandbox.** A PDF, a picture or a font you copy onto the Kindle is first
-  read by a separate, locked-down copy of Grimoire that has no network, sees no files, runs as a user of its
-  own and may make only a short list of system calls; what it reports is checked before anything is written.
-  A font is drawn by Grimoire itself only after it passed that check for exactly its bytes.
-
-## Known issues
-
-- **KOReader's first screen can be incomplete on firmware 5.20.1.** KOReader can draw its first
-  screen with parts missing, also when it comes back from Grimoire. This is a KOReader issue
-  ([koreader issue 16283](https://github.com/koreader/koreader/issues/16283)), and Grimoire does
-  not fix it.
-
-## Troubleshooting
-
-- **Stuck?** Hold the power button 4 seconds. Grimoire saves your page and closes, and the Kindle
-  comes back. If even that does nothing, hold it until the Kindle restarts (about 40 seconds); a
-  restart keeps your notebooks. Never use the passcode reset code 111222777 to get out of
-  anything: it erases the Kindle, notebooks included.
-- **The Kindle's passcode is off after a restart**: the Kindle restarted while Grimoire was open
-  (grimoire.log says so). Turn the passcode back on in the Kindle's Settings (Device Options > Device
-  Passcode); Grimoire leaves that to you.
-- **"This page was made by a newer version, and will be viewed as read-only."**: update Grimoire to
-  change that page. Nothing on it is lost (see Moving between versions).
-- **KOReader**: open Grimoire from KOReader with Tools > Grimoire, never with *Execute shell
-  script* (see Does it work in KOReader?). If "Grimoire did not start: KOReader is running." shows
-  near the top of the screen after you tap Grimoire in the Library, a KOReader is still running in
-  the background (after a crash, say): restart the Kindle.
-- **KOReader says "Grimoire could not start. See grimoire/grimoire.log."**: the hand-over did not
-  run Grimoire. A `grimoire.sh: not starting` line in `grimoire/grimoire.log` says why (KOReader
-  had not let go of the pen and the touch screen, say), and `already running` means another
-  Grimoire was still open. With neither, the hand-over failed inside KOReader: KOReader's own log,
-  `koreader/crash.log`, has a line starting `Grimoire:` about it. "This Grimoire cannot open from
-  KOReader" means the `Grimoire.sh` in `documents` is older than 1.1: copy a newer one.
-- **Strokes land away from the pen tip**: Settings > Calibrate pen and touch. If you cannot reach
-  it, tap **Grimoire - reset pen calibration** in the Library.
-- **Everything is upside down** (possible on the 2022 Scribe): put an empty file named
-  `screen-flip` or `screen-noflip` in the `grimoire` folder and relaunch.
-- **Bits of the Kindle's own screen show through**: Grimoire repaints over them on its own. If
-  it keeps happening, put an empty file named `stop-framework` in the `grimoire` folder; Grimoire
-  then stops the Kindle interface completely while it runs (it takes a few seconds longer to
-  come back after Exit). Opened from KOReader, the file does nothing: KOReader pauses the Kindle
-  interface itself.
-- **Nothing happens when you tap Grimoire**: look at `grimoire/grimoire.log`. Please attach it
-  to any bug report.
-
-## Updates
-
-**Library > Settings > Updates** checks Grimoire's own feed through KPM and installs a newer
-Grimoire: Grimoire closes, KPM installs it (its progress on the screen), and Grimoire starts again.
-Betas get betas and releases; a tap there switches to releases only. It needs KPM and Wi-Fi. See
-[KPM installation and updates](docs/KPM.md).
-
-## Keyboard and controller shortcuts
-
-In **Library > Settings > Shortcuts**, enable shortcuts: a keyboard or a controller then switches
-tools, undoes and redoes, toggles white ink and turns pages in a notebook. **Buttons...** learns
-which controller button does what (tap a row, press the button), and **Own shortcuts for this device**
-gives a keyboard or controller shortcuts of its own, saved in `grimoire/shortcuts/` and used whenever it
-is connected (2.0.0-beta.2). For a Bluetooth controller, unpack the kindle-hid-passthrough helper into
-`grimoire/bluetooth` (only its files, never its installer), then in **Settings > Pair** turn on
-**Bluetooth controller** and **Pair a controller...**; Grimoire runs the helper only while it runs.
-`grimoire/shortcuts.ini` holds the default mappings. Shortcuts start disabled. A
-keyboard paired with the Kindle has one scheme (2.0.0-beta.2): in the Library Ctrl+N a notebook, Ctrl+F
-a folder, S Share, O Settings, Esc "Exit Grimoire?"; on a page 1 to 0 the tools, Ctrl+L a link, R the
-page's name, Space what two fingers up do, - and + zoom, Ctrl+S saves, Esc closes what is in front or
-goes back to the Library (an Apple keyboard's Cmd works as Ctrl). See
-[the setup, the mappings and the limits](docs/SHORTCUTS.md).
-
-## Uninstall
-
-Delete `Grimoire.sh` and `Grimoire - reset pen calibration.sh` from `documents`, then the
-`grimoire` folder (copy `grimoire/notebooks` or `grimoire/PDFs` somewhere first if you want to
-keep your pages). With KOReader, delete `koreader/plugins/grimoire.koplugin` too.
-
-## Building from source
-
-The app is Rust: one crate in `rust/` (`rust/Cargo.toml`; there is no `Cargo.toml` at the top), built
-and checked by the top-level Makefile. Run cargo from inside `rust/`, or use make; `rust/PORTING.md`
-has the cargo commands and the rules for the code.
-
-What it needs (the versions are the release workflow's pins, in `.github/workflows/release.yml`):
-
-- **Rust 1.97.1** through rustup, with the Kindle's target, and the Makefile pointed at it:
-  `rustup toolchain install 1.97.1 --profile minimal --target armv7-unknown-linux-musleabihf`, then
-  `export RUST_BIN="$(dirname "$(rustup which --toolchain 1.97.1 rustc)")"`. Without `RUST_BIN` the
-  Makefile puts rustup's `stable` toolchain for Apple Silicon first on the PATH (it moves with each
-  Rust release, and has no Kindle target unless you add one); on an Intel Mac or on Linux that folder
-  does not exist, so make runs whichever `cargo` is first on your PATH.
-- **Zig 0.16.0** (ziglang.org) and **cargo-zigbuild 0.23.0**
-  (`cargo install cargo-zigbuild --version 0.23.0 --locked`), for the Kindle build. A newer zig
-  passes the checks, but only the pinned one makes the release's bytes.
-- A C compiler (`clang`; gcc on Linux), make, curl and unzip: build.rs compiles the vendored C.
-- **Python 3.12+** (the standard library only), **Node.js 18+** and **LuaJIT**: the checks run them.
-- Optional, each skipped with a message when missing: shellcheck, luacheck, dash and busybox (the
-  launchers and the KOReader plugin), ImageMagick 7's `magick` (the Effects studio's picture check),
-  and GNU gettext's `msgfmt` (the languages' `.mo` comparison; `make l10n` needs it). `make sim`
-  needs SDL3 and pkg-config (on a Mac, `brew install sdl3 pkgconf`).
-
-```
-make check     # everything that can be checked without a Kindle: unit tests, scripted UI scenarios
-               # with state checks, every language on every screen (make l10n-check), the share
-               # server, Live view, Bluetooth, the exporter, the ARM build, the zip with its launchers
-               # and KOReader plugin, two clean builds compared byte for byte, and the KPM package;
-               # ends with CHECK PASSED
-make test      # the unit tests (rust/tests), on the host and in the headless build
-make scenarios # tests/scenarios/*.qs on the headless runner (SCENARIOS=... for some; docs/SIM.md)
-make kindle    # build/kindle/grimoire: static ARMv7 hard-float (musl) binary
-make dist      # complete installable bundle in dist/Grimoire-VERSION-COMMIT/
-make package   # build/dist/Grimoire.zip
-make kpm-package # build/kpm/*.kpkg and preview/stable repository manifests
-make tools     # build/host/grimoire-export (used by tools/grimoire-pull)
-make tablet    # build/host/scribe-tablet: the pen as a Mac tablet for osu! (docs/TABLET.md)
-make l10n      # po/grimoire.pot from the sources, every po/<lang>.po updated and compiled
-make sim       # the C tree's simulator: an SDL3 window, the app before the Rust port (docs/SIM.md)
-```
-
-On a 15-core Mac, `make -j15 check SCEN_JOBS=8` takes about 7 minutes once the build cache is warm; a
-first build, or a smaller or busier machine, takes longer (`make -j8 check SCEN_JOBS=4` took 13 minutes
-on a busy one). `build/` grows to a few GB, and more over time as cargo keeps older builds in
-`build/cargo`. Two checkouts can run it at the same time on different ports (`GRIMOIRE_TEST_PORT`,
-docs/TESTING.md). The whole of `make check` runs on macOS. On Linux the unit tests and the scenarios
-run (with two known failures, in docs/BACKLOG.md); the rest has not been tried there, and the share
-check needs macOS's `sips`.
-
-Use `make dist` for builds to keep or install. It collects the installer ZIP, optional KOReader
-patch ZIP, KPM package and manifests, checksums, and source revision in `dist/`. Version/commit
-folders keep different builds separate, and the collector refuses to overwrite different files.
-`DIST=/path/to/dist` selects a shared output folder across worktrees. Build intermediates remain
-under `build/`; Downloads is not a build destination. Collecting a build does not publish it.
-
-For development with an already configured KindleLab USB/MTP volume bridge, stage a collected
-bundle without closing Grimoire:
-
-```sh
-python3 tools/usb-stage.py dist/Grimoire-VERSION-COMMIT --receipt /tmp/grimoire-usb-stage.json
-```
-
-The command copies into a new `kindle-lab/grimoire-dev/` generation and checks every file against
-a fresh USB read, bypassing the Mac filesystem cache. It writes to the bridge's local WebDAV
-address, not through the Finder mount, so macOS leaves no `._` files beside the bundle.
-`READY.json` is written only after those checks pass. `--prune-keep N` keeps only the newest N
-generations (alone, or after staging), and `--clean-sidecars` removes the `._` and `.DS_Store`
-files that older versions left there. It runs on Python 3.9 or newer, the Mac's own
-`/usr/bin/python3` included. This stages files only: it does not install plugins, overwrite the active app, or
-restart it. Installation still requires a normal Grimoire exit. This personal development helper
-does not install or distribute the USB bridge or its device controller.
-
-The compiled languages (`po/*.mo`) are committed, so building needs no gettext; only `make l10n`
-needs GNU gettext. [docs/DESIGN.md](docs/DESIGN.md) describes the architecture, the refresh
-model, the brush model, the languages and the file formats; [docs/FORMAT.md](docs/FORMAT.md) the
-files byte by byte; [docs/KINDLE.md](docs/KINDLE.md) covers how it fits into the Kindle and
-KOReader; [docs/TRANSLATING.md](docs/TRANSLATING.md) how to improve a translation or add one;
-[docs/TABLET.md](docs/TABLET.md) the Mac tool that makes the pen a tablet, over SSH.
+The wiki's source pages live in [`docs/wiki/`](docs/wiki).
 
 ## License and credits
 
@@ -683,35 +109,12 @@ Grimoire is free software: GPL-3.0-or-later (see `LICENSE`), the same license as
 Much of what Grimoire knows about the Kindle comes from [KOReader](https://koreader.rocks) and
 [kindlemodding.org](https://kindlemodding.org).
 
-- Terminus by Dimitar Toshkov Zhekov (Terminus TTF by Tilman Blumenbach), as Nerd Fonts' Terminess
-  Nerd Font Mono, a subset (Terminus's text and the icons Grimoire uses, to keep the app small: see
-  `assets/README.md`): SIL Open Font License 1.1 (`assets/Terminess-OFL-1.1.txt`)
-- The icons, inside Terminess: Material Design Icons by Pictogrammers (some drawn by Google), Apache
-  License 2.0 (`assets/MaterialDesignIcons-LICENSE.txt`, `assets/MaterialDesignIcons-Apache-2.0.txt`)
-- Jacquard 24, Jersey 10 and DotGothic16 (the Japanese fallback, a subset: the kana, the punctuation
-  and the common kanji, to keep the app small; see `assets/README.md`): SIL Open Font License 1.1
-  (`assets/*-OFL-1.1.txt`)
-- The Classic fonts of Settings > Font: Atkinson Hyperlegible Next by the Braille Institute (with Applied
-  Design Works, Elliott Scott, Megan Eiswerth and Letters From Sweden), Noto Sans by Google (the Noto
-  Project Authors), and Literata by TypeTogether (the Literata Project Authors), each from Google Fonts'
-  release as a Regular and a Bold cut down to the Latin letters and punctuation Grimoire draws (see
-  `assets/README.md`): SIL Open Font License 1.1 (`assets/AtkinsonHyperlegibleNext-OFL-1.1.txt`,
-  `assets/NotoSans-OFL-1.1.txt`, `assets/Literata-OFL-1.1.txt`)
-- stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
-- QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
-  (upstream commit 3c6d0b3)
-- Inside FBInk: cutef8 by Jeff Bezanson (public domain) and Bjoern Hoehrmann's UTF-8 decoder
-  (ISC, as FBInk's credits give it)
-- musl libc and zig's compiler-rt: MIT (the Kindle binary is linked statically against them)
-
-These notices, the GPL and FBInk's credits ship inside the app too, in `grimoire/app/licenses`
-on the Kindle.
+The fonts and other components it bundles are listed, with their licenses, in
+[`assets/README.md`](assets/README.md); those notices, the GPL and FBInk's credits ship inside the
+app too, in `grimoire/app/licenses` on the Kindle.
 
 Kindle and Kindle Scribe are trademarks of Amazon.com, Inc. or its affiliates. Grimoire is an
 independent project and is not affiliated with, endorsed by or supported by Amazon.
-
-For the proposed selection-annotation and wireless Emacs/org-roam bridge, see
-[the source investigation and integration design](docs/INTEGRATIONS.md). These are future work.
 
 ## Name, logo and forks
 
@@ -725,4 +128,5 @@ Official builds come only from the releases on github.com/ganten1998/grimoire-sc
 codeberg.org/ganten1998/grimoire-scribe, and from the project's KPM feeds. Grimoire's in-app
 updater follows those feeds.
 
-Contributions are welcome. Open an issue first for a larger change so we can agree on its shape.
+Contributions are welcome: see the [Contributing](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing)
+page, and open an issue first for a larger change so we can agree on its shape.
