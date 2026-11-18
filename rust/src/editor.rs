@@ -405,7 +405,7 @@ pub struct EditorState {
     page_dirty: bool,
     info_dirty: bool,
     changed: bool,
-    /// page 1 changed: library thumbnail to write when leaving it
+    /// a page drawn for the library card changed: write the card at the close, from the page left off on
     thumb_dirty: bool,
     // Grays settle in one GL16 refresh once the writer stops (not after every stroke): when the pen
     // leaves the page, or after SETTLE_NEAR_MS with it still near. While the pen stays near only
@@ -4821,6 +4821,7 @@ fn pages_delete(a: &mut App) {
     }
     let s = ed(a);
     s.changed = true;
+    s.page_dirty = true; // (the page left open is written again: a delete must not lose a change, and a full store says so)
     s.info_dirty = true;
     save_page(a);
     let s = ed(a);
@@ -11675,10 +11676,10 @@ fn newest(s: &EditorState) -> Option<&Stroke> {
 // For the probes editor.kept_matches_render, editor.preview_matches_render and editor.card_matches_render: the
 // open page's kept drawing (.page-previews/pN.full) or its Pages preview (pN.pgm), when current for its file,
 // against the open page drawn afresh (the preview as shrunk from it); or the Library card (thumb.pgm) against
-// page 1 drawn afresh (the page in memory, else its file), shrunk as the editor shrinks its canvas for the card or
-// as a closing notebook shrinks page 1's file. Some(true) the same, Some(false) not, None with no such cache.
-// A cache is of the page file, the fresh drawing of the page in memory: asked with the page saved
-// (editor.unsaved 0). Each draws a whole page.
+// the page the notebook opens at (last_page) drawn afresh (the page in memory, else its file), shrunk as the
+// editor shrinks its canvas for the card or as a closing notebook shrinks that page's file. Some(true) the same,
+// Some(false) not, None with no such cache. A cache is of the page file, the fresh drawing of the page in memory:
+// asked with the page saved (editor.unsaved 0). Each draws a whole page.
 fn cache_matches_render(s: &EditorState, key: &str, dpi: f32) -> Option<bool> {
     let fresh = |p: &Page| {
         let mut c = Canvas::default();
@@ -11712,11 +11713,12 @@ fn cache_matches_render(s: &EditorState, key: &str, dpi: f32) -> Option<bool> {
             if store_load_thumb(s.nb.id.as_str(), &mut card) != 0 {
                 return None;
             }
-            let first = *s.nb.page_ids.first()?;
+            let at = clampi(s.nb.last_page, 0, s.nb.npages() - 1);
+            let pid = *s.nb.page_ids.get(at as usize)?;
             let mut read = None;
-            let p = match s.hist.iter().find(|e| e.page_id == first).and_then(|e| e.page.as_deref()) {
+            let p = match s.hist.iter().find(|e| e.page_id == pid).and_then(|e| e.page.as_deref()) {
                 Some(p) => p,
-                None if store_read_page(&s.nb, 0, &mut read) == 0 => read.as_deref()?,
+                None if store_read_page(&s.nb, at, &mut read) == 0 => read.as_deref()?,
                 None => return None,
             };
             let full = fresh(p)?;

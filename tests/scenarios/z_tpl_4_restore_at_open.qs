@@ -1,8 +1,8 @@
 # settings: status_mode=1
 # A notebook 1.0.0-beta wrote on: it saved page 1 (an imported page) as version 1 Blank and drew
 # the Library's card on blank paper, and bg/pages.ini still lists page 1 with its picture. Opened
-# here on page 2, page 1 gets its picture back at once, though it is not visited: closed, the card
-# is drawn again with the picture, and the notebook's PDF is written with it.
+# here on page 2, page 1 gets its picture back at once, though it is not visited: closed, the notebook's
+# PDF is written with it, and the card is page 2, the page it was left on.
 # copy: tests/fixtures/scen-tpl-restore .
 # pdfs: 1
 # rust-only
@@ -22,7 +22,7 @@ pentap panel library
 wait 600
 expect screen is library
 expect library.card.1 is thumb
-expect library.card.1.luma is 236
+expect library.card.1.luma is 252
 shot 01-card-drawn-again
 tap 326 608
 wait 600

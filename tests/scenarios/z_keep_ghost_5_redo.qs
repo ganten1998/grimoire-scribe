@@ -33,7 +33,6 @@ expect editor.kept_matches_render not 0
 expect editor.preview_matches_render is 1
 tap panel next
 expect editor.page is 2
-expect editor.card_matches_render is 1
 tap panel previous
 expect editor.page is 1
 expect editor.strokes is 0

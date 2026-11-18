@@ -109,6 +109,9 @@ wait 200
 tap library more.rename
 wait 200
 expect library.text is Música española
+# The name opens selected (issue #191): put the caret after it to add to it.
+tap 1100 1570
+expect library.caret is Música española|
 tap 1060 2365
 tap 696 2365
 wait 100
