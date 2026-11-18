@@ -1265,7 +1265,7 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   wait to work done on idle ticks, which come slower on a loaded runner: `GRIMOIRE_SIM_BACKLINKS_STEP_MS`
   shows those that wait for the backlinks cache or, after it, the library index
   (`make scenarios SCEN_ENV=GRIMOIRE_SIM_BACKLINKS_STEP_MS=200`). The three that failed on the 2.1.0 release
-  day wait for the state now, or run by the script's clock (2.1.1: Done, below); the rest have not been gone
+  day wait for the state now, or run by the script's clock (2.2.0: Done, below); the rest have not been gone
   through. Of the scenarios that click the pen's side button, v_gestures_4e_single was the only one that
   checks what has NOT happened yet after a wait; the others check what has, which a late wait cannot break.
   A third kind checks a stretch of `display.presents` with `is` that can begin before the launch's second
@@ -1465,7 +1465,7 @@ items of Document links. Left:
 
 ## Done
 
-- 2.1.1 (unreleased, 119-editor-page-count-pad; issue #119): three items that touch the editor.
+- 2.2.0 (unreleased, 119-editor-page-count-pad; issue #119): three items that touch the editor.
   - The panel's page chip fits any count (In progress since 2026-11-03, found by the fit check), and keeps one
     form in a notebook: the page and the count on every page when every page's label fits the chip at its size,
     else the page alone on every page (panel.rs, panel_chip_whole and panel_page_label), decided once for each
@@ -1501,7 +1501,7 @@ items of Document links. Left:
     app_tick counts). docs/KINDLE.md lists both. test_editor_log runs the headless runner and reads the lines:
     the notice, a stroke, Clear page, a lasso move, and two undos in one batch, which say one line. Not logged:
     redo, and the Pages view's own Undo of page moves and batches.
-- 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
+- 2.2.0 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
   day after): four checks no longer depend on the speed of the machine or on an earlier run.
   - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),
     where they gave the index 8 s and 20 s. It reads a notebook an idle tick, after the backlinks cache's own

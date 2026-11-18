@@ -1,7 +1,11 @@
 # Changelog
 
-## 2.1.1 (unreleased)
+## 2.2.0 (unreleased)
 
+- **A new Settings menu** (#115, nebuff). Settings opens as a menu of six groups, General, Display, Sleep & Clock,
+  Pen, Controls and System, each row opening its own sheet.
+- **Auto brightness** (#163, nebuff). Settings > Display can let the front light follow the room's light.
+- **Polish** (#181, nebuff): Grimoire's screens and documents in Polish.
 - **Web links in PDFs** (#174). A PDF's web links, left out until now, are kept when you import the PDF: tap one and
   a card shows the address and a QR code to scan with your phone's camera, which opens it there (the Kindle opens
   nothing itself). Only http and https addresses of up to 200 characters whose host is written plainly are kept.

@@ -22,7 +22,7 @@ image papers, for example, and never calls them "Newer paper".
 
 ```
 root/settings.ini                       the device's settings (below)
-root/settings.ini.unread                a settings.ini that was there but could not be read, kept aside; never read (2.1.1; settings.ini)
+root/settings.ini.unread                a settings.ini that was there but could not be read, kept aside; never read (2.2.0; settings.ini)
 root/folders.ini                        "# Grimoire folders", then one folder name per line
 root/sleep.pgm                          the pinned sleep screen (P5 PGM, full page)
 root/notebooks/<id>/notebook.ini        one notebook (below)
@@ -67,7 +67,7 @@ root/.cache/files/                      Files' previews of the files its Covers 
 `-` and `_` only. Page ids are positive numbers; the order of the pages is the `pages` key of
 `notebook.ini`, not the numbers. Every file is written atomically (`<file>.tmp`, fsync, rename).
 
-From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
+From 2.2.0 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
 `folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
 `bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
 `import/.attempts`, an import's work files `links.part`, `names.part` and (2.2) `webs.part`, `clipboard.qpg`, the shortcut files
@@ -304,9 +304,9 @@ zip, a `grimoire-pull` copy or an older version.
   later pass or for the version that can: one that does not read, one of another size than its
   notebook's (compacted once the editor writes it at the notebook's size), and one holding data
   1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
-  is there but does not read (a read error, or from 2.1.1 on one longer than 64 KiB: the longest
+  is there but does not read (a read error, or from 2.2.0 on one longer than 64 KiB: the longest
   Grimoire writes is 45,136 bytes, 4096 ids) is never written over: the editor tries again at its
-  next save, and compaction leaves it as it is. From 2.1.1 on an entry at its name that is no plain
+  next save, and compaction leaves it as it is. From 2.2.0 on an entry at its name that is no plain
   file (a link, to a file or to nothing, a FIFO, a folder) is no list, as nothing there is: no
   compaction runs for it, and the editor's next write of the list replaces the entry itself, never
   the file a link names (a folder there stays, and the page is not listed while it does).
@@ -482,13 +482,13 @@ eraser end, the side button), clearing it and changing its paper are refused wit
 "This page was made by a newer version, and will be viewed as read-only." (shown also when such a
 page is opened), and saving leaves its file as it is. Deleting it still works (it goes to `trash/`).
 
-From 2.1.1 on, an entry at a page's name that is no plain file (a folder, a link, anything else) is not
+From 2.2.0 on, an entry at a page's name that is no plain file (a folder, a link, anything else) is not
 read. When the page is opened it is set aside as `p<id>.qpg.damaged-<time>` like a damaged page, the entry
 itself (what a link names is untouched), with a blank page in its place, which then saves as a file of its
 own; an export reads such a page as blank and changes nothing. It never comes back by itself: the recovery
 below takes only plain files that open.
 
-Also from 2.1.1 on, a page file that is there but does not read (an open or read error, or no memory for it)
+Also from 2.2.0 on, a page file that is there but does not read (an open or read error, or no memory for it)
 is not opened, and the file is left as it is: it is not set aside as damaged, and no blank page is shown or
 saved over it. A page file of which only a part could be read is not read at all.
 
@@ -563,7 +563,7 @@ that one is taken by another key (0 is never given):
   photo makes two pictures.
 
 `index.ini` is `# ...`, then one `<pic>=<key, 16 hex digits>` line per picture. The keys are
-Grimoire's own; other writers can leave their pictures out of it. It is read up to 1 MiB (2.1.1 on): a
+Grimoire's own; other writers can leave their pictures out of it. It is read up to 1 MiB (2.2.0 on): a
 longer one, like one that does not read for another reason, is never written over.
 
 ### `bg/pages.ini`
@@ -585,7 +585,7 @@ notebook of imported pages opens without reading each page); an export changes n
 notebook closes, its thumbnail and PDF, which the older version drew on blank paper, are drawn
 again. A page the list names that reads read-only (a newer version's) is left as it is. A
 `pages.ini` that is there but does not read is never written over (its entries would be lost): it
-is left as it is until it reads again. From 2.1.1 on it is read up to 1 MiB, and a longer one counts as
+is left as it is until it reads again. From 2.2.0 on it is read up to 1 MiB, and a longer one counts as
 one that does not read.
 
 Raw notebook zips carry the notebook's `bg/` (`raw/bg/...`).
@@ -606,7 +606,7 @@ memory for it, a read error), or that no sandboxed worker could read (the Kindle
 picture outside the sandbox), gets no `.bad`: a later scan tries it again. A file whose path is 600
 bytes or longer is left out. Since 2.1.0-beta.2 a template or photo is picked only once its
 `.key` is there (its preview made): the previews job's worker has then found it a picture, and the
-UI never reads or checks the file itself. From 2.1.1 on only a plain file is a template or a photo: an
+UI never reads or checks the file itself. From 2.2.0 on only a plain file is a template or a photo: an
 entry of `templates/` or `photos/` that is a link (or anything else that is no plain file) is left out, as
 a dot-file is; the file is copied in to be used.
 
@@ -792,7 +792,7 @@ count), each page a document page; the notebook's own paper is Blank. It is made
   file added, removed, renamed or replaced, or the folder renamed. A start drops the lines of
   folders no longer there. A start takes at most 8 folders; a folder of more than 2000 pictures is
   not imported, nor one without pictures, nor one whose path is 600 bytes or longer.
-- From 2.1.1 on only a real folder of `import/` is a folder of pictures, and only the plain files in it
+- From 2.2.0 on only a real folder of `import/` is a folder of pictures, and only the plain files in it
   are its pictures: an entry that is a link (to a folder, or to a picture) is left as it is, neither read
   nor written into. `.grimoire-import` is read up to 4 KiB and `import/.attempts` up to 64 KiB. The
   pictures' hash in `import/.attempts` covers the pictures that are listed, so a folder that held
@@ -1576,7 +1576,7 @@ critical on purpose.
 `key=value` lines; `#` starts a comment line. Readers strip one carriage return at the end of a
 line. Values are clamped to their ranges when read.
 
-From 2.1.1 on the file is read only as a plain file of at most 1 MiB (1,048,576 bytes), and **no version
+From 2.2.0 on the file is read only as a plain file of at most 1 MiB (1,048,576 bytes), and **no version
 may write a longer one** (Grimoire's own stay under 100 KB). One that is longer, or an entry at the name
 that is no plain file, is not read: the defaults are used, and before the next save the entry is moved to
 `settings.ini.unread`, never written over (an earlier `settings.ini.unread` stays, and the entry is then
@@ -1690,7 +1690,7 @@ earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a ve
 (2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load. From
 2.0.0-beta.5 on, a file that binds none of the D-pad's four directions (`pad.Up`, `Down`, `Left`,
 `Right`: no earlier version read a D-pad, so none wrote them) gets the starter file's D-pad lines in
-memory; the file is not changed. From 2.1.1 on an entry at its name that is no plain file (a link, to a
+memory; the file is not changed. From 2.2.0 on an entry at its name that is no plain file (a link, to a
 file or to nothing, or a FIFO) is a file that is there and does not read, as one over the 64 KiB limit
 is: no mappings come from it. The other shortcut files below are read the same way.
 
@@ -1902,7 +1902,7 @@ paper (the page listed in `bg/pages.ini`). If that cannot be done the notebook s
 it was made on. 1.0.0-beta drops unknown lines on its next save and reads an unknown `paper` (an
 image paper too) as Medium rule.
 
-From 2.1.1 on `notebook.ini` is read only as a plain file of at most 1 MiB (1,048,576 bytes), and **no
+From 2.2.0 on `notebook.ini` is read only as a plain file of at most 1 MiB (1,048,576 bytes), and **no
 version may write a longer one** (Grimoire's own stay under 30 KB). A notebook whose `notebook.ini` is
 longer, or is no plain file, is not read: it is left out of the Library (logged), and nothing in its folder
 is written, moved or removed.
@@ -2032,7 +2032,7 @@ other name as an entry it does not know (not restorable).
   unknown keys on its next save. (The page size, the calibration's panel, `eraser_mode`,
   `white`, `panel_tools`, `before_eraser` and `shortcuts_enabled` are such keys: what a version
   does without them is in their own sections.) Neither file may grow past 1 MiB (1,048,576 bytes)
-  in any version: from 2.1.1 on a longer one is not read (their sections).
+  in any version: from 2.2.0 on a longer one is not read (their sections).
 
 ## Moving between versions
 
@@ -2421,7 +2421,7 @@ offset  size  field
 112     ...   the zlib stream
 ```
 
-All integers little endian. A record is used only when it reads (from 2.1.1 on, a plain file at its name of
+All integers little endian. A record is used only when it reads (from 2.2.0 on, a plain file at its name of
 at most 112 bytes and 128 MiB, its header and the largest stream), its length and CRC-32 are right, its stamp
 (bytes 4 to 47, the inode and the notebook's paper) is the page's today, taken before the page was read, and
 its picture's (channels, size, time) is the picture file's today, taken before any page on it was drawn: a
