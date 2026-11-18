@@ -957,6 +957,11 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
+- **"Couldn't open page" (or "Couldn't open notebook") and the page file is there** (2.1.1): the file did
+  not open or did not read to its end (an I/O error, or no memory for it). grimoire.log says `store: <path>
+  is there but does not read; not opened`. The file is left as it is: it is not renamed as a damaged page, and
+  no blank page is written over it. If it keeps happening for the same page, copy the file off the Kindle before
+  trying to repair it.
 - **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
   settings, notebooks, pages, pictures, import folders, clipboard, shortcut files and PDF cache only when the
   entry at the name is a plain file, and the small text files only up to a size (docs/FORMAT.md, Files, names
@@ -970,7 +975,7 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   - `store: skipping unreadable notebook <id>`: also a notebook whose `notebook.ini` is no plain file or
     is longer than 1 MiB. Nothing in its folder is touched; it is back in the Library once the file reads.
   - `settings: settings.ini is there but was not read (no plain file of at most 1048576 bytes, or it did
-    not open); the defaults are used`: at the start. Nothing is written over it:
+    not open or read whole); the defaults are used`: at the start. Nothing is written over it:
   - `settings: the settings.ini that was not read is kept as settings.ini.unread`: at the first save,
     the entry was moved aside as it was. With Grimoire closed, look at it, and copy it back over
     `settings.ini` if it is the file wanted (as a plain file under 1 MiB); else delete it.

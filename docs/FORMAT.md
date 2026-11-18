@@ -470,6 +470,7 @@ the value and writes it back (version 2).
 | the page has | opens as |
 |---|---|
 | a bad magic, fewer than 16 bytes, version 0 or 256+, an impossible size, strokes cut short | damage: renamed `p<id>.qpg.damaged-<time>`, a blank page in its place |
+| a plain file that does not open or read to its end (an I/O error, no memory for it) | not opened: "Couldn't open page" (or "Couldn't open notebook" when it is the page the notebook opens at); the file is left as it is |
 | version 3 to 255 | read-only, shown blank |
 | a stroke with a tool id of 10 or more | read-only; those strokes are left out, the others shown |
 | a critical chunk it does not know | read-only, everything it can draw shown |
@@ -486,6 +487,10 @@ read. When the page is opened it is set aside as `p<id>.qpg.damaged-<time>` like
 itself (what a link names is untouched), with a blank page in its place, which then saves as a file of its
 own; an export reads such a page as blank and changes nothing. It never comes back by itself: the recovery
 below takes only plain files that open.
+
+Also from 2.1.1 on, a page file that is there but does not read (an open or read error, or no memory for it)
+is not opened, and the file is left as it is: it is not set aside as damaged, and no blank page is shown or
+saved over it. A page file of which only a part could be read is not read at all.
 
 When a notebook is opened in the editor (not when the Library lists it), every
 `p<id>.qpg.damaged-<time>` whose `p<id>.qpg` is missing and that opens now, normally or

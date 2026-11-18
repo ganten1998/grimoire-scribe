@@ -804,40 +804,45 @@ pub fn open_read_nofollow(path: &str) -> std::io::Result<(std::fs::File, std::fs
 }
 
 /// A whole file of the data folder, or None: read_file for files with no limit of their own (pages, pictures,
-/// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). (The C returns
-/// what it read when a read fails midway, as fread does; so do these.)
+/// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). A read that
+/// fails after the open (EINTR is retried) is None, never the part read: a page file that reads only in part
+/// does not open as a shorter page. (read_system_file keeps what it read, as the C's fread does.)
 pub fn read_file(path: &str) -> Option<Vec<u8>> {
-    use std::io::Read;
-    let (mut f, _) = open_read_nofollow(path).ok()?;
+    let (f, _) = open_read_nofollow(path).ok()?;
+    read_file_from(f)
+}
+
+/// read_file's read of `f`: the tests' reader can fail partway.
+fn read_file_from(mut f: impl std::io::Read) -> Option<Vec<u8>> {
     let mut buf = Vec::new();
-    // (Straight into the buffer, sized from the file's length and grown as needed: a page file is
-    // megabytes, read in a handful of calls rather than one per 4 KB with a copy each. EINTR is
-    // retried. No memory for it is the C's NULL; after another error buf keeps what was read, as
-    // the C's fread leaves it.)
-    if let Err(e) = f.read_to_end(&mut buf) {
-        if e.kind() == std::io::ErrorKind::OutOfMemory {
-            return None;
-        }
-    }
+    // (Straight into the buffer, grown as needed: a page file is megabytes, read in a handful of calls
+    // rather than one per 4 KB with a copy each. EINTR is retried. Any error, no memory included, is not
+    // read: the part read is never handed back as the file.)
+    f.read_to_end(&mut buf).ok()?;
     Some(buf)
 }
 
-/// read_file for a file of at most `cap` bytes: a longer one is None, with nothing of it read.
+/// read_file for a file of at most `cap` bytes: a longer one is None, with nothing of it read. A read that
+/// fails after the open (other than EINTR, which read_to_end retries) is None too: the part that was read is
+/// never handed back as the file, as a short settings.ini or notebook.ini would be parsed and then saved so.
 pub fn read_file_max(path: &str, cap: usize) -> Option<Vec<u8>> {
+    let (mut f, md) = open_read_nofollow(path).ok()?;
+    read_file_max_from(&mut f, md.len(), cap)
+}
+
+/// read_file_max's read of `len` bytes (its fstat's size) from `f`: the tests' reader can fail partway.
+fn read_file_max_from(f: impl std::io::Read, len: u64, cap: usize) -> Option<Vec<u8>> {
     use std::io::Read;
-    let (f, md) = open_read_nofollow(path).ok()?;
     // (sizes compared as u64, and never cap + 1 as a usize)
-    if md.len() > cap as u64 {
+    if len > cap as u64 {
         return None;
     }
     let mut buf = Vec::new();
-    buf.try_reserve_exact(md.len() as usize).ok()?;
-    // (one byte past the limit is asked for: a file that grew since the fstat is told from one that fits)
-    if let Err(e) = f.take((cap as u64).saturating_add(1)).read_to_end(&mut buf) {
-        if e.kind() == std::io::ErrorKind::OutOfMemory {
-            return None;
-        }
-    }
+    buf.try_reserve_exact(len as usize).ok()?;
+    // (one byte past the limit is asked for: a file that grew since the fstat is told from one that fits;
+    // EINTR is retried. A read that fails after the open, any error, is not read: never the part that was
+    // read, which a parser would take as the whole file and a later save would write back.)
+    f.take((cap as u64).saturating_add(1)).read_to_end(&mut buf).ok()?;
     if buf.len() as u64 > cap as u64 {
         return None;
     }
@@ -845,7 +850,8 @@ pub fn read_file_max(path: &str, cap: usize) -> Option<Vec<u8>> {
 }
 
 /// A whole file that is not the data folder's (the system's own: /proc, /sys, the Kindle's locale file; a
-/// developer's input to the simulator): read as before, links followed.
+/// developer's input to the simulator): links followed. A read that fails midway keeps what it read, as the C's
+/// fread does (read_file does not: a page file is read whole or not at all).
 pub fn read_system_file(path: &str) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut f = std::fs::File::open(path).ok()?;
@@ -1233,6 +1239,38 @@ mod tests {
         assert_eq!(read_file(text(&d.join("missing"))), None);
         assert_eq!(read_file_max(text(&d.join("missing")), MIB), None);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // A reader that gives its bytes, then fails as a file with an I/O error would.
+    struct FailsAfter(&'static [u8]);
+    impl std::io::Read for FailsAfter {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.0.is_empty() {
+                return Err(std::io::Error::from_raw_os_error(libc::EIO));
+            }
+            let n = self.0.len().min(buf.len());
+            buf[..n].copy_from_slice(&self.0[..n]);
+            self.0 = &self.0[n..];
+            Ok(n)
+        }
+    }
+
+    // A read that fails partway is not read: none of what was read is handed back as the file.
+    #[test]
+    fn read_file_takes_nothing_from_a_read_that_fails_partway() {
+        assert_eq!(read_file_from(FailsAfter(b"QPG1")), None);
+        assert_eq!(read_file_from(FailsAfter(b"")), None);
+        assert_eq!(read_file_from(std::io::Cursor::new(b"QPG1")).as_deref(), Some(&b"QPG1"[..]));
+    }
+
+    #[test]
+    fn read_file_max_takes_nothing_from_a_read_that_fails_partway() {
+        // (the bytes before the error would parse as a shorter file)
+        assert_eq!(read_file_max_from(FailsAfter(b"invert=1\n"), 9, 64), None);
+        assert_eq!(read_file_max_from(FailsAfter(b""), 0, 64), None);
+        // (a read that ends as it should still gives the file)
+        let whole = read_file_max_from(std::io::Cursor::new(b"invert=1\n"), 9, 64);
+        assert_eq!(whole.as_deref(), Some(&b"invert=1\n"[..]));
     }
 
     // A file made afresh takes the name for itself: what stood there goes, and is never opened or written.
