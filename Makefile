@@ -215,9 +215,11 @@ scenario-times: scenarios
 # these two failed there on every release while passing here. A script times a contact by the
 # script's own clock (docs/SIM.md), so they hold however late the machine is. After the scenarios
 # (s_shape_4_guards starts from s_shape_1_record's data). z_pages_drag_hold times the Pages view's
-# 300 ms drag hold against the card's 600 ms timer, which reads the real clock: its short holds are
-# frame lines, so a late wake cannot open the card first. u_keyboard_hold_delete times a held delete's repeats by
-# frame lines, against the screen's tick, which reads the real clock.
+# 300 ms drag hold against the card's 600 ms timer: its short holds and its flick are frame lines, and it
+# runs by the script's clock (its pen's hold is a wait), so a late wake can neither open the card first
+# nor take the flick past its 800 ms.
+# u_keyboard_hold_delete times a held delete's repeats by frame lines, against the screen's tick, which
+# reads the real clock.
 # z_links_3_bar_learns runs late for the waits around its learning (the Links bar opened before the
 # check is through, the hold on a row past the long press). Late waits do not slow the backlinks check
 # itself, as a slow runner did: the scenario's own GRIMOIRE_SIM_BACKLINKS_STEP_MS does, in both runs,

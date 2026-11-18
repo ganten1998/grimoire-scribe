@@ -1077,9 +1077,11 @@ passing under the drag drawing nothing; a slow tap (held 350 ms, rolled 45 px, l
 was: on a ticked page in Select it unticks it and the ticked pages stay where they are, and with Select off it
 selects the page with one small repaint; a swipe from a page turns the screen; a contact past the slop at 100 ms
 and lifted at 400 ms is a flick, and lifted past 1 s nothing, never a drag; a page held still 700 ms opens its
-card; ticked pages and a pen drag on the short hold too. Its short holds are `finger` and `frame` lines, and it
-runs again in `make scenarios-late` (every wait 400 ms late). z_pages_drag still drags from the card (held
-700 ms); a drag lifted back in its own place takes the bar off with one fast refresh of its rect.
+card; ticked pages and a pen drag on the short hold too. Its short holds, its flick and its slow contact are timed
+by `finger` and `frame` lines, it runs by the script's clock (`GRIMOIRE_SIM_CLOCK=script`, so the pen's 350 ms
+hold is 350 ms however late its wait ends), and it runs again in `make scenarios-late` (every wait 400 ms late).
+z_pages_drag still drags from the card (held 700 ms); a drag lifted back in its own place takes the bar off with
+one fast refresh of its rect.
 
 On the Scribe:
 

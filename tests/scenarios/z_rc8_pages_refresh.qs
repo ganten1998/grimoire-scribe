@@ -2,12 +2,19 @@
 # rust-only
 # generate: tests/page_management_fixture.py
 # env: GRIMOIRE_CHECK_FIT=1
+# env: GRIMOIRE_BG_DELAY_MS=1000
 # RC8: the Pages view's previews come from the background job, and the view repaints only what changed.
 # The job's previews arrive as one GL16 of the tile grid (never the whole screen, never twice for the
 # same previews); a tap that selects a tile refreshes that tile (and the bottom row when its buttons
 # change), and the second tap of a double tap still opens the page.
 # (past the two launch repaints, at 1.2 s and 3.5 s, which refresh the whole screen)
 # (the clock corner held still: its minute's refresh would land among the counted ones)
+# (each background job held back 1 s, GRIMOIRE_BG_DELAY_MS: the job's child writes the previews by the real clock
+# while the app goes on with the round that opened the view, which draws the tiles just after starting the job and
+# then looks for new previews once. A preview written before that was drawn in that round, before the count, and
+# the job's GL16 had only the others: "ui 24 912 1812 1372" on a loaded runner, issue #184. Held back, none is
+# written until that round is long over, and all eight reach the grid together as the job ends, in waitbg, where
+# the app's clock stands still and nothing else looks for them. The picker's job for B is held back the same way.)
 clock 1700000000
 wait 3600
 tap library folder.Void

@@ -20,9 +20,10 @@ build's, and never open a window.
 `GRIMOIRE_SIM_SIZE=WxH` changes the virtual panel (`1986x2648` is the Scribe 3's and the
 Colorsoft's); `GRIMOIRE_SIM_STATS=1` prints refresh counts.
 Two more slow the simulator down like a Kindle (simulator only): `GRIMOIRE_HTTPD_DELAY_MS` makes
-each share server render wait that long first, and `GRIMOIRE_BG_DELAY_MS` each background PDF
-export, so the next one queues behind it. `GRIMOIRE_SIM_DENSE_DRAW_MS` makes the page previews job's
-drawing of a dense page (a page file of 512 KB or more) take that many milliseconds longer, as a Kindle
+each share server render wait that long first, and `GRIMOIRE_BG_DELAY_MS` each background job (a PDF
+export, a batch of page previews), so the next one queues behind it. `GRIMOIRE_SIM_DENSE_DRAW_MS`
+makes the page previews job's drawing of a dense page (a page file of 512 KB or more) take that many
+milliseconds longer, as a Kindle
 takes seconds, and `GRIMOIRE_SIM_CORES` stands for the number of cores the background jobs see (under 3:
 no second job process beside the first). `GRIMOIRE_SIM_BACKLINKS_STEP_MS` (headless runner only) makes
 each idle tick of the backlinks cache's check take that many milliseconds longer (a tick with no check
@@ -55,7 +56,9 @@ timed a press or a finger shape by the real time between their lines failed ther
 while passing here. `make scenarios-late` runs those again with every wait 400 ms late (make check
 runs it after the scenarios). A script that times a contact keeps passing however late the machine
 is when it times it by the script's own clock: `touch` lines are stamped by their waits (below), and
-`finger`/`frame` lines by their frame offsets with no `wait` between the frames.
+`finger`/`frame` lines by their frame offsets with no `wait` between the frames (the frame after a `wait`
+is stamped when the wait really ended: tests/scenarios/z_pages_drag_hold.qs times its flick by `frame 300`,
+issue #184).
 
 `GRIMOIRE_SIM_CLOCK=script` holds app timers still while a script line is processed or a background
 job runs. Each `wait MS` advances those timers by exactly MS; host work and `GRIMOIRE_SIM_LATE_MS`
@@ -63,8 +66,12 @@ still delay the runner, but do not advance app time. Inside a wait, app time mov
 time by what that round idled, and what the machine took besides is made up in one step at the
 wait's end: two timers due inside one wait can then come due together in its last round, their
 refreshes in that round's order and not their own, so a check of their order gives each a wait of
-its own (tests/scenarios/files_12_covers_slow.qs, issue #169). A `waitfor` advances them by what it idled, a
-round at a time, until its probe matches (tests/scenarios/z_waitfor_script_clock.qs waits so for a
+its own (tests/scenarios/files_12_covers_slow.qs, issue #169). A background job's child works by the
+real clock beside the app: a preview it writes while the app is still drawing the screen that asked for it
+shows at once, before a count that starts on the next line, so a check of the job's own refresh holds the
+job back with `GRIMOIRE_BG_DELAY_MS` (tests/scenarios/z_rc8_pages_refresh.qs, issue #184).
+A `waitfor` advances them by what it idled, a round at a time, until its probe matches
+(tests/scenarios/z_waitfor_script_clock.qs waits so for a
 toast to go). A `side click` advances them by its own time, its presses and the gaps between them
 (80 ms for one click), as its events come due: so a `wait` after it is that long after the release
 by the app's own timers, however late the machine ends it (tests/scenarios/v_gestures_4e_single.qs
