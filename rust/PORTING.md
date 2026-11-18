@@ -145,7 +145,7 @@ Scribe" as a whole (i18n.rs, the device's name). No string changes for it. The s
 
 A platform reads its own system files (under /proc or /sys, a locale file) with
 `util::read_system_file`, which follows links as any read does. `util::read_file` is for the data
-folder: since 2.1.1 it takes a plain file at the name itself (a link there reads as a file that is
+folder: since 2.2.0 it takes a plain file at the name itself (a link there reads as a file that is
 not there) and never waits, with `util::read_file_max` for the small text files (docs/DESIGN.md,
 On-disk layout). The data folder and the folders on the way to a file may sit behind links, as
 before. Platform code kept outside this crate that calls `util::read_file` on a system file compiles
