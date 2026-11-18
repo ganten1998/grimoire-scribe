@@ -10,8 +10,9 @@
 # refreshes the sheet's place alone, in the sheet's refresh (ui). On a keyboard Enter opens (the card's
 # Read all, then the notes of the row marked) and Esc goes back one layer (the notes to the list, the
 # list to the card, as the Templates sheet goes back to New notebook; the card closes). The rows are
-# docs/whatsnew/'s notes as this build sees them (VERSION 2.1.0): every release sets them again
-# (docs/RELEASING.md, The bump commit).
+# docs/whatsnew/'s notes as this build sees them (VERSION 2.1.0, with 2.2.0's note written ahead of its release,
+# dated "unreleased" by the changelog and not the one marked): every release sets them again (docs/RELEASING.md,
+# The bump commit).
 # rust-only
 wait 200
 expect screen is library
@@ -26,20 +27,22 @@ wait 100
 expect library.sheet is about
 expect library.about.view is list
 expect library.about.full is 1
-expect library.about.entries is 5
-expect library.about.rows is 5
+expect library.about.entries is 6
+expect library.about.rows is 6
 expect library.about.pages is 1
-expect library.about.row.1 is 2.1.0
-expect library.about.row_date.1 is 2026-11-13
-expect library.about.row.2 is 2.1.0-beta.2
-expect library.about.row_date.2 is 2026-11-11
-expect library.about.row.3 is 2.1.0-beta.1
-expect library.about.row_date.3 is 2026-11-08
-expect library.about.row.4 is 2.0.0
-expect library.about.row_date.4 is 2026-11-05
-expect library.about.row.5 is 2.0.0-beta.1
-expect library.about.row_date.5 is 2026-11-01
-expect library.about.marked is 1
+expect library.about.row.1 is 2.2.0
+expect library.about.row_date.1 is unreleased
+expect library.about.row.2 is 2.1.0
+expect library.about.row_date.2 is 2026-11-13
+expect library.about.row.3 is 2.1.0-beta.2
+expect library.about.row_date.3 is 2026-11-11
+expect library.about.row.4 is 2.1.0-beta.1
+expect library.about.row_date.4 is 2026-11-08
+expect library.about.row.5 is 2.0.0
+expect library.about.row_date.5 is 2026-11-05
+expect library.about.row.6 is 2.0.0-beta.1
+expect library.about.row_date.6 is 2026-11-01
+expect library.about.marked is 2
 expect library.about.note is
 expect library.about.body_px is 0
 expect library.about.lead is 0
@@ -72,16 +75,16 @@ tap library about.back
 wait 100
 expect library.about.view is list
 expect display.presents has ui 70 214 1720 2226
-expect library.about.rows is 5
-expect library.about.marked is 1
+expect library.about.rows is 6
+expect library.about.marked is 2
 # Sideways: the list, and the letter whole on one page too, signed: in Jersey 10's next size down (from
 # 43 px), at the leading it always had, as at 44 px even its closest look takes two pages.
 rotate 1
 wait 200
 expect library.sheet is about
 expect library.about.view is list
-expect library.about.rows is 5
-expect library.about.marked is 1
+expect library.about.rows is 6
+expect library.about.marked is 2
 shot 03-list-sideways
 tap library about.row.2.0.0-beta.1
 wait 100
