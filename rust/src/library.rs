@@ -6528,12 +6528,25 @@ pub(crate) fn settings_skip_reopen(a: &mut App) {
 }
 
 fn open_kb(a: &mut App, p: KbPurpose, title: &str, initial: &[u8]) {
+    open_kb_sel(a, p, title, initial, false);
+}
+
+/// A keyboard for a notebook's name, made or renamed: the name it opens with is selected, so the first key
+/// typed replaces it (issue #191).
+fn open_kb_rename(a: &mut App, p: KbPurpose, title: &str, initial: &[u8]) {
+    open_kb_sel(a, p, title, initial, true);
+}
+
+fn open_kb_sel(a: &mut App, p: KbPurpose, title: &str, initial: &[u8], select_all: bool) {
     let s = lib(a);
     if s.modal != Modal::Kb {
         s.kb_parent = s.modal;
     }
     s.kbp = p;
     keyboard_open(&mut s.kb, title, initial);
+    if select_all {
+        keyboard_select_all(&mut s.kb);
+    }
     s.modal = Modal::Kb;
     redraw(a, RefreshMode::Ui);
 }
@@ -7088,7 +7101,7 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_NEW_RENAME => {
             let name = lib(a).new_name;
-            open_kb(
+            open_kb_rename(
                 a,
                 KbPurpose::NewName,
                 c_("keyboard", "Name"),
@@ -7590,7 +7603,7 @@ fn act(a: &mut App, h: &Hit) {
         H_MORE_RENAME => {
             if let Some(it) = it {
                 let name = lib(a).books[it.nb].name;
-                open_kb(
+                open_kb_rename(
                     a,
                     KbPurpose::Rename,
                     c_("keyboard", "Name"),

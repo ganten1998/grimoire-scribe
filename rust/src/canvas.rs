@@ -667,6 +667,14 @@ pub fn canvas_deposit_px(c: &mut Canvas, x: i32, y: i32, ink: u8, a: f32) {
     if x < c.clip.x || y < c.clip.y || x >= c.clip.x + c.clip.w || y >= c.clip.y + c.clip.h {
         return;
     }
+    canvas_deposit_px_in(c, x, y, ink, a);
+}
+
+/// canvas_deposit_px for a pixel already inside c.clip: the brush clips each dab's box to the clip,
+/// so its per-pixel loop (the hot path when drawing over an image or a dense page) need not test
+/// the four bounds again for every pixel it deposits.
+#[inline]
+pub fn canvas_deposit_px_in(c: &mut Canvas, x: i32, y: i32, ink: u8, a: f32) {
     let p = &mut c.px[(y * c.stride + x) as usize];
     if *p <= ink {
         return;
@@ -686,6 +694,13 @@ pub fn canvas_restore_px(c: &mut Canvas, x: i32, y: i32, paper: u8, a: f32) {
     if x < c.clip.x || y < c.clip.y || x >= c.clip.x + c.clip.w || y >= c.clip.y + c.clip.h {
         return;
     }
+    canvas_restore_px_in(c, x, y, paper, a);
+}
+
+/// canvas_restore_px for a pixel already inside c.clip (see canvas_deposit_px_in): the brush's
+/// erase path, which clips its dab's box the same way.
+#[inline]
+pub fn canvas_restore_px_in(c: &mut Canvas, x: i32, y: i32, paper: u8, a: f32) {
     let p = &mut c.px[(y * c.stride + x) as usize];
     if *p >= paper {
         return;

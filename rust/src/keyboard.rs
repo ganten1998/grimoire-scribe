@@ -1112,6 +1112,14 @@ pub fn keyboard_open(kb: &mut Keyboard, title: &str, initial: &[u8]) {
     kb.anchor = kb.caret;
 }
 
+/// Selects the whole text, the caret at its start: typing replaces it. A notebook's name is opened this way
+/// when one is made or renamed (library.rs), so the old name goes as the first key is typed and there is no
+/// need to hold del first.
+pub fn keyboard_select_all(kb: &mut Keyboard) {
+    kb.caret = 0;
+    kb.anchor = kb.text.len();
+}
+
 /// The count pad (page 4): the number pad's digits, Cancel and del, then a row with - and + (the count
 /// one less, down to 1, or one more), and Done, whose label `label` gives for the count (disabled at 0).
 /// The text is the count in digits (empty for 0); a digit or + never takes it past `max`: it stays at
@@ -2658,6 +2666,22 @@ mod tests {
         press_code(&mut full, KB_KEY_LEFT);
         press_code(&mut full, '\u{e9}' as u32);
         assert_eq!((full.text.len(), full.caret), (KB_TEXT_MAX - 1, KB_TEXT_MAX - 2));
+    }
+
+    /// A notebook's name opens selected (issue #191): the whole text, the caret at its start, so the first key typed
+    /// replaces the old name; the selection is the same kind a drag or Select all makes.
+    #[test]
+    fn a_notebook_name_opens_all_selected() {
+        let mut kb = laid_out("My notebook", 0);
+        keyboard_select_all(&mut kb);
+        assert_eq!(caret(&kb), "[|My notebook]");
+        assert_eq!(keyboard_selection(&kb), (0, "My notebook".len()));
+        assert_eq!(press_code(&mut kb, 'x' as u32), KbResult::Changed);
+        assert_eq!(caret(&kb), "x|");
+        // An empty name has nothing to select, and is left as it was.
+        let mut empty = laid_out("", 0);
+        keyboard_select_all(&mut empty);
+        assert_eq!(caret(&empty), "|");
     }
 
     /// The kana pad's modifier changes the kana before the caret (the one typed last, wherever the caret is).

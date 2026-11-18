@@ -1105,13 +1105,13 @@ pub fn template_start_notebook(nb: &mut NotebookInfo, path: &str, why: &mut &'st
     -1
 }
 
-// The notebook's card (thumb.pgm, of its first page) when that page is on picture pic, drawn again
-// once the picture is made: the editor drew it on white paper if the notebook was left before (a
-// first page written on in the seconds a picture takes on the Kindle, or a page KOReader sent,
-// looked at and left while its picture was fitted: a document page, whose picture is made here
-// as a template's is). The editor may have the notebook open still, and write the card itself as
-// this draws it (leaving page 1, which it saves first, or closing): then the card is drawn again
-// from page 1 as it is now, up to three times.
+// The notebook's card (thumb.pgm, of the page the notebook opens at: its last_page) when that page
+// is on picture pic, drawn again once the picture is made: the editor drew it on white paper if the
+// notebook was left before (a page written on in the seconds a picture takes on the Kindle, or a page
+// KOReader sent, looked at and left while its picture was fitted: a document page, whose picture is
+// made here as a template's is). The editor may have the notebook open still, and write the card itself
+// as this draws it (leaving the page, which it saves first, or closing): then the card is drawn again
+// from that page as it is now, up to three times.
 fn redraw_card(nb: &NotebookInfo, pic: u32, dpi: f32) {
     let (mut pw, mut ph) = (0, 0);
     store_notebook_page_size(nb, &mut pw, &mut ph);
@@ -1122,8 +1122,9 @@ fn redraw_card(nb: &NotebookInfo, pic: u32, dpi: f32) {
         let was = store_read_thumb_file(nb.id.as_str());
         let mut p: Option<Box<Page>> = None;
         let mut t = Canvas::default();
-        let mut rc = 0; // (page 1 not on the picture: nothing to draw)
-        if store_read_page(nb, 0, &mut p) != 0 {
+        let at = clampi(nb.last_page, 0, nb.npages() - 1);
+        let mut rc = 0; // (that page not on the picture: nothing to draw)
+        if store_read_page(nb, at, &mut p) != 0 {
             rc = -1;
         } else if p.as_ref().is_some_and(|pg| paper_is_image(pg.paper) && paper_image_id(pg.paper) == pic) {
             rc = if canvas_init(&mut t, pw / 3, ph / 3) == 0 { 0 } else { -1 };

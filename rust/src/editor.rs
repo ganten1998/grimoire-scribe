@@ -1309,7 +1309,8 @@ fn draw_panel(a: &mut App) {
     s.tool_button_shows = TB_NONE;
     if s.collapsed {
         ui_frame(c, p, ui_px(22.0), 255, true, 0);
-        ui_frame(c, p, ui_px(22.0), 0, false, ui_px(6.0));
+        // (the floating clock's outline: the toolbar and the clock match, issue #194)
+        ui_frame(c, p, ui_px(22.0), 0, false, ui_px(2.0));
         let mut ir = rect_inflate(p, -ui_px(20.0));
         ir.h -= ui_px(12.0);
         if s.sel.state != SelState::Off {
@@ -1332,7 +1333,8 @@ fn draw_panel(a: &mut App) {
         return;
     }
     ui_frame(c, p, ui_px(22.0), 255, true, 0);
-    ui_frame(c, p, ui_px(22.0), 0, false, ui_px(6.0));
+    // (the floating clock's outline: the toolbar and the clock match, issue #194)
+    ui_frame(c, p, ui_px(22.0), 0, false, ui_px(2.0));
     let x = p.x + ui_px(14.0);
     let w = p.w - ui_px(28.0);
     // Header: grip (drag) + collapse.
@@ -2764,7 +2766,7 @@ fn save_thumb_from_canvas(s: &mut EditorState) {
     }
     canvas_downsample_keep_lines(&mut t, &s.page_canvas, 0.35);
     if store_save_thumb(s.nb.id.as_str(), &t) == 0 {
-        store_note_thumb_source(s.nb.id.as_str(), &first_page_source(&s.nb));
+        store_note_thumb_source(s.nb.id.as_str(), &card_page_source(&s.nb));
         s.thumb_dirty = false;
     }
 }
@@ -2846,9 +2848,7 @@ fn save_page_for(a: &mut App, caches: Option<CacheSave>) -> bool {
             );
             return false;
         }
-        if s.index == 0 {
-            s.thumb_dirty = true; // written when leaving the page (it is slow)
-        }
+        s.thumb_dirty = true; // written when leaving the page (it is slow)
         let pid = s.open_pid();
         pagesview_page_saved(&mut s.pv, pid);
         s.caches_pending = true;
@@ -2954,27 +2954,36 @@ fn save_page_caches(s: &mut EditorState, now: u32, why: CacheSave) {
     }
 }
 
-// What the Library card is drawn from: page 1's id and its file's identity (store_note_thumb_source).
-fn first_page_source(nb: &NotebookInfo) -> String {
-    let pid = nb.page_ids[0];
+// What the Library card is drawn from: the page the notebook opens at (last_page, the page last left off on) and
+// its file's identity (store_note_thumb_source).
+fn card_page_source(nb: &NotebookInfo) -> String {
+    if nb.page_ids.is_empty() {
+        return String::new();
+    }
+    let at = clampi(nb.last_page, 0, nb.npages() - 1) as usize;
+    let pid = nb.page_ids[at];
     format!("{pid}:{}", store_page_source_identity(nb, pid).unwrap_or_default())
 }
 
-// A change on another page leaves the Library card alone, when the card was drawn from page 1 as it is now (what
-// it was drawn from is kept beside it, store_note_thumb_source: a card of before, or one drawn from another page 1
-// or from a page 1 since written, is drawn again, whatever it held at the open). A changed or reordered first page
-// uses its kept drawing, then its current small preview, before falling back to drawing the strokes. (A card of
-// no known source, one a version before 2.1.0 made, may show a cleared page's old picture, and the preview beside
-// it may too: that one is drawn from the strokes, once, as every close did before.)
+// A change on another page leaves the Library card alone, when the card was drawn from the page the notebook opens
+// at as it is now (what it was drawn from is kept beside it, store_note_thumb_source: a card of before, or one
+// drawn from another page or from that page since written, is drawn again, whatever it held at the open). A changed
+// or reordered page uses its kept drawing, then its current small preview, before falling back to drawing the
+// strokes. (A card of no known source, one a version before 2.1.0 made, may show a cleared page's old picture, and
+// the preview beside it may too: that one is drawn from the strokes, once, as every close did before.)
 fn refresh_library_thumb(s: &mut EditorState, dpi: f32) {
-    let source = first_page_source(&s.nb);
-    let pid = s.nb.page_ids[0];
+    if s.nb.page_ids.is_empty() {
+        return;
+    }
+    let source = card_page_source(&s.nb);
+    let at = clampi(s.nb.last_page, 0, s.nb.npages() - 1);
+    let pid = s.nb.page_ids[at as usize];
     let was = store_thumb_source(s.nb.id.as_str());
     if !s.thumb_dirty && was.as_deref() == Some(source.as_str()) {
         return;
     }
     let mut p = None;
-    if s.load_page(0, &mut p) != 0 { return; }
+    if s.load_page(at, &mut p) != 0 { return; }
     let Some(p) = p else { return; };
     let mut t = Canvas::default();
     if canvas_init(&mut t, s.pgw / 3, s.pgh / 3) != 0 { return; }
@@ -3127,15 +3136,13 @@ fn page_is_its_file(s: &EditorState) -> bool {
 // its strokes with nothing unsaved (never read since 2.1.0, store.rs RENDER_TAG_VERSION: it may show the page as it
 // was before a Clear or a new paper), and the Pages preview and the Library card made beside it are made again from
 // this drawing: the preview now (a view decodes it again: bgjob.rs PreviewCache goes by the preview file too), the
-// card as page 1 is left (write_thumb_if_needed). Not from a drawing with its picture white: later, then. For
+// card as that page is left (write_thumb_if_needed). Not from a drawing with its picture white: later, then. For
 // render_page_full and the Links bar's commit of a page it drew.
 fn retire_kept_before(s: &mut EditorState) {
     let pid = s.open_pid();
     if page_is_its_file(s) && !s.picture_missing && s.page_ix().is_some() && store_retire_page_render(&s.nb, pid) {
         store_save_page_preview(&s.nb, pid, &s.page_canvas);
-        if s.index == 0 {
-            s.thumb_dirty = true;
-        }
+        s.thumb_dirty = true; // the Library's card follows this page when it is the one last left
     }
 }
 
@@ -3375,7 +3382,6 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
         return false;
     }
     links_flush(a);
-    write_thumb_if_needed(a);
     let s = ed(a);
     let index = clampi(index, 0, s.nb.npages() - 1);
     let Some(np) = s.page_at(index) else {
@@ -3524,9 +3530,7 @@ fn close_notebook(a: &mut App) {
     // thumbnail and the PDF it drew of them are drawn again.
     if store_take_restored_count() > 0 {
         s.changed = true;
-        if s.index == 0 {
-            s.thumb_dirty = true;
-        }
+        s.thumb_dirty = true;
     }
     save_page_leaving(a);
     links_flush(a); // (before the PDF, which reads the areas)
@@ -3535,9 +3539,9 @@ fn close_notebook(a: &mut App) {
     write_thumb_if_needed(a);
     let dpi = a.dpi;
     let s = ed(a);
-    if s.index != 0 && s.changed {
-        refresh_library_thumb(s, dpi);
-    }
+    // The card follows the page the notebook was left on, whether or not that page changed (issue #192): a card
+    // already drawn from it is left alone.
+    refresh_library_thumb(s, dpi);
     if a.settings.mirror_pdf && ed(a).changed {
         let id = ed(a).nb.id;
         bg_mirror_pdf(id.as_str(), dpi, &app_mirror_dir(), false);
@@ -3647,7 +3651,9 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     }
     s.page_dirty = false;
     s.info_dirty = requested.is_some() && s.nb.last_page != s.index;
-    if s.info_dirty {s.nb.last_page=s.index;}
+    if s.info_dirty {
+        s.nb.last_page = s.index;
+    }
     s.changed = false;
     if s.page_canvas.px.is_empty() && canvas_init(&mut s.page_canvas, s.pgw, s.pgh) != 0 {
         return;
@@ -3698,9 +3704,7 @@ pub fn editor_open_notebook_at(a: &mut App, id: &str, page_id: u32, added: bool)
     }
     let s = ed(a);
     s.changed = true;
-    if s.index == 0 {
-        s.thumb_dirty = true;
-    }
+    s.thumb_dirty = true; // (a page added: the card follows the page the notebook opens at)
 }
 
 /// a picture job is done: the open page drawn again
@@ -4810,13 +4814,13 @@ fn pages_delete(a: &mut App) {
     s.index = clampi(cur - deleted_before, 0, s.nb.npages() - 1);
     s.pv.current = s.index;
     s.nb.last_page = s.index;
+    s.thumb_dirty = true;
     s.page = s.page_at(s.index);
     if s.page.is_some() {
         render_page_open(a);
     }
     let s = ed(a);
     s.changed = true;
-    s.page_dirty = s.index == 0; // refreshes the library thumbnail when page 1 changed
     s.info_dirty = true;
     save_page(a);
     let s = ed(a);
@@ -4845,6 +4849,7 @@ fn pages_added(a: &mut App, at: i32) {
         s.index += 1;
     }
     s.nb.last_page = s.index;
+    s.thumb_dirty = true;
     s.pv.current = s.index;
     s.changed = true;
     pages_hide(a, at);
@@ -4963,7 +4968,6 @@ fn pages_move(a: &mut App, to: i32) {
     }
     let moved: Vec<u32> = ticked.iter().map(|&i| s.nb.page_ids[i as usize]).collect();
     let open = s.open_pid();
-    let first_was = s.nb.page_ids[0];
     s.nb.last_page = s.index;
     if store_move_pages_undo(&mut s.nb, &ticked, to, &mut s.pv.move_undo) != 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Move to... could not save
@@ -4978,9 +4982,6 @@ fn pages_move(a: &mut App, to: i32) {
     s.nb.last_page = s.index;
     s.pv.current = s.index;
     s.changed = true; // (the PDF mirror runs at close)
-    if s.nb.page_ids[0] != first_was && s.index == 0 {
-        s.thumb_dirty = true; // a new first page: the Library's card (written from its canvas as it is left)
-    }
     pagesview_untick(&mut s.pv);
     let at = s.nb.page_ids.iter().position(|&p| p == moved[0]).unwrap_or(0) as i32;
     let (cols, rows) = pagesview_grid(&ed_ref(a).pv, a);
@@ -5003,7 +5004,6 @@ fn pages_undo_move(a: &mut App) {
     let s = ed(a);
     let Some(u) = s.pv.move_undo.take() else { return };
     let open = s.open_pid();
-    let first_was = s.nb.page_ids[0];
     s.nb.last_page = s.index;
     if store_undo_move_pages(&mut s.nb, &u) != 0 {
         if u.applies(&s.nb) {
@@ -5020,9 +5020,6 @@ fn pages_undo_move(a: &mut App) {
     s.nb.last_page = s.index;
     s.pv.current = s.index;
     s.changed = true;
-    if s.nb.page_ids[0] != first_was && s.index == 0 {
-        s.thumb_dirty = true;
-    }
     pagesview_untick(&mut s.pv);
     let at = u.before.iter().zip(&u.after).position(|(b, f)| b != f).unwrap_or(0) as i32;
     s.pv.redo = Some(PageRedo::Move(u));
@@ -7972,7 +7969,6 @@ fn bar_commit(a: &mut App) {
         return;
     }
     links_flush(a);
-    write_thumb_if_needed(a);
     let s = ed(a);
     let from = s.open_pid();
     // The peeked page in the session cache: the one it has, else the one the bar read, moved in.
@@ -11353,7 +11349,9 @@ fn settle_now_in(a: &mut App) {
 
 fn write_thumb_if_needed(a: &mut App) {
     let s = ed(a);
-    if !s.thumb_dirty || s.index != 0 {
+    // The card is the page the notebook opens at, and the open page's canvas is that page's only when they are
+    // one: a page left behind is drawn from its file at the close instead (refresh_library_thumb).
+    if !s.thumb_dirty || s.index != s.nb.last_page {
         return;
     }
     save_thumb_from_canvas(s);
@@ -11375,9 +11373,7 @@ fn pictures_arrived(a: &mut App, page: bool, caches: bool) {
     let s = ed(a);
     if page && !s.picture_missing {
         // (still missing: another job ended, this one is to come)
-        if s.index == 0 {
-            s.thumb_dirty = true; // the Library's card of the notebook
-        }
+        s.thumb_dirty = true; // the Library's card of the notebook
         compose_all(a, RefreshMode::Full);
     } else if caches && s.pv.open {
         compose_all(a, RefreshMode::Ui);
@@ -12835,7 +12831,7 @@ mod tests {
         assert!(stale.px.iter().all(|&v| v == 255));
         c.px.fill(23);
         store_save_thumb(s.nb.id.as_str(), &c);
-        store_note_thumb_source(s.nb.id.as_str(), &first_page_source(&s.nb));
+        store_note_thumb_source(s.nb.id.as_str(), &card_page_source(&s.nb));
         let before = store_thumb_stamp(s.nb.id.as_str());
         refresh_library_thumb(s, 300.0);
         assert_eq!(before, store_thumb_stamp(s.nb.id.as_str()), "other-page edits leave the card alone");
@@ -12862,6 +12858,36 @@ mod tests {
         refresh_library_thumb(s, 300.0);
         assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut card), 0);
         assert!(card.px.iter().all(|&v| v == 255));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn the_library_card_follows_the_last_page_left_off_on() {
+        let root = fhold_root("card-last-page");
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Card", "", PAPER_BLANK, &mut nb), 0);
+        assert_eq!(store_add_page(&mut nb, 1, PAPER_BLANK), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        s.pgw = 1000;
+        s.pgh = 1400;
+        let mut page = Canvas::default();
+        canvas_init(&mut page, s.pgw, s.pgh);
+        page.px.fill(23);
+        let second = s.nb.page_ids[1];
+        assert!(store_save_page_render(&s.nb, second, &page, false));
+        // The notebook opens on its second page (last_page 1): the card is page 2, not page 1.
+        s.nb.last_page = 1;
+        refresh_library_thumb(s, 300.0);
+        let mut card = Canvas::default();
+        assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut card), 0);
+        assert!(card.px.iter().all(|&v| v == 23), "the card is the page the notebook opens at");
+        // Left on page 1 again: the card follows it and is blank.
+        s.nb.last_page = 0;
+        refresh_library_thumb(s, 300.0);
+        assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut card), 0);
+        assert!(card.px.iter().all(|&v| v == 255), "the card follows the page left off on");
         std::fs::remove_dir_all(root).unwrap();
     }
 
