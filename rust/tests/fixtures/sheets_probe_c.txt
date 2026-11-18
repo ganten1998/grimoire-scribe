@@ -11,6 +11,8 @@ labels es gothic 09dd77e8971fa3b8
 labels es classic 8bb94f4d4a3dd0b7
 labels ja gothic 5a76352a7532a147
 labels ja classic 4662da7a5d189228
+labels pl gothic 2fbadab7d5766299
+labels pl classic 732c096fbbdf8b51
 == music
 music pg L0 rect 60 217 1740 1827 systems 5 hash fdb27b1c8f8fb58a
 music pg L1 rect 60 217 1740 1827 systems 2 hash abc74dcb6e69db4b
@@ -77,6 +79,14 @@ tplsheet empty0 ja lg templates 6688c23ddba169d7
 tplsheet empty0 ja lg photos 8a64a3af399ea6b0
 tplsheet empty0 ja lc templates d64e112e0174e8fd
 tplsheet empty0 ja lc photos 3f66afb2ad5d5887
+tplsheet empty0 pl pg templates 4f8d3c11afd8f848
+tplsheet empty0 pl pg photos c835c458b4e5b25a
+tplsheet empty0 pl pc templates c1511a2c62ccd2fe
+tplsheet empty0 pl pc photos eb96427366d95881
+tplsheet empty0 pl lg templates a97fa3881c4e23ac
+tplsheet empty0 pl lg photos 89f8c61c6c564e9e
+tplsheet empty0 pl lc templates e4a7360411d9400c
+tplsheet empty0 pl lc photos 8ba1ad279f823197
 tplsheet empty1 en pg templates 8ecc1ca07a3f7630
 tplsheet empty1 en pg photos 9788d58c9d06384a
 tplsheet empty1 en pc templates 706edb3629c3d4be
@@ -101,6 +111,14 @@ tplsheet empty1 ja lg templates 00977986a543f174
 tplsheet empty1 ja lg photos 8a64a3af399ea6b0
 tplsheet empty1 ja lc templates fd7ae784a777e972
 tplsheet empty1 ja lc photos 3f66afb2ad5d5887
+tplsheet empty1 pl pg templates d50b2b29543c92e0
+tplsheet empty1 pl pg photos c835c458b4e5b25a
+tplsheet empty1 pl pc templates e2da63af0bfbc426
+tplsheet empty1 pl pc photos eb96427366d95881
+tplsheet empty1 pl lg templates 5b0c3bb575cfd724
+tplsheet empty1 pl lg photos 89f8c61c6c564e9e
+tplsheet empty1 pl lc templates f7fed3815cb9e0a4
+tplsheet empty1 pl lc photos 8ba1ad279f823197
 tplsheet pg waiting page 1 of 2 selected 16 hash 216a43b4fc9b711b
 tplsheet pg ready tick 1 dirty 70 123 1720 2110 page 1 of 2 hash c4c7929a36aee38c
 tplsheet pg turn 1 -> 1 page 2 e854388bdd22871f
@@ -450,6 +468,10 @@ pages lang ja pg 92f3f03a9d80786b
 pages lang ja pc d44a96a05f381beb
 pages lang ja lg 270b865f076e2963
 pages lang ja lc 567880f6cef9163c
+pages lang pl pg 862b9c651772a9fb
+pages lang pl pc 42926b3c1420c760
+pages lang pl lg bbcf4aa7f22c93a0
+pages lang pl lc 997ca28e41c51f1c
 == pages taps
 pages tap 4 3 -> 0 target 0 tab 0 screen 0 idx 0 ticked 1 kb 0 a5a387a0b82c1ea3
 pages tap 4 5 -> 0 target 0 tab 0 screen 0 idx 0 ticked 2 kb 0 b9f4b2042d12b547

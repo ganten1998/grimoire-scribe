@@ -22,6 +22,13 @@ static int plural_zero(long n) {
     (void)n;
     return 0;
 }
+// Polish: one, then the few (2 to 4, but not 12 to 14 and their hundreds), then the many.
+static int plural_pl(long n) {
+    if (n < 0) n = -n;
+    if (n == 1) return 0;
+    if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) return 1;
+    return 2;
+}
 
 static const struct {
     const char *code, *name;  // the name in the language itself (UTF-8)
@@ -31,6 +38,7 @@ static const struct {
     {"en", "English", 2, plural_one_other},
     {"es", "Espa\xc3\xb1ol", 2, plural_one_other},
     {"ja", "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e", 1, plural_zero},
+    {"pl", "Polski", 3, plural_pl},
 };
 enum { NLANGS = sizeof k_langs / sizeof k_langs[0] };
 
