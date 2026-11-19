@@ -342,6 +342,22 @@ struct ShapeHold {
 }
 struct ShapePreview { saved: Canvas, region: Rect, raw_n: usize, stroke: Box<Stroke> }
 
+/// How a widget drag shows its newest place: a dithered border at the frame's new rect over a copy of
+/// the screen without the border's old strips, as a selection's drag does (select.rs). The frame itself
+/// stays where it was until the lift, so no page or frame content is composed while the contact moves.
+#[derive(Default)]
+struct WidgetDragView {
+    /// the frame rect the border was last drawn at
+    shown: Option<Rect>,
+    /// the screen without the border (and without the panel), copied as the first border shows
+    base: Option<Canvas>,
+    base_at: Rect,
+    shown_at: u32,
+    moved_at: u32,
+    samples: u32,
+    samples_at_last_show: u32,
+}
+
 #[derive(Default)]
 pub struct EditorState {
     /// when the open page's Pages preview was last made from its canvas (save_page), and whether the
@@ -601,6 +617,7 @@ pub struct EditorState {
     /// the popup's button pressed, shown pressed until the lift
     widgets_pressed: Option<Rect>,
     widget_drag: Option<WidgetDrag>,
+    widget_drag_view: WidgetDragView,
 
     /// the Pages view (pagesview.h)
     pv: PagesView,
@@ -7871,7 +7888,8 @@ fn open_widgets(a: &mut App) {
     }
     let s = ed(a);
     s.widgets_open = true;
-    s.widgets_y = s.panel.y;
+    // Beside its toolbar button, as a sidebar tool's hold opens beside it, not at the panel's top.
+    s.widgets_y = s.hits.h.iter().find(|h| h.id == P_WIDGETS).map_or(s.panel.y, |h| h.r.y);
     draw_widgets_popup(a);
     let r = ed(a).widgets_rect;
     app_invalidate(a, r, RefreshMode::Ui);
@@ -7938,9 +7956,201 @@ fn widgets_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
     let _ = pen;
 }
 
+// A widget drag's border, as a selection's: one fast refresh a show, paced by the panel and the pen.
+const WIDGET_SHOW_MS: u32 = DRAG_SHOW_MS;
+const WIDGET_PAUSE_MS: u32 = 50;
+const WIDGET_SHOW_SAMPLES: u32 = 60;
+
+/// The screen a frame may show on: under the status bar, with the panel's part taken out below.
+fn widget_drag_area(a: &App) -> Rect {
+    rect_intersect(widget_area(a), Rect { x: 0, y: 0, w: a.w, h: a.h })
+}
+
+/// r cut into the pieces of `widget_drag_area` a border may draw on (the panel draws over the rest).
+fn widget_clip_pieces(a: &App, r: Rect) -> Vec<Rect> {
+    let r = rect_intersect(r, widget_drag_area(a));
+    if rect_is_empty(r) {
+        return Vec::new();
+    }
+    let hole = ed_ref(a).panel;
+    if rect_is_empty(hole) || rect_is_empty(rect_intersect(r, hole)) {
+        return vec![r];
+    }
+    let mut v = Vec::with_capacity(4);
+    let top_h = hole.y - r.y;
+    if top_h > 0 {
+        v.push(Rect { x: r.x, y: r.y, w: r.w, h: top_h });
+    }
+    let bottom_y = hole.y + hole.h;
+    if bottom_y < r.y + r.h {
+        v.push(Rect { x: r.x, y: bottom_y, w: r.w, h: r.y + r.h - bottom_y });
+    }
+    let mid_y = hole.y.max(r.y);
+    let mid_h = (hole.y + hole.h).min(r.y + r.h) - mid_y;
+    if mid_h > 0 {
+        let left_w = hole.x - r.x;
+        if left_w > 0 {
+            v.push(Rect { x: r.x, y: mid_y, w: left_w, h: mid_h });
+        }
+        let right_x = hole.x + hole.w;
+        if right_x < r.x + r.w {
+            v.push(Rect { x: right_x, y: mid_y, w: r.x + r.w - right_x, h: mid_h });
+        }
+    }
+    v
+}
+
+/// The border's strips at b, cut to where they may draw: what a show refreshes and a later show puts back.
+fn widget_preview_strips(a: &App, b: Rect) -> Vec<Rect> {
+    let (band, halo) = (link_band(), ui_px(1.0));
+    let mut v = Vec::with_capacity(4);
+    for s in dither_strips(b, band, halo) {
+        for p in widget_clip_pieces(a, s) {
+            let q = rect_intersect(s, p);
+            if !rect_is_empty(q) && !v.contains(&q) {
+                v.push(q);
+            }
+        }
+    }
+    v
+}
+
+fn widget_preview_draw(a: &mut App, b: Rect) {
+    let (band, halo) = (link_band(), ui_px(1.0));
+    let clip = a.screen.clip;
+    for p in widget_clip_pieces(a, b) {
+        canvas_set_clip(&mut a.screen, p);
+        canvas_dither_rect(&mut a.screen, b, band, halo);
+    }
+    a.screen.clip = clip;
+}
+
+/// Two strips joined only when one rect over both covers no more than they do apart: a short move's
+/// old and new border overlap (as a selection drag's strips, select.rs drag_present).
+fn widget_join_strips(mut v: Vec<Rect>) -> Vec<Rect> {
+    let area = |r: Rect| if rect_is_empty(r) { 0 } else { r.w as i64 * r.h as i64 };
+    loop {
+        let mut best: Option<(i64, usize, usize)> = None;
+        for i in 0..v.len() {
+            for j in i + 1..v.len() {
+                let waste = area(rect_union(v[i], v[j])) - area(v[i]) - area(v[j]);
+                if best.is_none_or(|b| waste < b.0) {
+                    best = Some((waste, i, j));
+                }
+            }
+        }
+        match best {
+            Some((waste, i, j)) if waste <= 0 => {
+                let u = rect_union(v[i], v[j]);
+                v.swap_remove(j);
+                v[i] = u;
+            }
+            _ => break,
+        }
+    }
+    v
+}
+
+/// A show: the last border's strips put back from the copy of the screen, the border at the newest place
+/// drawn, and each changed strip refreshed on its own (one fast DU each, as a selection drag's outline).
+fn widget_preview_paint(a: &mut App, old: Option<Rect>, new: Rect, now: u32) {
+    let old_strips = old.map(|r| widget_preview_strips(a, r)).unwrap_or_default();
+    let new_strips = widget_preview_strips(a, new);
+    if let Some(old) = old {
+        let has_base = ed_ref(a).widget_drag_view.base.is_some();
+        if has_base {
+            let App { screen, ed, .. } = a;
+            let s = ed.as_ref().unwrap();
+            let base_at = s.widget_drag_view.base_at;
+            if let Some(base) = s.widget_drag_view.base.as_ref() {
+                for r in &old_strips {
+                    let srect = Rect { x: r.x - base_at.x, y: r.y - base_at.y, w: r.w, h: r.h };
+                    canvas_blit(screen, base, srect, r.x, r.y);
+                }
+            }
+        } else {
+            // No memory for the copy: the old border comes off by composing both places.
+            compose(a, rect_union(old, new));
+        }
+    }
+    widget_preview_draw(a, new);
+    let mut v = old_strips;
+    v.extend(new_strips);
+    v.retain(|r| !rect_is_empty(*r));
+    let v = widget_join_strips(v);
+    if live_on() {
+        let all = v.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r));
+        if !rect_is_empty(all) {
+            live_push(&a.screen, all);
+        }
+    }
+    if !rect_is_empty(a.dirty) {
+        app_flush(a);
+    }
+    for r in v {
+        app_invalidate(a, r, RefreshMode::Fast);
+        app_flush(a);
+    }
+    let s = ed(a);
+    s.widget_drag_view.shown = Some(new);
+    s.widget_drag_view.shown_at = now;
+    s.widget_drag_view.samples_at_last_show = s.widget_drag_view.samples;
+}
+
+fn widget_preview_begin(a: &mut App, now: u32, shown: Rect) {
+    let at = widget_drag_area(a);
+    let mut base = Canvas::default();
+    let based = !rect_is_empty(at) && canvas_init(&mut base, at.w, at.h) == 0;
+    if based {
+        canvas_blit(&mut base, &a.screen, at, 0, 0);
+    }
+    let s = ed(a);
+    s.widget_drag_view.base = based.then_some(base);
+    s.widget_drag_view.base_at = at;
+    s.widget_drag_view.shown = None;
+    s.widget_drag_view.shown_at = now;
+    s.widget_drag_view.samples_at_last_show = s.widget_drag_view.samples;
+    widget_preview_paint(a, None, shown, now);
+}
+
+/// editor_tick: a widget's newest place shown once the panel finished the last fast refresh, as a
+/// selection's drag is (select.rs drag_tick): never one DU queued behind another. The frame stays where
+/// it was, only its border moves; the lift composes the real frame once.
+fn widget_tick(a: &mut App, now: u32) {
+    let s = ed_ref(a);
+    let Some(d) = s.widget_drag else { return };
+    if s.owner != Owner::Widget
+        || !d.moved
+        || !matches!(d.part, WidgetPart::Title | WidgetPart::Resize)
+        || !s.open
+        || sheet_open(s)
+        || s.peek.active
+        || crate::library::library_settings_active(a)
+        || display_fast_busy()
+    {
+        return;
+    }
+    let Some(cur) = s.widgets.frames.get(d.index).map(|f| f.rect()) else { return };
+    let v = &s.widget_drag_view;
+    if v.shown.is_none() {
+        widget_preview_begin(a, now, cur);
+        return;
+    }
+    if v.shown == Some(cur) {
+        return;
+    }
+    let by_samples = v.samples >= v.samples_at_last_show + WIDGET_SHOW_SAMPLES;
+    let by_time = now.wrapping_sub(v.shown_at) as i32 >= WIDGET_SHOW_MS as i32;
+    let by_pause = now.wrapping_sub(v.moved_at) as i32 >= WIDGET_PAUSE_MS as i32;
+    if by_samples || by_time || by_pause {
+        widget_preview_paint(a, v.shown, cur, now);
+    }
+}
+
 fn widget_down(a: &mut App, index: usize, part: WidgetPart, ev: &InEvent, pen: bool) {
     let s = ed(a);
     s.widgets.raise(index);
+    s.widget_drag_view = WidgetDragView::default();
     let Some(f) = s.widgets.frames.get(index).copied() else { return };
     let start = f.rect();
     s.widget_drag = Some(WidgetDrag {
@@ -7986,9 +8196,10 @@ fn widget_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
             (old, f.rect())
         };
         if old != new {
-            let r = rect_union(old, new);
-            compose(a, r);
-            app_invalidate(a, r, RefreshMode::Fast);
+            // Only note the newest place: widget_tick draws a border there, a fast refresh at a time.
+            let v = &mut ed(a).widget_drag_view;
+            v.moved_at = now_ms();
+            v.samples = v.samples.wrapping_add(1);
         }
         ed(a).widget_drag = Some(d);
         return;
@@ -8003,10 +8214,16 @@ fn widget_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
     let cancelled = touch_cancelled(ev);
     let area = widget_area(a);
     let mut redraw = d.start;
+    if let Some(p) = ed(a).widget_drag_view.shown {
+        redraw = rect_union(redraw, p);
+    }
     let mut save = false;
     let mut close = false;
     {
-        let Some(f) = ed(a).widgets.frames.get_mut(d.index) else { return };
+        let Some(f) = ed(a).widgets.frames.get_mut(d.index) else {
+            ed(a).widget_drag_view = WidgetDragView::default();
+            return;
+        };
         redraw = rect_union(redraw, f.rect());
         if !cancelled && !d.moved {
             match d.part {
@@ -8042,6 +8259,7 @@ fn widget_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
         save = true;
     }
     ed(a).widget_drag = None;
+    ed(a).widget_drag_view = WidgetDragView::default();
     compose(a, redraw);
     app_invalidate(a, redraw, RefreshMode::Ui);
     if save {
@@ -11936,6 +12154,9 @@ pub fn editor_tick(a: &mut App, now: u32) {
     // A pen held still in Select mode: a paste there (select.rs).
     if ed(a).open {
         sel_tick(a, now);
+        if ed_ref(a).owner == Owner::Widget {
+            widget_tick(a, now);
+        }
     }
     // A press held on a chip of the Links bar (a finger or the pen): the long-press card for its entry (8.10).
     let s = ed(a);

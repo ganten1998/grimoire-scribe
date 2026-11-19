@@ -423,7 +423,7 @@ fn draw_resize_handles(a: &mut App, off: (i32, i32), r: Rect) {
 
 /// The four strips canvas_dither_rect(r, thick, halo) paints, apart: the top and the bottom the full width,
 /// the left and the right between them (linkcard_strips' shape). Together exactly what it paints.
-fn dither_strips(r: Rect, thick: i32, halo: i32) -> [Rect; 4] {
+pub(super) fn dither_strips(r: Rect, thick: i32, halo: i32) -> [Rect; 4] {
     let t = thick.min(r.w).min(r.h);
     let o = rect_inflate(r, halo);
     let s = t + 2 * halo;
