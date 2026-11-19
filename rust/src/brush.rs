@@ -686,14 +686,15 @@ struct DabTarget<'a> {
 #[inline(always)]
 fn put_px<const ERASE: bool>(t: &mut DabTarget, c: &mut Canvas, x: i32, y: i32, ad: f32, a: f32, paper: u8) {
     if !ERASE {
-        canvas_deposit_px(c, x, y, t.ink, ad);
+        // (stamp_as clips the dab's box to the canvas's clip, so every pixel here is inside it)
+        canvas_deposit_px_in(c, x, y, t.ink, ad);
         return;
     }
     let at = (y * c.stride + x) as usize;
     let was = c.px[at];
     // Full coverage lands exactly on the paper: the spacing-compensated share alone would leave
     // the pixel one level short of it.
-    canvas_restore_px(c, x, y, paper, if a >= 0.999 { 1.0 } else { ad });
+    canvas_restore_px_in(c, x, y, paper, if a >= 0.999 { 1.0 } else { ad });
     if c.px[at] != was {
         t.restored = true;
     }

@@ -22,10 +22,9 @@ wait 3000
 expect editor.unsaved is 0
 expect editor.kept_matches_render not 0
 expect editor.preview_matches_render is 1
-# Leaving page 1 writes the Library card from the canvas; back, the page is drawn as it is
+# The Library card is written at the close, from the page left off on; back, the page is drawn as it is
 tap panel next
 expect editor.page is 2
-expect editor.card_matches_render is 1
 tap panel previous
 expect editor.page is 1
 expect editor.strokes is 0

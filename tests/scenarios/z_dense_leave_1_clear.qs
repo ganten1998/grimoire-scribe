@@ -25,7 +25,6 @@ expect editor.page is 1
 expect editor.strokes is 0
 expect editor.live_matches_render is 1
 expect editor.kept_matches_render not 0
-expect editor.card_matches_render is 1
 # and a Clear that is Undone, left at once
 tap panel undo
 expect editor.live_matches_render is 1

@@ -30,7 +30,6 @@ tap panel pages.page.2
 tap panel pages.page.2
 wait 300
 expect editor.page is 2
-expect editor.card_matches_render is 1
 tap panel library
 wait 600
 expect screen is library

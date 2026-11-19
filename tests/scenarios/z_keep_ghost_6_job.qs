@@ -30,7 +30,6 @@ expect editor.preview_matches_render is 1
 pentap panel next
 wait 300
 expect editor.page is 2
-expect editor.card_matches_render is 1
 pentap panel previous
 wait 300
 expect editor.page is 1

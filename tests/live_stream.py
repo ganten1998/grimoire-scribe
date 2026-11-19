@@ -278,8 +278,8 @@ for _ in range(100):
 check('tiles acknowledge the processed samples, in the ink epoch they came in',
       any(seq >= last_seq and ink == pen_epoch for seq, ink in acks))
 # The layers: the clock and battery corner (settings.ini status_on=1), never in the tiles, and the
-# editor's toolbar, whose tiles hold the page under it: down the middle of its left edge the layer
-# has its black frame, and the page there is paper.
+# editor's toolbar, whose tiles hold the page under it: just inside its left edge the layer has its
+# black frame (2 px, the clock's: issue #194), and the page there is paper.
 for _ in range(100):
     if any(l[0] == 0 and l[3] for l in layers): break
     time.sleep(.05)
@@ -290,7 +290,7 @@ bars = [l for l in layers if l[0] == 0 and l[3]]
 if bars:
     _, bx, by, bw, bh, bpng = bars[-1]
     lw, lh, lrows = png_gray(bpng)
-    px, mid = bx + 3, by + bh // 2
+    px, mid = bx + 1, by + bh // 2
     in_layer = sum(1 for y in range(mid - 10, mid + 10) if lrows[y - by][px - bx] < 128)
     under = [row[:] for row in screen] if screen else None
     for body in later_tiles:  # (only the runs that hold the column, decoded)
