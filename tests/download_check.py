@@ -26,9 +26,9 @@ def status(token):
     return json.loads(body) if code == 200 else None
 
 
-# The server renders two PDFs at a time (httpd.c MAX_CHILDREN), so of 8 at once the last ones wait
-# at least three renders: queued long enough to be seen even where one render is quick (a small
-# notebook on a fast CI machine missed a single waiting download between two polls).
+# The server renders two PDFs at a time (httpd.c MAX_CHILDREN), and share_check.sh makes each
+# render take a second: of 8 at once the last ones wait several renders, so queued and preparing
+# are seen even when a round of status polls is slow.
 tokens = [uuid.uuid4().hex for _ in range(8)]
 seen = set()
 with concurrent.futures.ThreadPoolExecutor(max_workers=len(tokens)) as pool:
