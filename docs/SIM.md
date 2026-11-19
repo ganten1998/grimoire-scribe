@@ -174,7 +174,9 @@ v_storage_full.qs leaves with a page that cannot be saved.
 The editor panel's buttons, by the names `tap panel` and `editor.panel_at.X.Y` use: `grip`, `collapse` and
 `expand` (the collapsed panel is one `expand` button), `tool-picker` (the tool button, or the grid when its pen
 is pinned), `tool:NAME` (a pinned pen, NAME as `editor.tool` has it), `eraser`, `undo`, `redo`, `clear`,
-`previous`, `pages` (the page chip), `next`, `links` (the Links button), `paper`, `display`, `pen-feel` and `library`. A disabled button
+`previous`, `pages` (the page chip), `next`, `links` (the Links button), `widgets`, `paper`, `display`, `pen-feel` and `library`. The
+Widgets popup's rows are `widgets.ID` (`widgets.demo.sticky-notes`), and an open frame's parts are
+`widget.ID.title`, `.close`, `.min` (or `.minimize`), `.resize` and `.body`. A disabled button
 (Undo with nothing to undo, Clear on an empty page, Previous on page 1) has no hit and no name. A scenario
 that wants a panel button taps it by name, so that it does not break when the panel gains a button;
 `editor.panel_at.1768.594 is undo` upright with no pins (and the other coordinates of tests/scenarios/
@@ -598,6 +600,9 @@ shows what the app holds.
 | `editor.links_dirty` | `1` while migrated link areas wait to be written to links.ini (after a 2 s pause, or 2 s after a failed write), else `0` |
 | `editor.paper` | the page's paper as its number in src/paper.h (1 medium rule, 2 wide rule, 3 sheet music, 6 medium rule without a margin, 8 grand staff...), `custom` for a Custom music layout, `none` with no notebook open |
 | `editor.panel` | `expanded` or `collapsed` |
+| `editor.widgets` | the open widget frames: their count, then their ids (`0`, or `2 demo.sticky-notes demo.calculator`) |
+| `editor.widgets.open` | `1` while the Widgets popup is up, else `0` |
+| `editor.widget.ID.rect`, `editor.widget.ID.state` | an open frame's screen rect (`x y w h`, the minimized square while minimized) and `normal` or `minimized`; empty for an id that is not open |
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |

@@ -41,6 +41,7 @@ root/backlinks.ini                      links between notebooks, turned around (
 root/graph-index.ini                    every notebook's pages, names and links, for the Graph (2.0.0-beta.2; a cache: Library index)
 root/graph-all.ini                      the Graph of all notebooks' layout (2.0.0-beta.2; a cache: Library index)
 root/graph-omit.ini                     folders left out of the Graph of all notebooks (2.0.0-beta.2; Library index)
+root/widgets.ini                        the open widget windows' places and sizes (2.2, issue #200; Widgets)
 root/clipboard.qpg                      the lasso's clipboard: what Copy or Cut took (2.0.0-beta.2; The clipboard)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
@@ -1570,6 +1571,21 @@ critical on purpose.
   `index` is left out (it cannot name another notebook's Index). Pasted in the notebook it came from,
   every link is kept exactly, `index` included. A paste that would pass 64 links on the page or 4000 in the notebook, or carries
   links while links.ini cannot be written, is refused whole.
+
+## `widgets.ini` (2.2, issue #200)
+
+The editor's open widgets, one line each. Phase 1 has built-in demo widgets only; the format is
+meant to hold the package manager's widgets later. A line is the widget's id, an `=`, and seven
+comma-separated numbers: x, y, width, height, minimized (0 or 1), z-order, and a reserved flag
+(written as 0). Coordinates are screen pixels, as the panel's are. A closed widget has no line.
+Unknown ids and malformed lines are skipped. The file is at most 64 KiB, written atomically.
+
+```
+# Grimoire widget layout. One line per open widget:
+# id=x,y,w,h,minimized,z
+demo.sticky-notes=1416,28,260,220,0,0,0
+demo.calculator=1416,270,300,380,0,1,0
+```
 
 ## `settings.ini`
 
