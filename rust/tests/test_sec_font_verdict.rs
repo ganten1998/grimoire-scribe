@@ -49,6 +49,9 @@ fn clean_env() {
     }
     std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
     std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    // (each case is a fresh process to the move aside, which a process tries once: the app forks each job)
+    userfonts_aside_reset();
+    userfonts_aside_seam(None);
 }
 
 /// A fresh data root with an empty fonts folder; the store looks at it from now on.
@@ -68,6 +71,41 @@ fn own_folder(name: &str) -> String {
     remove_any(&format!("{d}.real"));
     std::env::set_var("GRIMOIRE_STATE", &d);
     d
+}
+
+/// A folder for the parent of Grimoire's own folder, as /var/local is on the Kindle, with nothing in it;
+/// GRIMOIRE_STATE names `<parent>/grimoire` from now on. The parent and that path.
+fn own_parent(name: &str) -> (String, String) {
+    let p = format!("{}/fontverdict-{}-{name}.parent", tl_tmp(), std::process::id());
+    remove_any(&p);
+    std::fs::create_dir(&p).unwrap();
+    chmod(&p, 0o755);
+    let state = format!("{p}/grimoire");
+    std::env::set_var("GRIMOIRE_STATE", &state);
+    (p, state)
+}
+
+/// An entry as it stands, looked at without following it, and what it holds where that is read without opening a
+/// pipe: its inode, its mode (with its kind), a link's target, a file's bytes, a folder's names with each one's
+/// bytes. None when nothing is there.
+type Entry = (u64, u32, Option<std::path::PathBuf>, Vec<(String, Vec<u8>)>);
+fn entry(p: &str) -> Option<Entry> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::symlink_metadata(p).ok()?;
+    let t = m.file_type();
+    let held = if t.is_dir() {
+        names(p).into_iter().map(|n| (n.clone(), std::fs::read(format!("{p}/{n}")).unwrap_or_default())).collect()
+    } else if t.is_file() {
+        vec![(String::new(), std::fs::read(p).unwrap_or_default())]
+    } else {
+        Vec::new()
+    };
+    Some((m.ino(), m.mode(), t.is_symlink().then(|| std::fs::read_link(p).unwrap()), held))
+}
+
+/// The names in a parent of entries moved aside there.
+fn asides(parent: &str) -> Vec<String> {
+    names(parent).into_iter().filter(|n| n.starts_with("grimoire.not-own-")).collect()
 }
 
 /// Removes whatever is at a path: a folder with what it holds, a file, or a link (never what it names).
@@ -340,10 +378,11 @@ fn checked_once_on_this_device_and_again_elsewhere() {
     }
 }
 
-// A folder that is not Grimoire's own keeps nothing and gives nothing: one that others can write, one that is a
-// link, one that is no folder. The genuine verdict is behind each of them, and is not read; the job ends before
-// any worker starts (6) and leaves no mark and no file anywhere. A verdict file that is a link is not read
-// either, and the next check puts a file of its own in the link's place.
+// A folder below Grimoire's own that is not Grimoire's own keeps nothing and gives nothing: one that others can
+// write, one that is a link. The genuine verdict is behind each of them, and is not read; the job ends before any
+// worker starts (6), moves nothing aside, and leaves no mark and no file anywhere. A verdict file that is a link is
+// not read either, and the next check puts a file of its own in the link's place. (What stands at the name of
+// Grimoire's own folder itself and is not its own is moved aside: `what_is_not_grimoires_own_is_moved_aside`.)
 fn a_folder_that_is_not_grimoires_own_keeps_nothing() {
     clean_env();
     let r = root("notown");
@@ -387,6 +426,10 @@ fn a_folder_that_is_not_grimoires_own_keeps_nothing() {
         check!(names(&cache) == before);
         check!(everything(&state, &real) == whole);
         check!(std::fs::read(&verdict).or_else(|_| std::fs::read(format!("{real}/{:016x}/fonts/{key:016x}.font", fnv(r.as_bytes())))).is_ok_and(|b| b == genuine));
+        // (nothing is moved aside below Grimoire's own folder, nor beside it)
+        let aside = format!("fontverdict-{}-notown.state.not-own-", std::process::id());
+        check!(!names(&tl_tmp()).iter().any(|n| n.starts_with(&aside)));
+        check!(!everything(&state, &real).iter().any(|n| n.contains(".not-own-")));
     };
     chmod(&fonts, 0o777);
     refused("its fonts folder can be written by anyone");
@@ -394,11 +437,6 @@ fn a_folder_that_is_not_grimoires_own_keeps_nothing() {
     chmod(&tag, 0o770);
     refused("the data root's folder can be written by its group");
     chmod(&tag, 0o700);
-    std::fs::rename(&state, &real).unwrap();
-    std::os::unix::fs::symlink(&real, &state).unwrap();
-    refused("the folder is a link to the genuine one");
-    std::fs::remove_file(&state).unwrap();
-    std::fs::rename(&real, &state).unwrap();
     std::fs::rename(&fonts, format!("{tag}/fonts.real")).unwrap();
     std::os::unix::fs::symlink(format!("{tag}/fonts.real"), &fonts).unwrap();
     check!(userfonts_try_load("Mine.ttf", "") == Err(LoadErr::Checking));
@@ -407,11 +445,6 @@ fn a_folder_that_is_not_grimoires_own_keeps_nothing() {
     check!(names(&cache) == before && names(&format!("{tag}/fonts.real")) == vec![format!("{key:016x}.font")]);
     std::fs::remove_file(&fonts).unwrap();
     std::fs::rename(format!("{tag}/fonts.real"), &fonts).unwrap();
-    std::fs::rename(&state, &real).unwrap();
-    std::fs::write(&state, b"a file where the folder was").unwrap();
-    refused("a file is where the folder was");
-    std::fs::remove_file(&state).unwrap();
-    std::fs::rename(&real, &state).unwrap();
     // whole again: the genuine verdict is read as before
     check!(loads("Mine.ttf") == Ok("overprint"));
     check!(bg_font_check("", 300.0) == 0);
@@ -682,13 +715,17 @@ fn a_name_that_is_no_absolute_path_is_not_the_cache() {
     std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
 }
 
-// The app, when its own folder cannot be used: it says so once, checks no font in that session and marks none;
-// Terminess draws, and the Font sheet's row says the font cannot be read.
+// The app, when its own folder cannot be used (here the data root's folder in it is a file, which is not moved
+// aside: only what stands at the name of Grimoire's own folder itself is): it says so once, checks no font in
+// that session and marks none; Terminess draws, and the Font sheet's row says the font cannot be read.
 fn the_app_says_once_that_nothing_can_be_kept() {
     clean_env();
     let r = root("app");
     let state = own_folder("app");
-    std::fs::write(&state, b"a file, not a folder").unwrap();
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o700);
+    let tag = tag_dir(&state, &r);
+    std::fs::write(&tag, b"a file, not a folder").unwrap();
     put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
     std::fs::write(format!("{r}/settings.ini"), OWN).unwrap();
     let script = "wait 100\nwaitbg\nwait 300\nexpect font is terminess\nexpect settings.font is file:Mine.ttf\ntap 1535 95\nwait 50\ntap library settings.cat.1\nwait 50\ntap library font\nwait 300\n\
@@ -702,8 +739,10 @@ expect library.font.state.Mine.ttf is unreadable\nexpect library.font.checking i
     check!(out.matches("fonts: what the check finds cannot be kept (see the line above): no font is checked until Grimoire starts again").count() == 1);
     check!(out.lines().filter(|l| l.contains("bg: font check of")).count() == 1);
     check!(!out.contains(&state));
+    check!(!out.contains("moved aside"));
     check!(names(&format!("{r}/fonts/.cache")).is_empty());
-    check!(std::fs::read(&state).is_ok_and(|b| b == b"a file, not a folder"));
+    check!(std::fs::read(&tag).is_ok_and(|b| b == b"a file, not a folder"));
+    check!(names(&state).len() == 1);
     remove_any(&state);
 }
 
@@ -783,12 +822,237 @@ fn a_renamed_font_keeps_its_verdict() {
     }
 }
 
+/// The log line of an entry moved aside from the name of Grimoire's own folder, as far as it names what it was.
+fn moved_line(what: &str, mode: u32) -> String {
+    // SAFETY: geteuid takes no arguments.
+    let uid = unsafe { libc::geteuid() };
+    format!("fonts: the entry at the name of Grimoire's own folder was not its own ({what}, owner {uid}, mode {:04o}): it is moved aside as it was", mode & 0o7777)
+}
+
+const MOVED: &str = "it is moved aside as it was, and the folder is made afresh; every font is checked once more";
+
+// What stands at the name of Grimoire's own folder and is not Grimoire's own (issue #201) is moved aside in its
+// parent, and the folder is made afresh: a folder its group or others can write, a link to a folder of this
+// user's, a link to nothing, a file, a pipe. Each is moved as it was, under a name of Grimoire's own
+// (`grimoire.not-own-<seconds>-<pid>`): the same inode and mode, what it holds unchanged, a link still a link to
+// the same place and never followed (the folder it names, outside the parent, as it was), a pipe never opened.
+// The log says once what it was (its kind, owner and mode), never a path. The fresh folder is 0700, the font's
+// verdict is kept in it and the font loads; a second job moves nothing. Nothing else in the parent changes.
+fn what_is_not_grimoires_own_is_moved_aside() {
+    use std::os::unix::fs::MetadataExt;
+    let font = ttf(&test_font("Regular", 400));
+    // SAFETY: geteuid takes no arguments.
+    let uid = unsafe { libc::geteuid() };
+    for (kind, what) in [("group", "a folder"), ("others", "a folder"), ("link", "a link"), ("dangling", "a link"), ("file", "a file"), ("pipe", "a pipe")] {
+        eprintln!("    {kind}");
+        clean_env();
+        let r = root(&format!("aside-{kind}"));
+        let (parent, state) = own_parent(&format!("aside-{kind}"));
+        std::fs::write(format!("{parent}/beside"), b"left alone").unwrap();
+        let outside = format!("{}/fontverdict-{}-aside-{kind}.outside", tl_tmp(), std::process::id());
+        remove_any(&outside);
+        std::fs::create_dir(&outside).unwrap();
+        chmod(&outside, 0o700);
+        std::fs::write(format!("{outside}/keep.me"), b"outside").unwrap();
+        match kind {
+            "group" | "others" => {
+                std::fs::create_dir(&state).unwrap();
+                std::fs::write(format!("{state}/keep.me"), b"not Grimoire's").unwrap();
+                chmod(&state, if kind == "group" { 0o775 } else { 0o757 });
+            }
+            "link" => std::os::unix::fs::symlink(&outside, &state).unwrap(),
+            "dangling" => std::os::unix::fs::symlink(format!("{outside}/nothing"), &state).unwrap(),
+            "file" => std::fs::write(&state, b"a file where the folder was").unwrap(),
+            _ => {
+                let c = std::ffi::CString::new(state.as_str()).unwrap();
+                // SAFETY: mkfifo reads the NUL-terminated path.
+                check!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) } == 0);
+            }
+        }
+        let Some(was) = entry(&state) else { continue };
+        let times = |p: &str| std::fs::symlink_metadata(p).map(|m| (m.mtime(), m.mtime_nsec())).ok();
+        let outside_was = (entry(&outside), times(&outside), times(&format!("{outside}/keep.me")));
+        put(&r, "Mine.ttf", &font);
+        let (rc, text) = with_log(&format!("{r}/aside.log"), job);
+        check!(rc == 0);
+        check!(text.matches(&moved_line(what, was.1)).count() == 1 && text.matches(MOVED).count() == 1);
+        check!(!text.contains(&parent));
+        // the parent: the fresh folder, the entry under its new name, and what was beside it, as it was
+        let moved = asides(&parent);
+        check!(moved.len() == 1 && names(&parent).len() == 3);
+        let Some(aside) = moved.first() else { continue };
+        let tail: Vec<&str> = aside["grimoire.not-own-".len()..].split('-').collect();
+        check!(tail.len() == 2 && tail[0].parse::<i64>().is_ok_and(|s| s > 1_700_000_000) && tail[1] == std::process::id().to_string());
+        check!(entry(&format!("{parent}/{aside}")).as_ref() == Some(&was));
+        check!(std::fs::read(format!("{parent}/beside")).is_ok_and(|b| b == b"left alone"));
+        check!((entry(&outside), times(&outside), times(&format!("{outside}/keep.me"))) == outside_was);
+        // the fresh folder: Grimoire's own, with the font's verdict in it, and the font loads
+        check!(std::fs::symlink_metadata(&state).is_ok_and(|m| m.is_dir() && m.mode() & 0o7777 == 0o700 && m.uid() == uid));
+        check!(with_ext(&format!("{}/fonts", tag_dir(&state, &r)), ".font").len() == 1);
+        check!(loads("Mine.ttf") == Ok("overprint"));
+        // a second job, in this process and in one forked as the app forks it: nothing is moved again
+        check!(job() == 0);
+        bg_queue(BgKind::FontCheck, Some(""), Some("again"), 300.0, false);
+        check!(wait_job() == 0);
+        check!(asides(&parent) == moved && names(&parent).len() == 3);
+        check!(entry(&format!("{parent}/{aside}")).as_ref() == Some(&was));
+        remove_any(&parent);
+        remove_any(&outside);
+    }
+}
+
+// At most once in a process: after a move aside, what stands at the name and is not Grimoire's own again (the fresh
+// folder renamed away and a folder others can write put in its place) is not moved by that process. Nothing is
+// kept (6, as for any folder that is not Grimoire's own), and the entry stays as it is. The next process (the app
+// forks one for each job) moves it, and checks the font once more; but never onto a name that is taken: with an
+// empty folder at every name it could take in the next seconds (one a plain rename of a folder would replace), it
+// gives up and they are as they were.
+fn moved_aside_at_most_once_a_process() {
+    clean_env();
+    let r = root("aside-once");
+    let (parent, state) = own_parent("aside-once");
+    put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o777);
+    check!(job() == 0);
+    check!(asides(&parent).len() == 1);
+    std::fs::rename(&state, format!("{parent}/renamed")).unwrap();
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o777);
+    let was = entry(&state);
+    let cache = format!("{r}/fonts/.cache");
+    let cache_before = names(&cache);
+    let (rc, text) = with_log(&format!("{r}/once.log"), || bg_font_check("", 300.0));
+    check!(rc == 6);
+    check!(text.contains("fonts: what the check finds cannot be kept (it is not Grimoire's own); nothing is marked"));
+    check!(!text.contains("moved aside"));
+    check!(asides(&parent).len() == 1 && names(&parent).len() == 3 && entry(&state) == was);
+    check!(names(&cache) == cache_before);
+    // the next process, with every name it could move to taken
+    let first: i64 = asides(&parent).first().and_then(|n| n["grimoire.not-own-".len()..].split('-').next()?.parse().ok()).unwrap_or(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let decoys: Vec<String> = (now - 1..now + 30).map(|s| format!("{parent}/grimoire.not-own-{s}-{}", std::process::id())).filter(|p| !std::path::Path::new(p).exists()).collect();
+    for d in &decoys {
+        std::fs::create_dir(d).unwrap();
+    }
+    let all_before: Vec<Option<Entry>> = names(&parent).iter().map(|n| entry(&format!("{parent}/{n}"))).collect();
+    userfonts_aside_reset();
+    let (rc, text) = with_log(&format!("{r}/once.log"), || bg_font_check("", 300.0));
+    check!(rc == 6 && text.contains(") and cannot be moved aside (File exists)") && !text.contains("moved aside as it was"));
+    check!(names(&parent).iter().map(|n| entry(&format!("{parent}/{n}"))).collect::<Vec<_>>() == all_before);
+    for d in &decoys {
+        std::fs::remove_dir(d).unwrap();
+    }
+    // the next process: moved (in a later second than the first move, whose name it would take)
+    while std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64 <= first {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    userfonts_aside_reset();
+    let (rc, text) = with_log(&format!("{r}/once.log"), job);
+    check!(rc == 0 && text.matches(MOVED).count() == 1);
+    check!(asides(&parent).len() == 2 && names(&parent).len() == 4);
+    check!(text.contains("fonts: file 1 of 1 passed"));
+    check!(loads("Mine.ttf") == Ok("overprint"));
+    remove_any(&parent);
+}
+
+// An entry that comes to the name between the move aside and the fresh folder's make (another writer of the parent,
+// at that moment) is not moved: the job gives up (6, as for any folder that is not Grimoire's own), says why and
+// marks nothing, and the entry stays at the name as it was put there, beside the one entry moved aside.
+fn an_entry_back_at_once_is_not_moved_again() {
+    clean_env();
+    let r = root("aside-race");
+    let (parent, state) = own_parent("aside-race");
+    put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o775);
+    let again = state.clone();
+    userfonts_aside_seam(Some(Box::new(move || {
+        std::fs::create_dir(&again).unwrap();
+        std::fs::set_permissions(&again, std::fs::Permissions::from_mode(0o777)).unwrap();
+    })));
+    let (rc, text) = with_log(&format!("{r}/race.log"), || bg_font_check("", 300.0));
+    userfonts_aside_seam(None);
+    check!(rc == 6);
+    check!(text.matches(MOVED).count() == 1);
+    check!(text.contains("fonts: the folder made afresh is not Grimoire's own either (it is not Grimoire's own); nothing more is moved aside"));
+    check!(text.contains("fonts: what the check finds cannot be kept (it is not Grimoire's own); nothing is marked"));
+    check!(asides(&parent).len() == 1 && names(&parent).len() == 2);
+    check!(mode_of(&state) == 0o777 && names(&state).is_empty());
+    check!(names(&format!("{r}/fonts/.cache")).is_empty());
+    remove_any(&parent);
+}
+
+// A parent that takes no write: the entry cannot be moved aside. The job gives up (6, as for any folder that is not
+// Grimoire's own), says why, and the parent is as it was. With nothing at the name the folder cannot be made, as
+// before this change. (Root writes into a folder whatever its mode says: not run as root.)
+fn a_parent_that_takes_no_write_moves_nothing() {
+    clean_env();
+    // SAFETY: geteuid takes no arguments.
+    let uid = unsafe { libc::geteuid() };
+    if uid == 0 {
+        eprintln!("    not run as root: no folder refuses root a write by its mode");
+        return;
+    }
+    let r = root("aside-nowrite");
+    let (parent, state) = own_parent("aside-nowrite");
+    put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o775);
+    let (was, before) = (entry(&state), names(&parent));
+    chmod(&parent, 0o555);
+    let (rc, text) = with_log(&format!("{r}/nowrite.log"), || bg_font_check("", 300.0));
+    chmod(&parent, 0o755);
+    check!(rc == 6);
+    check!(text.contains(&format!("fonts: the entry at the name of Grimoire's own folder is not its own (a folder, owner {uid}, mode 0775) and cannot be moved aside (")));
+    check!(text.contains("fonts: what the check finds cannot be kept (it is not Grimoire's own); nothing is marked"));
+    check!(!text.contains(MOVED));
+    check!(names(&parent) == before && entry(&state) == was);
+    remove_any(&state);
+    userfonts_aside_reset();
+    chmod(&parent, 0o555);
+    let (rc, text) = with_log(&format!("{r}/nowrite.log"), || bg_font_check("", 300.0));
+    chmod(&parent, 0o755);
+    check!(rc == 6);
+    check!(text.contains("fonts: what the check finds cannot be kept (it cannot be made); nothing is marked"));
+    check!(names(&parent).is_empty());
+    remove_any(&parent);
+}
+
+// The app, started with a folder others can write at the name of its own folder: the job it forks moves that aside,
+// checks the font in the fresh folder, and the font draws. The log says so once and never names a path.
+fn the_app_moves_aside_what_is_not_its_own() {
+    clean_env();
+    let r = root("app-aside");
+    let (parent, state) = own_parent("app-aside");
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o775);
+    put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
+    std::fs::write(format!("{r}/settings.ini"), OWN).unwrap();
+    let script = "wait 100\nwaitbg\nwait 300\nexpect font is file:Mine.ttf\nexpect settings.font is file:Mine.ttf\nquit\n";
+    let (code, out) = start(&r, script, &[("GRIMOIRE_STATE", &state), ("GRIMOIRE_WORK_EXE", BIN)]);
+    check!(code == Some(0));
+    if code != Some(0) {
+        eprintln!("{out}");
+    }
+    check!(out.matches(&moved_line("a folder", 0o775)).count() == 1);
+    check!(!out.contains(&parent));
+    check!(asides(&parent).len() == 1 && names(&parent).len() == 2);
+    check!(mode_of(&state) == 0o700);
+    check!(with_ext(&format!("{}/fonts", tag_dir(&state, &r)), ".font").len() == 1);
+    remove_any(&parent);
+}
+
 #[test]
 fn test_sec_font_verdict() {
     run!(only_grimoires_own_folder_is_read);
     run!(the_verdict_is_kept_in_grimoires_own_folder);
     run!(checked_once_on_this_device_and_again_elsewhere);
     run!(a_folder_that_is_not_grimoires_own_keeps_nothing);
+    run!(what_is_not_grimoires_own_is_moved_aside);
+    run!(moved_aside_at_most_once_a_process);
+    run!(an_entry_back_at_once_is_not_moved_again);
+    run!(a_parent_that_takes_no_write_moves_nothing);
     run!(two_data_roots_keep_their_verdicts_apart);
     run!(an_earlier_versions_verdict_is_left_alone);
     run!(the_fonts_cache_deleted_checks_again);
@@ -798,5 +1062,6 @@ fn test_sec_font_verdict() {
     run!(a_name_that_is_no_absolute_path_is_not_the_cache);
     run!(a_renamed_font_keeps_its_verdict);
     run!(the_app_says_once_that_nothing_can_be_kept);
+    run!(the_app_moves_aside_what_is_not_its_own);
     done();
 }

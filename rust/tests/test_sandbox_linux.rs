@@ -691,3 +691,48 @@ fn a_scribe_sized_colour_page_mirrors_under_the_mirror_childs_cap() {
     assert_eq!(String::from_utf8_lossy(&pdf).matches("/DeviceRGB").count(), 4, "every page in colour");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// Grimoire's own folder (issue #201), as root as on the Kindle: a folder of another user at its name, which no one
+// else may write (so its owner alone makes it not Grimoire's own), is moved aside as it is by renameat2's no-replace
+// flag (this job is the one on Linux): the same inode and mode, still that user's, what it holds unchanged. The
+// folder is made afresh, root's and 0700. No worker is needed: the fonts folder is empty.
+#[test]
+fn a_folder_of_another_user_at_the_own_folders_name_is_moved_aside() {
+    use grimoire::prelude::*;
+    use grimoire::userfonts::*;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    if !root() {
+        return;
+    }
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let base = std::env::temp_dir().join(format!("grimoire-sandbox-statedir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let (data, parent) = (base.join("grimoire"), base.join("local"));
+    std::fs::create_dir_all(data.join("fonts")).unwrap();
+    std::fs::create_dir_all(&parent).unwrap();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let state = parent.join("grimoire");
+    std::fs::create_dir(&state).unwrap();
+    std::fs::write(state.join("keep.me"), b"not Grimoire's").unwrap();
+    std::os::unix::fs::chown(&state, Some(65534), Some(65534)).unwrap();
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let was = std::fs::symlink_metadata(&state).unwrap();
+    std::env::set_var("GRIMOIRE_STATE", &state);
+    assert_eq!(store_init(data.to_str().unwrap()), 0);
+    userfonts_aside_reset();
+    let rc = bg_font_check("", 300.0);
+    std::env::remove_var("GRIMOIRE_STATE");
+    assert_eq!(rc, 0);
+    let mut names: Vec<String> = std::fs::read_dir(&parent).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert_eq!(names[0], "grimoire");
+    assert!(names[1].starts_with("grimoire.not-own-") && names[1].ends_with(&format!("-{}", std::process::id())), "{names:?}");
+    let aside = parent.join(&names[1]);
+    let moved = std::fs::symlink_metadata(&aside).unwrap();
+    assert!(moved.is_dir() && moved.ino() == was.ino() && moved.mode() == was.mode() && moved.uid() == 65534);
+    assert_eq!(std::fs::read(aside.join("keep.me")).unwrap(), b"not Grimoire's");
+    let fresh = std::fs::symlink_metadata(&state).unwrap();
+    assert!(fresh.is_dir() && fresh.uid() == 0 && fresh.mode() & 0o7777 == 0o700, "{:o}", fresh.mode());
+    let _ = std::fs::remove_dir_all(&base);
+}

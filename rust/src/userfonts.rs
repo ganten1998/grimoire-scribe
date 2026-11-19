@@ -292,11 +292,17 @@ fn enough_room(free_bytes: u64, files: u64, files_free: u64) -> bool {
 
 /// Whether the folder behind a descriptor is this user's and no one else may write it.
 fn own_dir(fd: &OwnedFd) -> bool {
-    // SAFETY: st is written by fstat before it is read; geteuid takes no arguments.
+    // SAFETY: st is written by fstat before it is read.
     unsafe {
         let mut st: libc::stat = std::mem::zeroed();
-        libc::fstat(fd.as_raw_fd(), &mut st) == 0 && (st.st_mode & libc::S_IFMT) == libc::S_IFDIR && st.st_uid == libc::geteuid() && st.st_mode & 0o022 == 0
+        libc::fstat(fd.as_raw_fd(), &mut st) == 0 && own_stat(&st)
     }
+}
+
+/// Whether a stat is of a folder of this user's that no one else may write.
+fn own_stat(st: &libc::stat) -> bool {
+    // SAFETY: geteuid takes no arguments.
+    (st.st_mode & libc::S_IFMT) == libc::S_IFDIR && st.st_uid == unsafe { libc::geteuid() } && st.st_mode & 0o022 == 0
 }
 
 /// The folder `name` of the folder `at`, by descriptor: made first when `make` (mode 0700; one that is there is
@@ -320,6 +326,87 @@ fn own_dir_at(at: &OwnedFd, name: &str, make: bool) -> Result<OwnedFd, &'static 
             Err(NOT_OWN)
         }
     }
+}
+
+/// Whether this process has tried to move an entry aside from the name of Grimoire's own folder (`base_afresh`):
+/// it tries at most once.
+static MOVED_ASIDE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The name an entry that stood at the name of Grimoire's own folder is moved aside to, in the same folder: that
+/// name, `.not-own-`, the time in seconds and the process's id (`grimoire.not-own-1763500000-1234` on the
+/// Kindle). It says what it is and keeps the rules of every other name (`fsview_name_check`, asked before the
+/// move); the move never replaces an entry that has it (`rename_noreplace`).
+fn aside_name(name: &str, secs: i64, pid: u32) -> String {
+    format!("{name}.not-own-{secs}-{pid}")
+}
+
+/// What an entry is, by its mode, for the log.
+fn kind_of(mode: libc::mode_t) -> &'static str {
+    match mode & libc::S_IFMT {
+        libc::S_IFDIR => "a folder",
+        libc::S_IFLNK => "a link",
+        libc::S_IFREG => "a file",
+        libc::S_IFIFO => "a pipe",
+        libc::S_IFSOCK => "a socket",
+        _ => "a device",
+    }
+}
+
+/// What a test runs between the move aside and the fresh folder's make (userfonts_aside_seam).
+#[cfg(any(test, feature = "sim"))]
+type AsideSeam = Box<dyn FnOnce() + Send>;
+#[cfg(any(test, feature = "sim"))]
+static ASIDE_SEAM: std::sync::Mutex<Option<AsideSeam>> = std::sync::Mutex::new(None);
+
+/// Tests (never the Kindle's build): `f` runs once, in the next move aside, between the rename and the fresh
+/// folder's make: what another writer of the parent does at that moment.
+#[cfg(any(test, feature = "sim"))]
+pub fn userfonts_aside_seam(f: Option<AsideSeam>) {
+    *ASIDE_SEAM.lock().unwrap_or_else(|e| e.into_inner()) = f;
+}
+
+/// Tests (never the Kindle's build): this process may move an entry aside once more, as a fresh process may.
+#[cfg(any(test, feature = "sim"))]
+pub fn userfonts_aside_reset() {
+    MOVED_ASIDE.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The entry at `name` in `parent`, the name of Grimoire's own folder, did not pass `own_dir_at`. When it is not a
+/// folder of this user's that no one else may write (a link, a file, a pipe, a folder of another user or one others
+/// may write), the job moves it aside within the parent (`aside_name`) and makes the folder afresh, at most once in
+/// a process. The entry is renamed by descriptor as it stands: never followed, opened, read, listed or deleted; the
+/// rename never replaces an entry. Its kind, owner and mode are logged, never its name or what is in it. The fresh
+/// folder is made, opened and held to `own_dir` as every folder of Grimoire's own is, and holds no verdict: every
+/// font is checked once more. When the move fails, or the fresh folder is not Grimoire's own either (another entry
+/// came to the name meanwhile), nothing is kept, as for any folder that is not Grimoire's own, and the log says why.
+fn base_afresh(parent: &OwnedFd, name: &str) -> Result<OwnedFd, &'static str> {
+    let c = CString::new(name).map_err(|_| NOT_OWN)?;
+    // SAFETY: a stat is plain data; zeroed, then written by fstatat (which follows no link) before it is read.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstatat(parent.as_raw_fd(), c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
+        return Err(NOT_OWN);
+    }
+    // (a folder of this user's that no one else may write and did not open is not moved: the open failed for
+    // another reason, out of descriptors, say)
+    if own_stat(&st) || MOVED_ASIDE.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return Err(NOT_OWN);
+    }
+    let (kind, owner, mode) = (kind_of(st.st_mode), st.st_uid, (st.st_mode & 0o7777) as u32);
+    let aside = aside_name(name, wall_time(), std::process::id());
+    let moved = match CString::new(aside.as_str()) {
+        Ok(to) if fsview_name_check(b"", aside.as_bytes(), true).is_ok() => rename_noreplace(parent.as_raw_fd(), &c, parent.as_raw_fd(), &to),
+        _ => Err(libc::ENAMETOOLONG),
+    };
+    if let Err(e) = moved {
+        qlog!("fonts: the entry at the name of Grimoire's own folder is not its own (%s, owner %u, mode %04o) and cannot be moved aside (%s)", kind, owner, mode, &strerror(e));
+        return Err(NOT_OWN);
+    }
+    qlog!("fonts: the entry at the name of Grimoire's own folder was not its own (%s, owner %u, mode %04o): it is moved aside as it was, and the folder is made afresh; every font is checked once more", kind, owner, mode);
+    #[cfg(any(test, feature = "sim"))]
+    if let Some(f) = ASIDE_SEAM.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        f();
+    }
+    own_dir_at(parent, name, true).inspect_err(|why| qlog!("fonts: the folder made afresh is not Grimoire's own either (%s); nothing more is moved aside", *why))
 }
 
 /// A folder by its path (links in the path are followed unless `nofollow`, which holds for its last name).
@@ -438,10 +525,11 @@ impl VerdictDir {
     /// be this user's with no write bit for anyone else. The test asks who can write a folder: one that is
     /// there and that others can read is taken, and only the folders made here are 0700. The parent itself is
     /// opened by its path and held to nothing: what stands at the base's name must pass the test whoever put
-    /// it there, so a parent that others can write can cost the verdicts (no font is then checked) and cannot
-    /// supply one. What the parent must be on a device is that device's check (docs/TESTING.md). In the cache:
-    /// the folder made when `make`, as the job always made it, then opened; no owner and no mode is asked of
-    /// it.
+    /// it there, so a parent that others can write cannot supply a verdict. When what stands there does not
+    /// pass, the job moves it aside and makes the base afresh, once in a process (`base_afresh`), so such a
+    /// parent costs one more check of every font. The folders below the base are the base's own, which no one
+    /// else can write: one of them that does not pass is not moved. In the cache: the folder made when `make`,
+    /// as the job always made it, then opened; no owner and no mode is asked of it.
     fn open(make: bool) -> Result<VerdictDir, &'static str> {
         let Some(base) = state_base() else {
             let cache = cache_dir();
@@ -458,7 +546,11 @@ impl VerdictDir {
         let Some((parent, name)) = base.rsplit_once('/').filter(|(_, n)| !n.is_empty() && *n != "." && *n != "..") else { return Err(NOT_MADE) };
         let parent = open_dir(if parent.is_empty() { "/" } else { parent }, false).ok_or(NOT_THERE)?;
         // (never util::mkdir_p here: it takes any name that is there as made, and makes folders others can read)
-        let base = own_dir_at(&parent, name, make)?;
+        let base = match own_dir_at(&parent, name, make) {
+            // (the job alone, which makes the folder, moves aside what is at its name)
+            Err(NOT_OWN) if make => base_afresh(&parent, name)?,
+            r => r?,
+        };
         let tag = own_dir_at(&base, &root_tag(&store_root()), make)?;
         let fd = own_dir_at(&tag, "fonts", make)?;
         Ok(VerdictDir { fd, own: Some((base, tag)) })
@@ -2189,6 +2281,27 @@ mod tests {
         assert!(!enough_room(u64::MAX, 100_000, 0));
         // a file system that counts no files is not refused for having none free
         assert!(enough_room(bytes, 0, 0));
+    }
+
+    // The name an entry is moved aside to says what it is, keeps the rules of every other name, and differs from
+    // the folder's own name and from the name another process or another second would give.
+    #[test]
+    fn an_entry_moved_aside_has_a_name_of_grimoires_own() {
+        let n = aside_name("grimoire", 1_763_500_000, 1234);
+        assert_eq!(n, "grimoire.not-own-1763500000-1234");
+        assert_eq!(fsview_name_check(b"", n.as_bytes(), true), Ok(()));
+        // the longest the Kindle's can be: the largest time and process id still fit the name rules
+        let longest = aside_name("grimoire", i64::MAX, u32::MAX);
+        assert!(longest.len() < FS_NAME_MAX && fsview_name_check(b"", longest.as_bytes(), true).is_ok());
+        assert_ne!(n, aside_name("grimoire", 1_763_500_000, 1235));
+        assert_ne!(n, aside_name("grimoire", 1_763_500_001, 1234));
+        assert!(n != "grimoire" && n.starts_with("grimoire.") && !n.starts_with('.'));
+        // a name the rules refuse is never moved to (the move is not tried)
+        assert!(fsview_name_check(b"", aside_name(&"x".repeat(250), 1, 1).as_bytes(), true).is_err());
+        assert_eq!(kind_of(libc::S_IFDIR | 0o775), "a folder");
+        assert_eq!(kind_of(libc::S_IFLNK | 0o777), "a link");
+        assert_eq!(kind_of(libc::S_IFREG | 0o644), "a file");
+        assert_eq!(kind_of(libc::S_IFIFO | 0o644), "a pipe");
     }
 
     #[test]
