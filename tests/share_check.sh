@@ -39,8 +39,9 @@ if [ -f "$ROOT/settings.ini" ]; then
     mv "$B/settings.ini" "$ROOT/settings.ini"
 fi
 echo "http_port=$PORT" >> "$ROOT/settings.ini"
-# Renders slowed down a little (as on the Kindle) so concurrent requests really queue.
-GRIMOIRE_HTTPD_DELAY_MS=150 GRIMOIRE_ROOT="$ROOT" GRIMOIRE_SCRIPT="$B/c_share_long.qs" \
+# Renders slowed down (as on the Kindle) so concurrent requests really queue, and long enough that
+# every state in tests/download_check.py is still seen when its round of status polls is slow.
+GRIMOIRE_HTTPD_DELAY_MS=1000 GRIMOIRE_ROOT="$ROOT" GRIMOIRE_SCRIPT="$B/c_share_long.qs" \
     GRIMOIRE_SHOTS=$BUILD/shots/c_share "$HEADLESS" 2>"$B/app.log" &
 APP=$!
 URL=http://127.0.0.1:$PORT
