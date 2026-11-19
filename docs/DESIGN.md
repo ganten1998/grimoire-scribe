@@ -2479,8 +2479,15 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   with a folder for each data root; in a build that names no such folder (`GRIMOIRE_STATE` unset), the
   cache, as before. The own folder is walked name by name, by descriptor, from its parent: each name is
   made by the job with mode 0700 when missing, opened without following a link, and must be a folder of the
-  app's user that no one else can write; verdicts are read and written from that descriptor. When it cannot
-  be used, its file system has too little room, or it takes no write (the job writes and removes a small
+  app's user that no one else can write; verdicts are read and written from that descriptor. Grimoire never
+  relies on the parent (`/var/local` on the Kindle): when the entry at the own folder's name is not
+  Grimoire's own, the job moves it aside within the parent, to `grimoire.not-own-<seconds>-<pid>`, and makes
+  the folder afresh, at most once a process (the app forks one for each job). The entry is renamed by
+  descriptor as it stands, by a rename that never replaces an entry, and is never followed, opened, read,
+  listed or deleted; its kind, owner and mode are logged. Every font is then checked once more, as after
+  `rm -r /var/local/grimoire`. The folders below the own folder are its own, which no one else can write, and
+  are never moved. When the own folder cannot be used (the move failed, say, or the fresh folder is not
+  Grimoire's own either), its file system has too little room, or it takes no write (the job writes and removes a small
   file there before a font's check), the job ends with status 6 before any worker starts: nothing is
   marked, and the session checks no more fonts (the ones that have their verdicts go on loading). The previews and the marks stay in the cache, and a verdict counts only with its companion
   there (a pass with its preview, a refusal with `<key>.no`), so deleting `fonts/.cache` has every font

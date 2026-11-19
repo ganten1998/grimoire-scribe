@@ -240,8 +240,9 @@ fn read_listed(st: &FsStorage, l: &Listed) -> Option<Vec<u8>> {
 /// Grimoire's own folder on the Kindle, outside the storage: a constant, which no environment variable moves.
 #[cfg(feature = "kindle")]
 const STATE_BASE: &str = "/var/local/grimoire";
-/// The room that folder's file system must have free before a font is checked: bytes, and files (inodes).
-/// Placeholders until the Scribe's figures are in (docs/TESTING.md).
+/// The room that folder's file system must have free before a font is checked: bytes, and files (inodes). Set
+/// from the Scribe's figures (docs/TESTING.md): a check keeps a few hundred bytes and one file a font, at most
+/// 200 for a data folder, where hundreds of MB and tens of thousands of inodes are free.
 const STATE_FREE_FLOOR: u64 = 4 << 20;
 const STATE_FILES_FLOOR: u64 = 512;
 /// The folders of other data roots looked at in a job, and how long a `root` file is at most.

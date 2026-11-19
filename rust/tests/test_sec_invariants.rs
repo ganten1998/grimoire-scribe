@@ -218,9 +218,9 @@ fn the_docs_name_the_record_cap_with_its_size_and_not_as_a_jobs() {
 // ties it to its file, the `.slow` mark, and the limits. The sentences that described these before that change
 // are gone from the files that held them (a merge settled by the older side would bring them back), and the
 // documents name what the code has: the companion a refusal leaves, the verdict's number, the glyph limit with
-// its figure beside it. The own folder's place and the floors of its free room are placeholders until a
-// Scribe's figures are in: while the documents give them, userfonts.rs must still hold them, so the day one
-// is changed the sentence is read again and follows.
+// its figure beside it. The own folder's place is a placeholder until a Scribe's figures are in, and the floors
+// of its free room are set from the first of them: while the documents give them, userfonts.rs must still hold
+// them, so the day one is changed the sentence is read again and follows.
 #[test]
 fn the_docs_follow_the_font_checks_verdicts_and_limits() {
     let mut fails = Vec::new();
@@ -266,6 +266,46 @@ fn the_docs_follow_the_font_checks_verdicts_and_limits() {
     }
     none_failed(&fails, "your own fonts: verdicts and limits");
 }
+
+// Grimoire's own folder on the Kindle (issue #201): what stands at its name and is not Grimoire's own is moved aside
+// and the folder made afresh. Each rule sentence of the documents is held with the line of userfonts.rs that makes
+// it true: the job alone moves, at the first level only, at most once a process, to a name of Grimoire's own, by a
+// rename that never replaces an entry, looking at the entry without following it. The sentence that says what is
+// never done to the entry is held with the whole function that moves it, so that any change to that function has
+// the sentence read again. The floors of free room stand on the Scribe's answers and are no longer placeholders.
+#[test]
+fn the_docs_follow_the_own_folders_move_aside() {
+    let mut fails = Vec::new();
+    let at_base = "Err(NOT_OWN) if make => base_afresh(&parent, name)?,";
+    let below = "let tag = own_dir_at(&base, &root_tag(&store_root()), make)?;";
+    let name = "format!(\"{name}.not-own-{secs}-{pid}\")";
+    let once = "MOVED_ASIDE.swap(true, std::sync::atomic::Ordering::Relaxed)";
+    let line = "it is moved aside as it was, and the folder is made afresh; every font is checked once more";
+    told_on(&mut fails, DESIGN, "Grimoire never relies on the parent (`/var/local` on the Kindle): when the entry at the own folder's name is not Grimoire's own, the job moves it aside within the parent", USERFONTS, at_base);
+    told_on(&mut fails, TESTING, "Grimoire never relies on /var/local itself: it tests its own folder at every open and moves aside an entry at its name that is not its own", USERFONTS, at_base);
+    told_on(&mut fails, KINDLE, "When the entry at `/var/local/grimoire` is not Grimoire's own (a link, a file, or a folder of another user or that others can write), the next check moves it aside as it is, never opened", USERFONTS, at_base);
+    told_on(&mut fails, DESIGN, "The folders below the own folder are its own, which no one else can write, and are never moved.", USERFONTS, below);
+    told_on(&mut fails, DESIGN, "to `grimoire.not-own-<seconds>-<pid>`, and makes the folder afresh, at most once a process", USERFONTS, name);
+    told_on(&mut fails, DESIGN, "at most once a process (the app forks one for each job)", USERFONTS, once);
+    told_on(&mut fails, KINDLE, "to `/var/local/grimoire.not-own-<seconds>-<pid>`, and makes the folder afresh", USERFONTS, name);
+    told_on(&mut fails, DESIGN, "by a rename that never replaces an entry", USERFONTS, "rename_noreplace(parent.as_raw_fd(), &c, parent.as_raw_fd(), &to)");
+    told_on(&mut fails, DESIGN, "and is never followed, opened, read, listed or deleted", USERFONTS, "libc::fstatat(parent.as_raw_fd(), c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW)");
+    told_on_code(&mut fails, DESIGN, "The entry is renamed by descriptor as it stands, by a rename that never replaces an entry, and is never followed, opened, read, listed or deleted; its kind, owner and mode are logged.", USERFONTS, "fn base_afresh(", BASE_AFRESH);
+    // the log line the device check and the log's list quote is the one the code writes
+    told_on(&mut fails, TESTING, line, USERFONTS, line);
+    told_on(&mut fails, KINDLE, line, USERFONTS, line);
+    // the floors: set from step 1's answers, no longer placeholders
+    told_on(&mut fails, TESTING, "The floors stand on these numbers: `STATE_FREE_FLOOR`, 4 MB, and `STATE_FILES_FLOOR`, 512 files", USERFONTS, "const STATE_FREE_FLOOR: u64 = 4 << 20;");
+    told_on(&mut fails, TESTING, "The floors stand on these numbers: `STATE_FREE_FLOOR`, 4 MB, and `STATE_FILES_FLOOR`, 512 files", USERFONTS, "const STATE_FILES_FLOOR: u64 = 512;");
+    gone(&mut fails, USERFONTS, "Placeholders until the Scribe's figures are in");
+    gone(&mut fails, TESTING, "which step 1 answers");
+    gone(&mut fails, TESTING, "must be root's, with no write bit for group or others");
+    none_failed(&fails, "Grimoire's own folder: what is not its own is moved aside");
+}
+
+/// `base_afresh` in userfonts.rs, its comments aside (`code_of`): what DESIGN.md's sentence on the entry moved aside
+/// stands on.
+const BASE_AFRESH: &str = r#"fn base_afresh(parent: &OwnedFd, name: &str) -> Result<OwnedFd, &'static str> { let c = CString::new(name).map_err(|_| NOT_OWN)?; let mut st: libc::stat = unsafe { std::mem::zeroed() }; if unsafe { libc::fstatat(parent.as_raw_fd(), c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 { return Err(NOT_OWN); } if own_stat(&st) || MOVED_ASIDE.swap(true, std::sync::atomic::Ordering::Relaxed) { return Err(NOT_OWN); } let (kind, owner, mode) = (kind_of(st.st_mode), st.st_uid, (st.st_mode & 0o7777) as u32); let aside = aside_name(name, wall_time(), std::process::id()); let moved = match CString::new(aside.as_str()) { Ok(to) if fsview_name_check(b"", aside.as_bytes(), true).is_ok() => rename_noreplace(parent.as_raw_fd(), &c, parent.as_raw_fd(), &to), _ => Err(libc::ENAMETOOLONG), }; if let Err(e) = moved { qlog!("fonts: the entry at the name of Grimoire's own folder is not its own (%s, owner %u, mode %04o) and cannot be moved aside (%s)", kind, owner, mode, &strerror(e)); return Err(NOT_OWN); } qlog!("fonts: the entry at the name of Grimoire's own folder was not its own (%s, owner %u, mode %04o): it is moved aside as it was, and the folder is made afresh; every font is checked once more", kind, owner, mode); #[cfg(any(test, feature = "sim"))] if let Some(f) = ASIDE_SEAM.lock().unwrap_or_else(|e| e.into_inner()).take() { f(); } own_dir_at(parent, name, true).inspect_err(|why| qlog!("fonts: the folder made afresh is not Grimoire's own either (%s); nothing more is moved aside", *why)) }"#;
 
 // ---- Cargo.lock against deny.toml and the skrifa pin ----
 
