@@ -69,8 +69,8 @@ no scriptlets, KOReader can open Grimoire instead (see the table).
 
 | Kindle | Status |
 |---|---|
-| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Used daily on 5.20.1.0.2 and runs on 5.20.1 (Vera) |
-| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** [@nebuff](https://github.com/nebuff) uses 5.20.1.0.2 daily, Grimoire and also runs on 5.20.1 (Vera). If the screen is upside down, see [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting). |
+| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** [@ganten1998](https://github.com/ganten1998) uses 5.20.1.0.2 daily, Grimoire also runs on 5.20.1 (Vera) |
+| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** [@nebuff](https://github.com/nebuff) uses 5.20.1.0.2 daily, Grimoire also runs on 5.20.1 (Vera). If the screen is upside down, see [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting). |
 | Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader)). |
 | Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see [Moving between versions](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting#moving-between-versions)). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
