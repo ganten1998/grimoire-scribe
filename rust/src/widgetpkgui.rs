@@ -573,7 +573,7 @@ fn after_artifact(ui: &mut WidgetPkgUi, data: &[u8], a: &mut App) {
     match widget_package_install(&manifest, data, source, a.w, a.h - status_reserved(a)) {
         Ok(it) => {
             apply_new_def(a, &it);
-            ui.status = format!("Installed {} {}.", it.name, it.version);
+            ui.status.clear();
             ui.view = PkgView::List;
             ui.selected = None;
             ui.refresh();
@@ -838,7 +838,7 @@ fn do_tap(a: &mut App, h: Hit) {
                             }
                             ed.widgets.save();
                         }
-                        ui.status = "Package removed.".into();
+                        ui.status.clear();
                         ui.view = PkgView::List;
                         ui.selected = None;
                         ui.refresh();
@@ -1065,7 +1065,9 @@ pub fn packages_ui_draw(a: &mut App) {
                 hits_add(&mut ui.hits, list.next, H_NEXT, 0);
             }
             if ui.items.is_empty() {
-                ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: content.x, y: content.y + ui_px(160.0), w: content.w, h: ui_px(100.0) }, tr("No widget packages are installed."), 2, false, 120);
+                // Below both actions: the message used to start inside Install from repository.
+                let y = list.rows.last().map(|r| r.y + r.h + ui_px(24.0)).unwrap_or(content.y);
+                ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: content.x, y, w: content.w, h: ui_px(100.0) }, tr("No widget packages are installed."), 2, false, 120);
             }
         }
         PkgView::Detail => {
