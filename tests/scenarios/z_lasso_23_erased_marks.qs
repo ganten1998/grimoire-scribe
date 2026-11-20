@@ -199,6 +199,8 @@ expect editor.undo_kind is lasso
 expect editor.sel_box is 360 975 536 111
 expect editor.halo is 0
 expect editor.halo_found is 2
+# (a drag of ink the page shows none of has no halo to draw while it moves)
+expect editor.drag_inked is 0
 # (the tool picker over it, and gone: the selection drawn again)
 tap panel tool-picker
 wait 300
@@ -249,4 +251,31 @@ expect display.dark.460.940.460.90 is 0
 pentap panel undo
 wait 400
 expect editor.strokes is 7
+# exact area across the line's gap: the preview's halo, and the piece inside the lasso after the lift (it stands
+# where the line is, under the same erasing), go along what shows and never across the gap
+tap panel tool-picker
+wait 100
+tap panel picker.select
+wait 100
+tap panel select.mode
+wait 100
+pen down 600 1050
+pen move 1100 1050
+pen move 1100 1250
+wait 200
+pen move 600 1250
+wait 300
+expect editor.select is lasso
+expect editor.halo is 1
+expect display.dark.815.1138.30.24 is 0
+pen up 600 1060
+wait 300
+expect editor.select is selected
+expect editor.sel_cut is 1
+expect editor.halo is 1
+expect display.dark.815.1138.30.24 is 0
+tap panel select.mode
+wait 100
+tap panel select.done
+wait 300
 quit
