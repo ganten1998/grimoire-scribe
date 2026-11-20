@@ -97,11 +97,22 @@ expect editor.live_matches_render is 1
 expect display.dark.400.690.500.110 is 0
 expect display.dark.450.1430.600.40 is 0
 expect display.dark.822.1135.16.30 is 0
-# the whole page lassoed again: the line down the left and the line with its gap, the gap clear
+# a lasso round where the word was: the stroke eraser left nothing of it, nothing to select (as a lasso round ink
+# the precise eraser or white ink erased wholly, issue #205: z_lasso_29)
 tap panel tool-picker
 wait 100
 tap panel picker.select
 wait 100
+pen down 330 680
+pen move 950 680
+pen move 950 820
+pen move 330 820
+pen up 330 690
+wait 300
+expect editor.select is armed
+expect editor.selected is 0
+expect toast is Nothing to select.
+# the whole page lassoed again: the line down the left and the line with its gap, the gap clear
 pen down 100 550
 pen move 1600 550
 pen move 1600 1750

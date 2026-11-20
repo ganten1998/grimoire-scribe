@@ -1512,10 +1512,7 @@ fn halo_shown<'x>(s: &EditorState, p: &Page, items: impl Iterator<Item = (&'x St
             continue;
         }
         let (floors, erasers, drawn) = judging.get_or_insert_with(|| (page_floors(p), page_erasers(p), drawn_page(s)));
-        let v = match drawn {
-            Some(d) => stroke_shown_runs(p, floors.as_deref(), st, i, dpi, erasers, d),
-            None => stroke_visible_runs(p, floors.as_deref(), st, i, dpi, erasers),
-        };
+        let v = shown_of(p, floors.as_deref(), st, i, dpi, erasers, drawn.as_ref());
         if keep {
             s.sel.halo_found.set(s.sel.halo_found.get().wrapping_add(1));
         }
@@ -1526,6 +1523,44 @@ fn halo_shown<'x>(s: &EditorState, p: &Page, items: impl Iterator<Item = (&'x St
         }
     }
     out
+}
+
+/// What shows of stroke st, standing at index i of the open page p, as the halo finds it: as the page draws it
+/// (stroke_shown_runs) when `drawn` holds the page, else the estimate (stroke_visible_runs).
+fn shown_of(p: &Page, f: Option<&FloorTable>, st: &Stroke, i: usize, dpi: f32, erasers: &Erasers, drawn: Option<&Drawn>) -> Option<VisibleRuns> {
+    match drawn {
+        Some(d) => stroke_shown_runs(p, f, st, i, dpi, erasers, d),
+        None => stroke_visible_runs(p, f, st, i, dpi, erasers),
+    }
+}
+
+/// Whether the page shows any of the ink plan takes (its strokes taken whole and its pieces inside the lasso), by
+/// the halo's rule (halo_shown): would the selection it makes have a halo anywhere (issue #205). What sel.visible
+/// holds for the page as it is (the preview's) is taken first, the rest found, the first that shows ending it;
+/// nothing found is kept.
+fn plan_shows(s: &EditorState, plan: &CutPlan, dpi: f32) -> bool {
+    let Some(p) = s.open_page() else { return true };
+    let whole = plan.whole.iter().map(|&i| (&*p.strokes[i], i));
+    let pieces = plan.cut.iter().flat_map(|(i, v)| v.iter().filter(|q| q.1).map(move |q| (&*q.0, *i)));
+    let items: Vec<(&Stroke, usize)> = whole.chain(pieces).collect();
+    let shows = |v: &Option<VisibleRuns>| v.as_ref().is_none_or(|r| !r.is_empty());
+    let current = s.sel.visible_key.get() == visible_key(p);
+    let kept = s.sel.visible.borrow();
+    let known = |st: &Stroke| if current { kept.get(&stroke_id(st)) } else { None };
+    if items.iter().any(|(st, _)| known(st).is_some_and(shows)) {
+        return true;
+    }
+    let mut judging: Option<(Option<Box<FloorTable>>, Erasers, Option<Drawn>)> = None;
+    for (st, i) in items {
+        if known(st).is_some() {
+            continue;
+        }
+        let (floors, erasers, drawn) = judging.get_or_insert_with(|| (page_floors(p), page_erasers(p), drawn_page(s)));
+        if shows(&shown_of(p, floors.as_deref(), st, i, dpi, erasers, drawn.as_ref())) {
+            return true;
+        }
+    }
+    false
 }
 
 /// What shows of stroke st for its halo: from sel.visible's entries (`kept`) or from what halo_shown returned
@@ -1582,10 +1617,16 @@ fn lasso_done(a: &mut App) {
         qlog!("lasso: preview batches=%d made=%d tests=%u erased=%u reused=%d", lv.batches as i32, lv.made as i32, lv.tests.min(u32::MAX as u64) as u32, lv.hide_tests().min(u32::MAX as u64) as u32, reused as i32);
     }
     let erasure_there = picked.as_ref().is_some_and(|p| p.1);
-    let Some((plan, _)) = picked.filter(|(plan, _)| !plan.is_empty()) else {
+    // ink the page shows nothing of, alone in what the lasso took (no link with it): nothing to select, as round
+    // empty paper (issue #205); beside ink that shows it is taken as before, and Copy, Cut and Delete carry it
+    let unseen = picked.as_ref().is_some_and(|(plan, _)| !plan.is_empty() && plan.links.is_empty() && !plan_shows(ed_ref(a), plan, dpi));
+    if unseen {
+        qlog!("lasso: only ink the page shows nothing of: nothing selected");
+    }
+    let Some((plan, _)) = picked.filter(|(plan, _)| !plan.is_empty() && !unseen) else {
         ed(a).sel.lift_rect = drawn;
         redraw(a, drawn, RefreshMode::Ui);
-        if erasure_there {
+        if erasure_there && !unseen {
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a lasso in Select mode went
             // around only white ink or eraser marks, which are not objects: they move with the ink they cover.
             app_toast(a, tr("Nothing to select: white ink and eraser marks move with the ink under them."), 3500);
@@ -1678,6 +1719,7 @@ fn sel_mode_toggle(a: &mut App) {
     let now = !exact_mode();
     EXACT.store(now, std::sync::atomic::Ordering::Relaxed);
     let before = overlay_rect(a);
+    halo_paper(a); // (what shows of the ink judged again is found as the halo finds it)
     let s = ed(a);
     s.sel.exact = now;
     if s.sel.state == SelState::Selected && !s.sel.kept.is_empty() && sel_indices(s).is_some() {
@@ -1688,7 +1730,8 @@ fn sel_mode_toggle(a: &mut App) {
             (Some(l), Some(p)) => Some(judge(p, &page_links, &l, lasso_enclosed(p, &l, dpi), now, dpi)),
             _ => None,
         };
-        match plan.filter(|pl| !pl.is_empty()) {
+        // (only ink the page shows nothing of, as in lasso_done: nothing, issue #205)
+        match plan.filter(|pl| !pl.is_empty() && (!pl.links.is_empty() || plan_shows(s, pl, dpi))) {
             Some(plan) => {
                 let (n, ncut) = (plan.taken(), plan.cut.len());
                 sel_take(s, plan, &page_links, pts);

@@ -5,9 +5,10 @@
 # Issue #187, the steps reported, with the precise eraser: a page lassoed whole, copied, pasted on the next page,
 # some of the pasted ink erased, a few bits added and erased, the page lassoed whole again; then the page it was
 # copied from lassoed again. Erased ink stays in the page file under its erase strokes (docs/FORMAT.md), and the
-# lasso selects it with what shows of its stroke, or by its whole spine when nothing shows (LASSO-DESIGN.md 6.2);
-# its halo (PIXEL-LASSO.md 2) goes only along what shows. Before 2.2 it went along every point of every selected
-# stroke, so a lasso showed a dithered ghost of each erased word and bridged each erased gap ("faint marks").
+# lasso selects it with what shows of its stroke, or by its whole spine when nothing shows (LASSO-DESIGN.md 6.2),
+# beside ink that shows (alone, it is nothing to select: issue #205); its halo (PIXEL-LASSO.md 2) goes only along
+# what shows. Before 2.2 it went along every point of every selected stroke, so a lasso showed a dithered ghost
+# of each erased word and bridged each erased gap ("faint marks").
 # display.dark counts what the panel shows dark in a place: 0 at every erased place, with the selection and
 # without it; the page drawn live equals a fresh drawing after every step.
 # (the clock corner held still: its minute's refresh would land among the counted ones)
@@ -43,7 +44,8 @@ expect editor.erase_strokes is 3
 expect editor.live_matches_render is 1
 expect display.dark.420.900.440.100 is 0
 expect display.dark.815.1130.30.40 is 0
-# a lasso drawn round the erased word alone: the preview shows no halo there and refreshes nothing for it
+# a lasso drawn round the erased word alone: the preview shows no halo there and refreshes nothing for it, and at
+# the lift it selects nothing, as a lasso round empty paper (issue #205)
 tap panel tool-picker
 wait 100
 tap panel picker.select
@@ -62,12 +64,13 @@ expect editor.preview_refreshes is 0
 expect display.dark.420.912.440.50 is 0
 pen up 330 880
 wait 300
-expect editor.select is selected
-expect editor.selected is 1
+expect editor.select is armed
+expect editor.selected is 0
+expect toast is Nothing to select.
 expect editor.halo is 0
 expect display.dark.420.910.440.80 is 0
-# the whole page lassoed (the pen down outside the selection ends it): the erased word is selected with the
-# rest (nothing of it shows: judged by its whole spine), but has no halo; the line's halo stops at its gap
+# the whole page lassoed: the erased word is selected with the rest (nothing of it shows: judged by its whole
+# spine), but has no halo; the line's halo stops at its gap
 pen down 100 550
 pen move 1600 550
 pen move 1600 1750
@@ -174,26 +177,27 @@ tap panel select.done
 wait 300
 expect display.dark.420.900.440.100 is 0
 expect editor.live_matches_render is 1
-# the erased word alone selected and moved: what shows of it (nothing) is found once at each place and kept,
-# not found again at every redraw while the selection lasts (a page of such ink took tens of ms a redraw); the
-# preview found it as the lasso took it in, and the lift handed that over
+# the erased word selected with the word above it and moved: what shows of each (nothing of the erased one) is
+# found once at each place and kept, not found again at every redraw while the selection lasts (a page of such
+# ink took tens of ms a redraw); the preview found them as the lasso took them in, and the lift handed that over
 tap panel tool-picker
 wait 100
 tap panel picker.select
 wait 100
-pen down 330 870
-pen move 950 870
+pen down 330 670
+pen move 950 670
 pen move 950 1030
 wait 200
 pen move 330 1030
 wait 200
-pen up 330 880
+pen up 330 680
 wait 300
 expect editor.select is selected
-expect editor.selected is 1
+expect editor.selected is 2
 expect editor.preview_reused is 1
-expect editor.halo_found is 1
-expect editor.sel_box is 360 895 536 111
+expect editor.halo is 1
+expect editor.halo_found is 2
+expect editor.sel_box is 360 695 536 311
 pen down 640 950
 pen move 640 990
 wait 150
@@ -203,18 +207,17 @@ pen up 640 1030
 wait 600
 expect editor.select is selected
 expect editor.undo_kind is lasso
-expect editor.sel_box is 360 975 536 111
-expect editor.halo is 0
-expect editor.halo_found is 2
-# (a drag of ink the page shows none of has no halo to draw while it moves)
-expect editor.drag_inked is 0
+expect editor.sel_box is 360 775 536 311
+expect editor.halo is 1
+expect editor.halo_found is 4
+expect editor.drag_inked is 1
 # (the tool picker over it, and gone: the selection drawn again)
 tap panel tool-picker
 wait 300
 tap panel tool-picker
 wait 300
 expect editor.select is selected
-expect editor.halo_found is 2
+expect editor.halo_found is 4
 expect display.dark.420.990.440.80 is 0
 expect editor.live_matches_render is 1
 tap panel select.done
