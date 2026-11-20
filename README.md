@@ -90,6 +90,7 @@ The full manual lives in the wiki, in **English**, **日本語** and **Polski**:
 |---|---|
 | [Install](https://github.com/ganten1998/grimoire-scribe/wiki/Install) | Requirements, the release zip, KPM, updating and uninstalling |
 | [Using Grimoire](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire) | The Library, paper, pens, the toolbar, the Index, links, Live view, Wi-Fi, sleep and the passcode |
+| [Widgets](https://github.com/ganten1998/grimoire-scribe/wiki/Widgets) | Installing, using, updating and removing widgets, and making your own |
 | [Fonts and Language](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language) | English, Spanish, Japanese and Polish, the Classic fonts, and your own fonts |
 | [Importing](https://github.com/ganten1998/grimoire-scribe/wiki/Importing) | Templates, pictures, PDFs and pages you already have |
 | [Getting Pages Off the Kindle](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting) | Wi-Fi Share, Effects, USB PDFs and SSH |

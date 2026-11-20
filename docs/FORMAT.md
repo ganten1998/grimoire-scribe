@@ -1593,8 +1593,9 @@ com.grimoire.calculator=1416,270,300,420,0,1,0
 ## Widget packages (2.2, issue #200)
 
 Settings → Packages → Widgets installs a widget from a GitHub repository (`user/repo`) or an
-HTTPS `.yaml` address; the Widgets popup's **Manage widgets...** row opens the same page. The
-manifest is `package.yaml`; unknown keys are ignored. An install is refused before anything is
+HTTPS `.yaml` address; the Widgets popup's **Manage widgets...** row opens the same page.
+[WIDGETS.md](WIDGETS.md) is the developer's guide to the manifest, the artifact and publishing.
+The manifest is `package.yaml`; unknown keys are ignored. An install is refused before anything is
 written if the manifest is invalid, the platform does not match, or the artifact does not match its
 size and SHA-256.
 

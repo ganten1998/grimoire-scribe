@@ -36,6 +36,7 @@ updating; most people keep OTA updates blocked.
 |---|---|
 | [Install](Install) | Requirements, the release zip, KPM, updating and uninstalling |
 | [Using Grimoire](Using-Grimoire) | The Library, paper, pens, the toolbar, the Index, links, Live view, Wi-Fi, sleep and the passcode |
+| [Widgets](Widgets) | Installing, using, updating and removing widgets, and making your own |
 | [Fonts and Language](Fonts-and-Language) | English, Spanish, Japanese and Polish, the Classic fonts, and your own fonts |
 | [Importing](Importing) | Templates, pictures, PDFs and pages you already have |
 | [Getting Pages Off the Kindle](Exporting) | Wi-Fi Share, Effects, USB PDFs and SSH |
