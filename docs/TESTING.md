@@ -3548,3 +3548,40 @@ lines marked "Over SSH, optional" look at the files themselves and can be left o
     sideways; the page shows the same "Código NNNN", and "Espera 5 segundos y vuelve a enviarlo." for step 3.
 16. **The log**: over USB (or SSH), search `grimoire/grimoire.log` for `upload`: lines `httpd: an upload ...` for each
     step, and no file name, no 32-hex token and no send's code anywhere in it.
+
+## 2.2, lasso and erased ink (issue #187): device checks
+
+Automated: tests/test_lasso.rs (halo_follows_what_shows), tests/test_lasso_live.rs
+(visible_runs_are_the_selections), z_lasso_23_erased_marks (the reported steps with the precise eraser) and
+z_lasso_24_erased_marks_whole (the Whole strokes eraser on the page pasted to, white ink on the page copied
+from). They check what the halo draws in the headless runner; on the Kindle, check what the screen shows. Erased
+ink stays in the page file under the erasing that covers it until the notebook is compacted, and the lasso
+selects it, so every check below lassoes a page that holds some.
+
+1. **Set up**: Settings > Pen > Eraser > Takes away only what it touches (Precise). In a new notebook write
+   three lines of words on page 1. With the eraser, erase one word wholly and a gap through another.
+2. **The page copied from**: tool picker > Select, and lasso the whole page. The selection's dotted halo hugs
+   the ink you see: no outline where the erased word was, no halo across the gap. The box may reach over the
+   erased word (it is selected with the rest, and goes where the selection goes).
+3. **Copy and paste**: Copy, turn to page 2, Paste. The pasted ink shows the same gap; the erased word is not
+   pasted.
+4. **Erase on the pasted page**: Done. Erase part of a pasted word, write a short word and erase all of it,
+   and erase a gap in another pasted word.
+5. **Lasso again**: Select, and lasso the whole of page 2. The halo hugs only what you see: nothing at any place
+   you erased. Lasso again slowly through those places: the halo that follows the pen shows nothing there
+   either.
+6. **Back to page 1**: lasso the whole page again. The word erased before the copy does not show.
+7. **After a restart**: close Grimoire and start it again, open page 2 and lasso it whole: still nothing at the
+   erased places.
+8. **Whole strokes**: Settings > Pen > Eraser > Takes away whole strokes. In a new notebook write a word and a
+   line on page 1; tool picker > White, draw a gap across the line, then back to black. Lasso the page, Copy,
+   turn to page 2, Paste, Done. Erase the pasted word with the eraser (it goes whole); write a line and erase
+   it. Lasso page 2 whole: only the line with its gap has a halo, none across the gap, none where the word and
+   the line were.
+9. **Moving**: on page 2, lasso a partly erased word and drag it: at its new place it shows the same gaps and
+   the halo hugs what shows. Undo: back as it was.
+10. **A region with many erased marks** (the second report on the issue, the lasso "cutting off"): on a page
+    where you erased a lot, draw a lasso slowly around part of it, then around a part with no erasing. Note
+    whether the dashed line follows the pen in both places, or jumps straight across part of the way in the
+    erased one. If it jumps, copy `grimoire/grimoire.log` over USB and look near that time for "pen events
+    dropped by the kernel" and "lasso: preview" lines; attach them to the issue.

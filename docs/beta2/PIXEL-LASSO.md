@@ -260,6 +260,9 @@ Options considered:
   cut before lifting.
 - At the lift the selection appears as today (box and bar) and the halo stays on the selected ink,
   redrawn in grays, so the selection says exactly what it holds.
+- Erased ink (2.2, issue #187): the halo goes only along what shows of a stroke (the visible spine of
+  LASSO-DESIGN.md 6.2), none across an erased gap and none on ink erased wholly, which the lasso may still
+  select; the preview sends no refresh for such ink when it flips.
 
 Why a halo: it is the house style of the selection box and link outlines (`canvas_dither_poly`,
 `canvas_dither_rect`), it is pure black and white so a DU refresh shows it faithfully, it works at

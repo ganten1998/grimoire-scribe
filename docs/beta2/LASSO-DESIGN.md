@@ -276,6 +276,12 @@ overlaps existing ink.
   is visible: judged on its whole spine by the same half rule (it is invisible both ways; carrying
   it keeps the old place clean). Tune the 50% and 1.5 mm on a handwriting corpus from the
   fixtures and rust/tests/shape_corpus.
+- **What a selection shows of it (2.2, issue #187).** The halo of the live preview and of a selection
+  (docs/beta2/PIXEL-LASSO.md 2) goes only along the samples of the visible spine: none across an erased gap,
+  and none at all on ink with nothing visible, which the rule above may still select (its box takes it in).
+  Erased ink stays in the page file under its erase strokes until compaction, so before 2.2 each lasso drew
+  it again as a dithered outline: faint marks where ink had been erased, on the page copied from and on the
+  page pasted to.
 - **Links.** A link goes with the selection when:
   - its area (or its outline polygon, when it has one) has at least half of an 8 x 8 sample grid
     inside the lasso; or

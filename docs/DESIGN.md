@@ -2199,7 +2199,16 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   (`preview_tick`); the strokes whose halo flipped are drawn again in at most 6 merged fast refreshes
   (DU wear counted), and the lift's Ui redraw covers every one. The halo (`sel_draw_halo`, in compose
   under the panel) is a dither band 3 ui px wider than the ink each side with the page's pixels put back
-  over it by a min, so ink stays on top; it stays on the selection. Probes: `editor.halo`,
+  over it by a min, so ink stays on top; it stays on the selection. It goes only along what shows of a stroke
+  under its erasing (2.2, issue #187: it went along every point, so a lasso drew a dithered ghost of each word
+  erased wholly and bridged each erased gap): `stroke_visible_runs` (lasso.rs) gives the runs of the stroke's
+  spine that no later erase stroke in scope hides, by the estimate the enclosure judges by (`hides`, one walk
+  with `judged_samples` in `judged_and_visible`); the preview keeps them for each stroke it judges
+  (`LassoLive::visible_runs`) and hands them to the selection at the lift, which finds the rest (an exact-area
+  piece by the erasing over its stroke's place) once and keeps them while the page's stroke count and newest
+  stroke stay (`SelMode.visible`). Ink erased wholly has no halo, and the preview sends no refresh when it
+  flips; a partly erased stroke's halo stops within half a millimetre and the ink's radius of where its ink
+  stops. Probes: `editor.halo` (strokes with a halo drawn),
   `preview_batches`, `preview_refreshes`, `preview_reused`, `preview_rect`, `lift_rect`,
   `lift_covers_preview`.
 - Exact area (docs/beta2/PIXEL-LASSO.md 1): `stroke_dabs` runs a stroke's brush dry with
