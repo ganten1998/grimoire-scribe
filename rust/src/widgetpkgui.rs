@@ -27,6 +27,11 @@ const H_LICENSE_VIEW: i32 = 112;
 const H_QR: i32 = 113;
 const H_LICENSE_PREV: i32 = 114;
 const H_LICENSE_NEXT: i32 = 115;
+const H_SETTINGS: i32 = 116;
+const H_SETTING: i32 = 117;
+const H_SETTINGS_RESET: i32 = 118;
+const H_SETTINGS_PREV: i32 = 119;
+const H_SETTINGS_NEXT: i32 = 120;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PkgView {
@@ -39,6 +44,7 @@ pub enum PkgView {
     License,
     Qr,
     Remove,
+    Settings,
     Error,
 }
 
@@ -104,6 +110,10 @@ pub struct WidgetPkgUi {
     license_page: i32,
     /// the GitHub repository page the QR view shows
     qr_url: String,
+    /// the settings page's manifest schema and current values, in schema order
+    setting_schema: Vec<WidgetSetting>,
+    setting_values: Vec<(String, String)>,
+    setting_page: i32,
     job: Option<InstallJob>,
     /// Update all: the packages left to check, how many were updated and failed, and the last
     /// failure's text (the summary names it if nothing updated).
@@ -142,6 +152,9 @@ pub fn packages_ui_open(a: &mut App) {
     ui.license_for.clear();
     ui.license_page = 0;
     ui.qr_url.clear();
+    ui.setting_schema.clear();
+    ui.setting_values.clear();
+    ui.setting_page = 0;
     ui.manifest = None;
     ui.manifest_yaml.clear();
     ui.input.clear();
@@ -207,6 +220,10 @@ fn install_icon(it: &WidgetInstall) -> IconKind {
         return widget_icon(&it.icon);
     }
     widget_def(&it.id).map_or(IconKind::Grid, |d| d.icon)
+}
+
+fn setting_icon(s: &WidgetSetting) -> IconKind {
+    if s.icon.trim().is_empty() { IconKind::Gear } else { widget_icon(&s.icon) }
 }
 
 fn stage_status(stage: FetchStage, of: Option<(usize, usize)>) -> String {
@@ -718,6 +735,11 @@ fn close_or_cancel(a: &mut App) {
             ui.error.clear();
             ui.view = PkgView::List;
         }
+        PkgView::Settings => {
+            ui.view = PkgView::Detail;
+            ui.status.clear();
+            ui.setting_page = 0;
+        }
         PkgView::Detail | PkgView::Install | PkgView::Remove => {
             ui.view = PkgView::List;
             keyboard_close(&mut ui.kb);
@@ -764,6 +786,9 @@ fn do_tap(a: &mut App, h: Hit) {
                 ui.license_text.clear();
                 ui.license_for.clear();
                 ui.qr_url.clear();
+                ui.setting_schema.clear();
+                ui.setting_values.clear();
+                ui.setting_page = 0;
                 ui.status.clear();
                 ui.error.clear();
                 ui.view = PkgView::Detail;
@@ -771,6 +796,8 @@ fn do_tap(a: &mut App, h: Hit) {
         }
         H_PREV => ui.page = (ui.page - 1).max(0),
         H_NEXT => ui.page += 1,
+        H_SETTINGS_PREV => ui.setting_page = (ui.setting_page - 1).max(0),
+        H_SETTINGS_NEXT => ui.setting_page += 1,
         H_INSTALL => {
             ui.view = PkgView::Install;
             ui.error.clear();
@@ -824,6 +851,48 @@ fn do_tap(a: &mut App, h: Hit) {
                     ui.qr_url = url;
                     ui.view = PkgView::Qr;
                 }
+            }
+        }
+        H_SETTINGS => {
+            if let Some(id) = ui.selected.clone() {
+                if let Some(m) = widget_package_installed_manifest(&id) {
+                    if !m.settings.is_empty() {
+                        ui.setting_schema = m.settings;
+                        ui.setting_values = widget_settings_load(&id, &ui.setting_schema);
+                        ui.setting_page = 0;
+                        ui.status.clear();
+                        ui.view = PkgView::Settings;
+                    }
+                }
+            }
+        }
+        H_SETTING => {
+            let at = h.arg as usize;
+            let Some(s) = ui.setting_schema.get(at).cloned() else {
+                a.pkg = ui;
+                return;
+            };
+            let current = widget_setting_value(&ui.setting_values, &s.key, &s.default).to_string();
+            let next = widget_setting_next(&s, &current);
+            if let Some(v) = ui.setting_values.iter_mut().find(|(k, _)| *k == s.key) {
+                v.1 = next;
+            }
+            if let Some(id) = ui.selected.clone() {
+                ui.status = if widget_settings_save(&id, &ui.setting_values) == 0 {
+                    String::new()
+                } else {
+                    tr("Could not save the widget's settings.").to_string()
+                };
+            }
+        }
+        H_SETTINGS_RESET => {
+            ui.setting_values = widget_settings_defaults(&ui.setting_schema);
+            if let Some(id) = ui.selected.clone() {
+                ui.status = if widget_settings_clear(&id) == 0 {
+                    tr("Settings reset to defaults.").to_string()
+                } else {
+                    tr("Could not save the widget's settings.").to_string()
+                };
             }
         }
         H_REMOVE => ui.view = PkgView::Remove,
@@ -1023,6 +1092,7 @@ pub fn packages_ui_draw(a: &mut App) {
         PkgView::License => tr("License agreement"),
         PkgView::Qr => tr("Repository"),
         PkgView::Remove => tr("Remove this package?"),
+        PkgView::Settings => tr("Widget settings"),
     };
     let App { screen: c, pkg: ui, .. } = a;
     ui.hits.h.clear();
@@ -1112,7 +1182,11 @@ pub fn packages_ui_draw(a: &mut App) {
                 body_text(c, Rect { x: content.x, y, w: content.w, h: ui_px(70.0) }, &ui.status);
                 y += ui_px(70.0);
             }
-            let mut actions: Vec<(&str, IconKind, i32)> = vec![(tr("Check for updates"), IconKind::Update, H_UPDATE)];
+            let mut actions: Vec<(&str, IconKind, i32)> = Vec::new();
+            if m.is_some_and(|m| !m.settings.is_empty()) {
+                actions.push((tr("Settings..."), IconKind::Gear, H_SETTINGS));
+            }
+            actions.push((tr("Check for updates"), IconKind::Update, H_UPDATE));
             if !license.is_empty() || m.is_some_and(|m| !m.license_url.is_empty()) {
                 actions.push((tr("View license"), IconKind::Paper, H_LICENSE_VIEW));
             }
@@ -1200,6 +1274,50 @@ pub fn packages_ui_draw(a: &mut App) {
             let ty = if rect_is_empty(sym) { top } else { sym.y + sym.h + ui_px(30.0) };
             ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), Rect { x: content.x, y: ty, w: content.w, h: ui_px(90.0) }, &ui.qr_url, 2, true, 0);
         }
+        PkgView::Settings => {
+            let schema = ui.setting_schema.clone();
+            let values = ui.setting_values.clone();
+            let n = schema.len() + 1;
+            let hint = if ui.status.is_empty() {
+                tr("Changes are saved on this Kindle.").to_string()
+            } else {
+                ui.status.clone()
+            };
+            body_text(c, Rect { x: content.x, y: content.y, w: content.w, h: ui_px(60.0) }, &hint);
+            let top = content.y + ui_px(70.0);
+            let rows_area = Rect { x: content.x, y: top, w: content.w, h: bottom - top };
+            let list = ui_row_page(rows_area, n, ui.setting_page, ui_px(118.0), ui_px(74.0));
+            ui.setting_page = list.page;
+            for (i, rr) in list.rows.iter().enumerate() {
+                let k = list.first + i;
+                if let Some(s) = schema.get(k) {
+                    let value = widget_setting_value(&values, &s.key, &s.default);
+                    match s.kind {
+                        WidgetSettingKind::Toggle => {
+                            let row = Row::toggled(setting_icon(s), &s.label, value == "true");
+                            ui_row(c, *rr, &row);
+                        }
+                        WidgetSettingKind::Choice => {
+                            let label = format!("{}: {}", s.label, value);
+                            let row = Row::new(setting_icon(s), &label);
+                            ui_row(c, *rr, &row);
+                        }
+                    }
+                    hits_add(&mut ui.hits, *rr, H_SETTING, k as i32);
+                } else {
+                    let row = Row::new(IconKind::Update, tr("Reset all to defaults"));
+                    ui_row(c, *rr, &row);
+                    hits_add(&mut ui.hits, *rr, H_SETTINGS_RESET, 0);
+                }
+            }
+            ui_row_pager(c, &list);
+            if list.page > 0 {
+                hits_add(&mut ui.hits, list.prev, H_SETTINGS_PREV, 0);
+            }
+            if list.page + 1 < list.pages {
+                hits_add(&mut ui.hits, list.next, H_SETTINGS_NEXT, 0);
+            }
+        }
         PkgView::Remove => {
             let name = ui.items.iter().find(|x| Some(&x.id) == ui.selected.as_ref()).map(|x| x.name.clone()).unwrap_or_default();
             let text = format!("Remove {name}? Its widget is closed and its files are deleted. Your layout is kept.");
@@ -1236,8 +1354,14 @@ pub fn packages_ui_control_point(ui: &WidgetPkgUi, name: &str) -> Option<(f32, f
         "remove" => H_REMOVE,
         "remove-yes" => H_REMOVE_YES,
         "update" => H_UPDATE,
+        "settings" => H_SETTINGS,
+        "settings-reset" => H_SETTINGS_RESET,
         "back" => H_BACK,
         _ => {
+            if let Some(key) = name.strip_prefix("setting.") {
+                let at = ui.setting_schema.iter().position(|s| s.key == key)? as i32;
+                return ui.hits.h.iter().find(|h| h.id == H_SETTING && h.arg == at).map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
+            }
             let id = name.strip_prefix("row.")?;
             let i = ui.items.iter().position(|x| x.id == id)? as i32;
             return ui.hits.h.iter().find(|h| h.id == H_ROW && h.arg == i).map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));

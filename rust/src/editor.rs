@@ -12599,9 +12599,17 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", a.pkg.open as i32);
         return 0;
     }
-    if let Some(id) = key.strip_prefix("package.") {
+    if let Some(rest) = key.strip_prefix("package.") {
+        // package.ID.settings.KEY: a package setting's saved value (the default while there is no file).
+        if let Some((id, setting)) = rest.split_once(".settings.") {
+            let Some(m) = crate::widgetpkg::widget_package_installed_manifest(id) else { return -1 };
+            let Some(s) = m.settings.iter().find(|s| s.key == setting) else { return -1 };
+            let values = crate::widgetpkg::widget_settings_load(id, &m.settings);
+            csnprintf!(out, cap, "%s", crate::widgetpkg::widget_setting_value(&values, &s.key, &s.default));
+            return 0;
+        }
         let ui = &a.pkg;
-        if let Some(it) = ui.items.iter().find(|x| x.id == id) {
+        if let Some(it) = ui.items.iter().find(|x| x.id == rest) {
             csnprintf!(out, cap, "%s", &it.version);
         } else {
             csnprintf!(out, cap, "%s", "");

@@ -60,6 +60,25 @@ wait 400
 tap panel packages.row.com.example.timer
 wait 300
 shot 03-package-detail
+# The package's own settings: manifest-defined rows, saved as they are tapped, and reset together.
+tap panel packages.settings
+wait 300
+expect editor.package.com.example.timer.settings.show_seconds is true
+expect editor.package.com.example.timer.settings.layout is compact
+shot 03a-package-settings
+tap panel packages.setting.show_seconds
+wait 200
+expect editor.package.com.example.timer.settings.show_seconds is false
+tap panel packages.setting.layout
+wait 200
+expect editor.package.com.example.timer.settings.layout is large
+shot 03b-package-settings-changed
+tap panel packages.settings-reset
+wait 200
+expect editor.package.com.example.timer.settings.show_seconds is true
+expect editor.package.com.example.timer.settings.layout is compact
+tap panel packages.back
+wait 300
 tap panel packages.remove
 wait 300
 shot 04-remove-question

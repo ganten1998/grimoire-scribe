@@ -44,6 +44,7 @@ root/graph-omit.ini                     folders left out of the Graph of all not
 root/widgets.ini                        the open widget windows' places and sizes (2.2, issue #200; Widgets)
 root/packages/index.json                the installed widget packages (2.2, issue #200; Widget packages)
 root/packages/widgets/<id>/package.yaml a widget package's manifest and files (2.2, issue #200; Widget packages)
+root/packages/widgets/<id>/state/settings.json  the values of a package's declared settings, written by the host (2.2; Widget packages)
 root/packages/widgets/<id>.previous/    the version an update replaced, for a rollback (2.2, issue #200; Widget packages)
 root/clipboard.qpg                      the lasso's clipboard: what Copy or Cut took (2.0.0-beta.2; The clipboard)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
@@ -1597,7 +1598,8 @@ HTTPS `.yaml` address; the Widgets popup's **Manage widgets...** row opens the s
 [WIDGETS.md](WIDGETS.md) is the developer's guide to the manifest, the artifact and publishing.
 The manifest is `package.yaml`; unknown keys are ignored. An install is refused before anything is
 written if the manifest is invalid, the platform does not match, or the artifact does not match its
-size and SHA-256.
+size and SHA-256. The artifact is one file under the package's folder; it cannot be `package.yaml`
+or anything under `state/`, which belongs to the host and the widget's saved data.
 
 ```yaml
 name: Timer
@@ -1613,6 +1615,16 @@ min_grimoire_version: 2.1.0    # optional
 platforms: [all]               # or kindle-scribe-2022, kindle-scribe-2024
 repository: https://example.org/timer
 capabilities: [editor:overlay, storage:widget-local]
+settings:                      # optional; a Settings... page of up to 32 rows
+  - key: show_seconds          # lowercase letters, digits, . - _
+    label: Show seconds
+    type: toggle                # or choice
+    default: true
+  - key: layout
+    label: Layout
+    type: choice
+    default: compact
+    choices: [compact, large]
 artifact:
   path: timer.bin
   sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
@@ -1658,8 +1670,13 @@ are complete:
 A package's detail page shows `Author:` and, when the manifest names one, `License:`, with **View
 license** to read its text (from `license_url`, or the repository's license file when the manifest
 only names the license). A GitHub package also has **View QR code**, which shows its repository
-address as a QR code for a phone. A license whose files are all missing does not stop the install
-when only its name was declared; a `license_url` that does not answer does.
+address as a QR code for a phone. When the manifest declares `settings`, the page also has
+**Settings...**: one switch per `toggle` and one cycling row per `choice`, saved as they are tapped,
+with **Reset all to defaults** at the end. Its values live in
+`packages/widgets/<id>/state/settings.json`, as strings keyed by the setting's `key`; a missing or
+invalid value reads as its default, and reset removes the file. A license whose files are all
+missing does not stop the install when only its name was declared; a `license_url` that does not
+answer does.
 
 **Update all** at the top of the package list checks every installed package that has a
 `source_url`, one after another, and installs the newer ones; an up-to-date package costs its
@@ -1667,7 +1684,8 @@ manifest's fetch only. The packages were trusted when they were installed, so th
 ask again for each one. An update keeps the old directory as `<id>.previous` until the new one is in
 place, so a failed write can be rolled back. Removing a package closes its widget, deletes its files and its
 `widgets.ini` line. A package's own state is kept under `packages/widgets/<id>/state/` when the
-package is replaced or removed (Remove keeps that folder; nothing else of the package stays).
+package is replaced or removed (Remove keeps that folder; nothing else of the package stays). The
+host's `settings.json` in that folder is kept too; a package should use another file for its own data.
 
 `spec.runtime: native` names a widget implementation Grimoire carries itself. The only native
 entry is `calculator`: a working four-function calculator with percent, sign, backspace and clear,

@@ -46,6 +46,13 @@ both Scribe models or just one.
 The detail page shows the author, and the license and repository when the package declares them.
 **View QR code** shows a GitHub package's address as a QR code for a phone.
 
+## Changing a widget's settings
+
+If a package came with settings, its detail page has a **Settings...** button. It lists that
+widget's own switches and choices, such as which features are on or how it looks. Tap a switch to
+turn it on or off; tap a choice to move to the next value. Each tap is saved at once, and **Reset
+all to defaults** puts every setting back.
+
 ## Updating
 
 - **Check for updates** on a package's detail page checks that package.

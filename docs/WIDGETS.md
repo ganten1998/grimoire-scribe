@@ -10,8 +10,9 @@ publishing. The exact field rules and the installed layout are in
 [FORMAT.md](FORMAT.md#widget-packages-22-issue-200); this page explains the workflow around them.
 
 > **In 2.2 the package manager installs widgets, but a WASM widget does not run yet.** The
-> manifest, size and SHA-256 checks, install, update, remove and the frame are in place. There is no
-> WASM host in this build: a `spec.runtime: wasm` package is installed, gets a frame, and the body
+> manifest, size and SHA-256 checks, install, update, remove, the frame and a package's Settings page
+> are in place. There is no WASM host in this build: a `spec.runtime: wasm` package is installed,
+> gets a frame, and the body
 > of that frame shows the package's name, version, author and description instead of running its
 > artifact. The only widget implementation that runs is the native `calculator`, whose code Grimoire
 > carries itself; it reaches the catalog through a package like any other widget. A package cannot
@@ -82,6 +83,16 @@ min_grimoire_version: 2.2.0
 platforms: [all]
 repository: https://github.com/janedoe/timer
 capabilities: [storage:widget-local]
+settings:
+  - key: show_seconds
+    label: Show seconds
+    type: toggle
+    default: true
+  - key: layout
+    label: Layout
+    type: choice
+    default: compact
+    choices: [compact, large]
 artifact:
   path: timer.bin
   sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
@@ -114,7 +125,8 @@ spec:
 | `platforms` | optional; `all` (the default when the key is omitted), `kindle-scribe-2022`, `kindle-scribe-2024`, or a list of them. An explicit empty list is refused. `all` matches every device |
 | `repository` | optional; the human-facing project address. A GitHub address also gets **View QR code** in the detail page |
 | `capabilities` | optional; only `editor:overlay` and `storage:widget-local` are accepted. Declare only what the widget needs. The host does not enforce them yet because it is not there |
-| `artifact.path` | required; a safe relative path, at most 240 bytes: no leading `/`, no backslash, no empty, `.` or `..` component, and not `package.yaml` |
+| `settings` | optional; up to 32 settings the package declares for its own Settings page. Each has a `key`, a `label`, a `type` (`toggle` or `choice`), and a `default`; a choice also has 2 to 16 `choices`. An optional `icon` names one of the icons above |
+| `artifact.path` | required; a safe relative path, at most 240 bytes: no leading `/`, no backslash, no empty, `.` or `..` component, and neither `package.yaml` nor anything under `state/` |
 | `artifact.sha256` | required; 64 hexadecimal characters, over the artifact's bytes |
 | `artifact.size` | required; the artifact's size in bytes, at least 1 and at most 32 MiB. It is used even when `releases` supplies the URL and digest |
 | `releases` | optional; `version`, `url` (use HTTPS) and `sha256` per entry. Only the entry whose `version` equals the manifest's is used |
@@ -145,6 +157,47 @@ a rotation or a window-size change.
 
 `mode: resizable` gives the bottom-right grip and clamps to `min` and `max`; `mode: fixed` omits the
 grip and keeps the frame at `default`.
+
+### Settings
+
+A package can declare a Settings page of its own. When `settings` is not empty, the package's
+detail page gets a **Settings...** button above **Check for updates**; opening it lists one row per
+setting. A `toggle` row has a switch. A `choice` row shows the current value after its label, and
+tapping it moves to the next choice. There is no separate Save button: a tap writes the new value
+immediately, and **Reset all to defaults** puts every value back.
+
+```yaml
+settings:
+  - key: show_seconds
+    label: Show seconds
+    type: toggle
+    default: true
+    icon: timer
+  - key: accuracy
+    label: Accuracy
+    type: choice
+    default: seconds
+    choices: [seconds, tenths]
+```
+
+| setting field | |
+|---|---|
+| `key` | required; at most 64 characters of lowercase letters, digits, `.`, `-` and `_`; no leading or trailing dot and no `..`. It is the key the widget reads and must be unique within the package |
+| `label` | required; the row's text, at most 160 bytes |
+| `type` | required; `toggle` or `choice` |
+| `default` | optional; `true` or `false` for a toggle (default `true`), or one of the choices for a choice (default the first) |
+| `choices` | a choice needs 2 to 16 unique values, each at most 64 bytes; the row shows the chosen value |
+| `icon` | optional; an icon name as in `spec.icon`; the gear when omitted |
+
+Values are saved in `packages/widgets/<id>/state/settings.json`, beside the widget's own state, and
+an update or a remove that keeps state carries them along. The file holds strings, keyed by the
+setting's `key`; a missing or invalid value reads as its default. That path is reserved for the
+host: a widget should keep its other data in another file under `state/`.
+
+The file is the contract for the package's runtime: a future WASM host reads it as the widget's
+settings map. This build has no WASM host, so a WASM package cannot read it yet; the page and the
+saved values are ready for the host. A native widget can read the same file, but the calculator
+does not declare settings yet.
 
 ## The artifact
 
@@ -319,5 +372,6 @@ working widget.
 - [ ] `spec.runtime` and `spec.entry` are ones this build accepts
 - [ ] `spec.size` within 120x80 and 70% of the canvas
 - [ ] `platforms` correct, `min_grimoire_version` honest
-- [ ] tested from a clean data root: install, open, move, close, update, remove
+- [ ] any `settings` keys, labels, defaults and choices are final; changing a key loses its saved value
+- [ ] tested from a clean data root: install, open, move, close, update, remove; open Settings and toggle each row
 - [ ] README says a WASM widget needs a Grimoire with the runtime

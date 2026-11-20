@@ -17,6 +17,11 @@ pub const WIDGET_PKG_MANIFEST_MAX: usize = 256 * 1024;
 pub const WIDGET_PKG_ARTIFACT_MAX: u64 = 32 * 1024 * 1024;
 pub const WIDGET_PKG_COUNT_MAX: usize = 64;
 pub const WIDGET_PKG_URL_MAX: usize = 1024;
+pub const WIDGET_SETTINGS_MAX: usize = 32;
+const WIDGET_SETTINGS_KEY_MAX: usize = 64;
+const WIDGET_SETTINGS_VALUE_MAX: usize = 64;
+const WIDGET_SETTINGS_CHOICES_MAX: usize = 16;
+const WIDGET_SETTINGS_FILE_MAX: usize = 64 * 1024;
 
 // ---- the platform registry ----
 
@@ -404,6 +409,29 @@ pub struct WidgetRelease {
     pub sha256: String,
 }
 
+/// How a package setting is changed in Settings → Packages → Widgets.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WidgetSettingKind {
+    /// an on/off switch, its values `true` and `false`
+    #[default]
+    Toggle,
+    /// one of `choices`, changed by tapping the row
+    Choice,
+}
+
+/// One setting a package declares in its manifest. The host draws it, so a package needs no UI of
+/// its own for a switch or a small list of choices.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WidgetSetting {
+    pub key: String,
+    pub label: String,
+    pub kind: WidgetSettingKind,
+    pub default: String,
+    pub choices: Vec<String>,
+    /// optional icon name, as `spec.icon`; empty means the gear
+    pub icon: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WidgetSpec {
     pub runtime: String,
@@ -429,6 +457,7 @@ pub struct WidgetPackage {
     pub artifact: WidgetArtifact,
     pub releases: Vec<WidgetRelease>,
     pub capabilities: Vec<String>,
+    pub settings: Vec<WidgetSetting>,
     pub spec: WidgetSpec,
 }
 
@@ -497,6 +526,93 @@ fn ysize(v: Option<&Yaml>) -> Result<WidgetSize, String> {
     Ok(size)
 }
 
+fn setting_key_ok(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= WIDGET_SETTINGS_KEY_MAX
+        && key.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'_')
+        && key.as_bytes()[0] != b'.'
+        && key.as_bytes()[key.len() - 1] != b'.'
+        && !key.contains("..")
+}
+
+fn setting_text_ok(s: &str, max: usize) -> bool {
+    !s.is_empty() && s.len() <= max && !s.chars().any(char::is_control)
+}
+
+fn setting_value_ok(s: &WidgetSetting, value: &str) -> bool {
+    match s.kind {
+        WidgetSettingKind::Toggle => value == "true" || value == "false",
+        WidgetSettingKind::Choice => s.choices.iter().any(|c| c == value),
+    }
+}
+
+fn ysettings(v: &Yaml) -> Result<Vec<WidgetSetting>, String> {
+    let Some(x) = v.get("settings") else { return Ok(Vec::new()) };
+    if matches!(x, Yaml::Scalar(s) if s.is_empty()) {
+        return Ok(Vec::new());
+    }
+    let items = x.list().ok_or("`settings` is not a list")?;
+    if items.len() > WIDGET_SETTINGS_MAX {
+        return Err(format!("`settings` has more than {WIDGET_SETTINGS_MAX} entries"));
+    }
+    let mut out: Vec<WidgetSetting> = Vec::new();
+    for (n, item) in items.iter().enumerate() {
+        let key = ystr(item, "key");
+        if !setting_key_ok(&key) {
+            return Err(format!("`settings[{n}].key` must be lowercase letters, digits, dots, hyphens or underscores"));
+        }
+        if out.iter().any(|s| s.key == key) {
+            return Err(format!("`settings[{n}].key` (`{key}`) is used twice"));
+        }
+        let label = ystr(item, "label");
+        if !setting_text_ok(&label, 160) {
+            return Err(format!("`settings[{n}].label` is missing or too long"));
+        }
+        let type_ = ystr(item, "type");
+        let kind = match type_.as_str() {
+            "toggle" => WidgetSettingKind::Toggle,
+            "choice" => WidgetSettingKind::Choice,
+            _ => return Err(format!("`settings[{n}].type` must be `toggle` or `choice`")),
+        };
+        let mut choices = if kind == WidgetSettingKind::Choice { ylist(item, "choices")? } else { Vec::new() };
+        let mut default = ystr(item, "default");
+        if kind == WidgetSettingKind::Toggle {
+            if default.is_empty() {
+                default = "true".into();
+            }
+            if default != "true" && default != "false" {
+                return Err(format!("`settings[{n}].default` must be true or false"));
+            }
+        } else {
+            if !(2..=WIDGET_SETTINGS_CHOICES_MAX).contains(&choices.len()) {
+                return Err(format!("`settings[{n}].choices` needs 2 to {WIDGET_SETTINGS_CHOICES_MAX} values"));
+            }
+            for (i, c) in choices.iter().enumerate() {
+                if !setting_text_ok(c, WIDGET_SETTINGS_VALUE_MAX) {
+                    return Err(format!("`settings[{n}].choices[{i}]` is empty or too long"));
+                }
+                if choices[..i].contains(c) {
+                    return Err(format!("`settings[{n}].choices` repeats `{c}`"));
+                }
+            }
+            if default.is_empty() {
+                default = choices[0].clone();
+            } else if !choices.contains(&default) {
+                return Err(format!("`settings[{n}].default` is not one of its choices"));
+            }
+        }
+        out.push(WidgetSetting {
+            key,
+            label,
+            kind,
+            default,
+            choices: std::mem::take(&mut choices),
+            icon: ystr(item, "icon"),
+        });
+    }
+    Ok(out)
+}
+
 /// Reads a `package.yaml`. Unknown top-level keys are kept out and are not an error (forward compatibility).
 pub fn widget_package_parse(text: &str) -> Result<WidgetPackage, String> {
     if text.len() > WIDGET_PKG_MANIFEST_MAX {
@@ -523,6 +639,7 @@ pub fn widget_package_parse(text: &str) -> Result<WidgetPackage, String> {
         platforms: if y.get("platforms").is_none() { vec!["all".to_string()] } else { ylist(&y, "platforms")? },
         repository: ystr(&y, "repository"),
         capabilities: ylist(&y, "capabilities")?,
+        settings: ysettings(&y)?,
         ..Default::default()
     };
     if let Some(a) = y.get("artifact") {
@@ -650,8 +767,12 @@ pub fn widget_package_validate(p: &WidgetPackage, canvas_w: i32, canvas_h: i32) 
         "native" => return Err(format!("Unknown native widget entry `{}`", p.spec.entry)),
         _ => return Err("`spec.runtime` must be `wasm` or `native`".into()),
     }
-    if !path_ok(&p.artifact.path) || p.artifact.path == "package.yaml" {
-        return Err("`artifact.path` is not a safe relative path".into());
+    if !path_ok(&p.artifact.path)
+        || p.artifact.path == "package.yaml"
+        || p.artifact.path == "state"
+        || p.artifact.path.starts_with("state/")
+    {
+        return Err("`artifact.path` is not a safe relative path (it cannot be package.yaml or inside state/)".into());
     }
     if !sha_ok(&p.artifact.sha256) {
         return Err("`artifact.sha256` is not a SHA-256 digest".into());
@@ -1036,6 +1157,118 @@ pub fn widget_package_rollback(id: &str) -> Result<(), String> {
     widget_package_index_save(&index);
     widget_catalog_invalidate();
     Ok(())
+}
+
+// ---- package settings ----
+
+/// Where a package's setting values live. It is inside the package's state folder, so an update and
+/// a remove that keeps state carry it along; the file is the host's, not the package's artifact.
+pub fn widget_settings_path(id: &str) -> String {
+    format!("{}/state/settings.json", widget_package_dir(id))
+}
+
+/// Every declared setting at its default. A package with no settings has an empty list.
+pub fn widget_settings_defaults(schema: &[WidgetSetting]) -> Vec<(String, String)> {
+    schema.iter().map(|s| (s.key.clone(), s.default.clone())).collect()
+}
+
+/// The value a tap produces: the other side of a toggle, or the next choice (the first for a value
+/// the manifest no longer offers).
+pub fn widget_setting_next(s: &WidgetSetting, current: &str) -> String {
+    match s.kind {
+        WidgetSettingKind::Toggle => (if current == "true" { "false" } else { "true" }).into(),
+        WidgetSettingKind::Choice => {
+            let at = s.choices.iter().position(|c| c == current);
+            match at {
+                Some(i) => s.choices[(i + 1) % s.choices.len()].clone(),
+                None => s.choices.first().cloned().unwrap_or_default(),
+            }
+        }
+    }
+}
+
+/// A package's saved values in its manifest's order. A missing file, a malformed value or a value
+/// this version no longer offers reads as the default; an old key is left out.
+pub fn widget_settings_load(id: &str, schema: &[WidgetSetting]) -> Vec<(String, String)> {
+    let mut out = widget_settings_defaults(schema);
+    if !id_ok(id) {
+        return out;
+    }
+    let Some(data) = read_file_max(&widget_settings_path(id), WIDGET_SETTINGS_FILE_MAX) else { return out };
+    let mut toks = vec![JsonTok::default(); 2048];
+    let n = json_parse(&data, &mut toks);
+    if n < 0 {
+        return out;
+    }
+    let values = json_get(&data, &toks[..n as usize], 0, "values");
+    if values < 0 || toks[values as usize].type_ != JsonType::Object {
+        return out;
+    }
+    for (i, s) in schema.iter().enumerate() {
+        let tok = json_get(&data, &toks[..n as usize], values, &s.key);
+        if tok < 0 {
+            continue;
+        }
+        let mut buf = Vec::new();
+        if !json_string(&data, &toks[tok as usize], &mut buf, WIDGET_SETTINGS_VALUE_MAX + 1) {
+            continue;
+        }
+        let value = String::from_utf8_lossy(&buf);
+        if setting_value_ok(s, &value) {
+            out[i].1 = value.into_owned();
+        }
+    }
+    out
+}
+
+/// Writes setting values atomically under the package's state folder. Keys that are not valid
+/// setting keys are skipped, as are values longer than a choice can hold.
+pub fn widget_settings_save(id: &str, values: &[(String, String)]) -> i32 {
+    if !id_ok(id) {
+        return -1;
+    }
+    let mut body = String::from("{\n  \"version\": 1,\n  \"values\": {");
+    let mut n = 0usize;
+    for (key, value) in values {
+        if !setting_key_ok(key) || value.len() > WIDGET_SETTINGS_VALUE_MAX || value.chars().any(char::is_control) {
+            continue;
+        }
+        if n > 0 {
+            body.push(',');
+        }
+        body.push_str("\n    ");
+        json_escape(key, &mut body);
+        body.push_str(": ");
+        json_escape(value, &mut body);
+        n += 1;
+    }
+    if n > 0 {
+        body.push('\n');
+    }
+    body.push_str("  }\n}\n");
+    let dir = format!("{}/state", widget_package_dir(id));
+    if mkdir_p(&dir) != 0 {
+        return -1;
+    }
+    write_file_atomic(&widget_settings_path(id), body.as_bytes())
+}
+
+/// Removes the saved values, so every setting reads its manifest default again. A missing file is
+/// already reset.
+pub fn widget_settings_clear(id: &str) -> i32 {
+    if !id_ok(id) {
+        return -1;
+    }
+    match std::fs::remove_file(widget_settings_path(id)) {
+        Ok(()) => 0,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(_) => -1,
+    }
+}
+
+/// The value of one setting from a loaded list, or the fallback.
+pub fn widget_setting_value<'a>(values: &'a [(String, String)], key: &str, fallback: &'a str) -> &'a str {
+    values.iter().find(|(k, _)| k == key).map_or(fallback, |(_, v)| v)
 }
 
 // ---- fetching ----
@@ -1428,6 +1661,16 @@ artifact:
   sha256: {sha}
   size: 4
 capabilities: [editor:overlay, storage:widget-local]
+settings:
+  - key: show_percent
+    label: Show percent key
+    type: toggle
+    default: false
+  - key: layout
+    label: Layout
+    type: choice
+    default: large
+    choices: [compact, large]
 spec:
   runtime: wasm
   entry: _start
@@ -1468,12 +1711,82 @@ spec:
             (good.replace("platforms: [all]", "platforms: [kindle-oasis]"), "Unknown platform"),
             (good.replace("capabilities: [editor:overlay, storage:widget-local]", "capabilities: [net]"), "Unknown capability"),
             (good.replace("path: dist/widget.bin", "path: package.yaml"), "safe relative path"),
+            (good.replace("path: dist/widget.bin", "path: state/widget.bin"), "safe relative path"),
             (good.replace("runtime: wasm", "runtime: native"), "Unknown native widget entry"),
         ] {
             let p = widget_package_parse(&bad).unwrap();
             let e = widget_package_validate(&p, 1860, 2480).unwrap_err();
             assert!(e.contains(want), "{e}");
         }
+    }
+
+    #[test]
+    fn a_package_declares_its_settings() {
+        let p = widget_package_parse(&manifest("com.example.test")).unwrap();
+        assert_eq!(p.settings.len(), 2);
+        assert_eq!(p.settings[0].kind, WidgetSettingKind::Toggle);
+        assert_eq!(p.settings[0].default, "false");
+        assert_eq!(p.settings[1].choices, ["compact", "large"]);
+        assert_eq!(p.settings[1].default, "large");
+        assert_eq!(widget_setting_next(&p.settings[0], "false"), "true");
+        assert_eq!(widget_setting_next(&p.settings[1], "large"), "compact");
+        assert_eq!(widget_setting_next(&p.settings[1], "gone"), "compact");
+
+        let good = manifest("com.example.test");
+        for (bad, want) in [
+            (good.replace("type: toggle", "type: switch"), "`toggle` or `choice`"),
+            (good.replace("key: show_percent", "key: Show Percent"), "settings[0].key"),
+            (good.replace("key: layout", "key: show_percent"), "used twice"),
+            (good.replace("default: large", "default: wide"), "not one of its choices"),
+            (good.replace("choices: [compact, large]", "choices: [compact]"), "needs 2"),
+        ] {
+            let e = widget_package_parse(&bad).unwrap_err();
+            assert!(e.contains(want), "{e}");
+        }
+    }
+
+    #[test]
+    fn settings_load_save_and_fall_back_to_defaults() {
+        ui_init(300.0);
+        let root = std::env::temp_dir().join(format!("grimoire-widget-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let m = manifest("com.example.test");
+        let it = widget_package_install(&m, b"test", "https://example.org/p.yaml", 1860, 2480).unwrap();
+        let schema = widget_package_installed_manifest(&it.id).unwrap().settings;
+        let defaults = widget_settings_defaults(&schema);
+        assert_eq!(widget_settings_load(&it.id, &schema), defaults);
+        assert_eq!(widget_settings_save(&it.id, &defaults), 0);
+        assert_eq!(widget_settings_load(&it.id, &schema), defaults);
+
+        let changed = vec![
+            ("show_percent".to_string(), "true".to_string()),
+            ("layout".to_string(), "compact".to_string()),
+        ];
+        assert_eq!(widget_settings_save(&it.id, &changed), 0);
+        assert_eq!(widget_settings_load(&it.id, &schema), changed);
+        assert_eq!(widget_setting_value(&changed, "layout", "large"), "compact");
+        assert_eq!(widget_setting_value(&changed, "missing", "fallback"), "fallback");
+
+        // The state folder carries the values through an update and a remove that keeps state.
+        let m2 = m.replace("version: 1.2.0", "version: 1.3.0");
+        widget_package_install(&m2, b"test", "https://example.org/p.yaml", 1860, 2480).unwrap();
+        assert_eq!(widget_settings_load(&it.id, &schema), changed);
+        widget_package_remove(&it.id, true).unwrap();
+        widget_package_install(&m2, b"test", "https://example.org/p.yaml", 1860, 2480).unwrap();
+        assert_eq!(widget_settings_load(&it.id, &schema), changed);
+        assert_eq!(widget_settings_clear(&it.id), 0);
+        assert_eq!(widget_settings_load(&it.id, &schema), defaults);
+
+        // A hand-edited value the manifest no longer offers reads as its default.
+        std::fs::write(
+            widget_settings_path(&it.id),
+            br#"{"version":1,"values":{"show_percent":"maybe","layout":"wide","old":"x"}}"#,
+        )
+        .unwrap();
+        assert_eq!(widget_settings_load(&it.id, &schema), defaults);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

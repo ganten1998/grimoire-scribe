@@ -93,6 +93,7 @@ size=$(artifact_field size)
 case $path in
     /*) die "artifact.path must be relative" ;;
     package.yaml) die "artifact.path cannot be package.yaml" ;;
+    state|state/*) die "artifact.path cannot be inside state/" ;;
 esac
 case $path in
     *\\*) die "artifact.path cannot contain a backslash" ;;
