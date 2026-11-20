@@ -144,6 +144,9 @@ pub(super) struct SelMode {
     /// covers a stroke can only come after it): the halo is drawn along it, never over erased ink (issue #187)
     visible: HashMap<StrokeId, Option<VisibleRuns>>,
     visible_key: (usize, StrokeId),
+    /// the probe editor.halo_found: how many times the halo found what shows of a stroke itself since the lasso
+    /// began (neither handed over by the preview nor kept from an earlier redraw)
+    halo_found: std::cell::Cell<u32>,
     /// a resize of the selection's box: the corner dragged (0 none, 1 top-left, 2 top-right, 3 bottom-left,
     /// 4 bottom-right), the box it began with, and the box it last drew (page px)
     pub(super) resize_handle: i32,
@@ -936,6 +939,7 @@ fn lasso_begin_at(s: &mut EditorState, px: f32, py: f32, finger: bool, t: u32, d
     s.sel.kept.clear();
     s.sel.plan.clear();
     s.sel.visible.clear();
+    s.sel.halo_found.set(0);
     let pid = s.open_pid();
     let links: Vec<NavLink> = s.nav.links.iter().filter(|l| l.pid == pid).copied().collect();
     s.sel.live = match s.open_page() {
@@ -1325,6 +1329,7 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
         for (st, i, _) in &items {
             if kept(st, *i).is_none() {
                 found.insert(stroke_id(st), stroke_visible_runs(p, floors.as_deref(), st, *i, dpi, &erasers));
+                s.sel.halo_found.set(s.sel.halo_found.get().wrapping_add(1));
             }
         }
     }
@@ -1342,6 +1347,9 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
     }
     let u = rect_intersect(u, rect_intersect(clip, Rect { x: 0, y: 0, w: a.screen.w, h: a.screen.h }));
     if rect_is_empty(u) {
+        // (what it found is kept all the same: a selection of ink erased wholly draws nothing, and finding it
+        // again at every redraw cost tens of ms each)
+        keep_found(&mut ed(a).sel, key, found);
         return;
     }
     let halo = halo_px();
@@ -1460,6 +1468,11 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
     if m.state == SelState::Dragging {
         m.dv.inked += 1; // (the probe: a drag that moves draws none, but where its first move takes the outline away)
     }
+    keep_found(m, key, found);
+}
+
+/// What sel_draw_halo found of a selection's strokes, kept in sel.visible for the page as it is (visible_key).
+fn keep_found(m: &mut SelMode, key: (usize, StrokeId), found: HashMap<StrokeId, Option<VisibleRuns>>) {
     if !found.is_empty() && matches!(m.state, SelState::Selected | SelState::Dragging) {
         if m.visible_key != key {
             m.visible.clear();
@@ -2849,9 +2862,11 @@ pub(super) fn sel_probe(a: &App, key: &str) -> Option<String> {
         "layered" => (s.open_page().is_some_and(page_layered) as i32).to_string(),
         "lasso_ms" => format!("{} {}", s.last_lasso_ms.0, s.last_lasso_ms.1),
         // the live preview: the strokes with a halo now (the preview's while a lasso is drawn, the selection's
-        // after), the last lasso's batches and fast refreshes, whether its lift reused the preview's answer,
-        // and whether the lift's redraw covered every preview refresh
+        // after), how many times the halo found what shows of a stroke since the lasso began (SelMode.halo_found),
+        // the last lasso's batches and fast refreshes, whether its lift reused the preview's answer, and whether
+        // the lift's redraw covered every preview refresh
         "halo" => halo_count(s, a.dpi).to_string(),
+        "halo_found" => s.sel.halo_found.get().to_string(),
         "preview_batches" => s.sel.preview_batches.to_string(),
         "preview_refreshes" => s.sel.preview_refreshes.to_string(),
         "preview_reused" => (s.sel.preview_reused as i32).to_string(),

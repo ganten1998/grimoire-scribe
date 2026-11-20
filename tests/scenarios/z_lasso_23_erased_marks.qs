@@ -167,4 +167,44 @@ tap panel select.done
 wait 300
 expect display.dark.420.900.440.100 is 0
 expect editor.live_matches_render is 1
+# the erased word alone selected and moved: what shows of it (nothing) is found once at its new place and kept,
+# not found again at every redraw while the selection lasts (a page of such ink took tens of ms a redraw)
+tap panel tool-picker
+wait 100
+tap panel picker.select
+wait 100
+pen down 330 870
+pen move 950 870
+pen move 950 1030
+wait 200
+pen move 330 1030
+wait 200
+pen up 330 880
+wait 300
+expect editor.select is selected
+expect editor.selected is 1
+expect editor.preview_reused is 1
+expect editor.halo_found is 0
+expect editor.sel_box is 360 895 536 111
+pen down 640 950
+pen move 640 990
+wait 150
+pen move 640 1030
+wait 150
+pen up 640 1030
+wait 600
+expect editor.select is selected
+expect editor.undo_kind is lasso
+expect editor.sel_box is 360 975 536 111
+expect editor.halo is 0
+expect editor.halo_found is 1
+# (the tool picker over it, and gone: the selection drawn again)
+tap panel tool-picker
+wait 300
+tap panel tool-picker
+wait 300
+expect editor.select is selected
+expect editor.halo_found is 1
+expect display.dark.420.990.440.80 is 0
+expect editor.live_matches_render is 1
 quit
