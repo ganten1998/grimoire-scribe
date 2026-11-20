@@ -2992,7 +2992,12 @@ answered). The two floors of free room beside it are set from step 1's answers.
     every font is checked once more, as after `rm -r /var/local/grimoire` (step 9), and the font comes back. `ls -ld
     /var/local/grimoire*`: the folder made afresh as in step 3, the one mkdir made under
     `grimoire.not-own-<seconds>-<pid>` with its mode as it was and nothing in it, and `grimoire.test`. A second
-    start moves nothing. Then, with Grimoire closed, `rm -r /var/local/grimoire.not-own-* /var/local/grimoire.test`.
+    start moves nothing. Once a run: with Grimoire running, `mv /var/local/grimoire /var/local/grimoire.test2 &&
+    mkdir -m 775 /var/local/grimoire`, then copy a font that is not there yet into `grimoire/fonts`. Nothing more
+    is moved aside: grimoire.log has `cannot be kept (it is not Grimoire's own)` and `no font is checked until
+    Grimoire starts again`, once each, and that font's row says "Unreadable font.". The next start moves the folder
+    aside and checks every font once more. Then, with Grimoire closed, `rm -r /var/local/grimoire.not-own-*
+    /var/local/grimoire.test /var/local/grimoire.test2`.
 
 ## 2.2, From a file... and Use as template (issue #146): device checks
 

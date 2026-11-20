@@ -150,7 +150,7 @@ fn key_of(rel: &str, size: u64, mtime: i64) -> u64 {
 /// a verdict for this size and time and passed: one small file of the check's own, read where the verdicts are
 /// kept and counted only with its companion (`verdict_for`), no font read here. None else.
 pub fn userfont_family(rel: &str, size: u64, mtime: i64) -> Option<String> {
-    let vd = VerdictDir::open(false).ok()?;
+    let vd = VerdictDir::open(false, false).ok()?;
     match verdict_for(&vd, key_of(rel, size, mtime), size)? {
         Verdict { what: VerdictKind::Passed(facts), .. } if !facts.family.is_empty() => Some(facts.family),
         _ => None,
@@ -329,8 +329,16 @@ fn own_dir_at(at: &OwnedFd, name: &str, make: bool) -> Result<OwnedFd, &'static 
     }
 }
 
+/// The mark at the head of a FontCheck job's argument that gives that check leave to make Grimoire's own folder
+/// itself (`VerdictDir::open`'s `afresh`): to make it when it is missing, and to move aside an entry at its name
+/// that is not Grimoire's own (`base_afresh`). The UI gives it to the first check of a run alone (`queue_check`),
+/// from its own memory: a later check of the run needs the folder there and Grimoire's own, or keeps nothing (6,
+/// and the session checks no more fonts). So whatever a writer of the parent does, a run moves an entry aside at
+/// most once, and makes the folder at most once.
+pub const USERFONTS_AFRESH: &str = "afresh:";
+
 /// Whether this process has tried to move an entry aside from the name of Grimoire's own folder (`base_afresh`):
-/// it tries at most once.
+/// it tries at most once (and only a check given leave, USERFONTS_AFRESH, tries at all).
 static MOVED_ASIDE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The name an entry that stood at the name of Grimoire's own folder is moved aside to, in the same folder: that
@@ -366,16 +374,18 @@ pub fn userfonts_aside_seam(f: Option<AsideSeam>) {
     *ASIDE_SEAM.lock().unwrap_or_else(|e| e.into_inner()) = f;
 }
 
-/// Tests (never the Kindle's build): this process may move an entry aside once more, as a fresh process may.
+/// Tests (never the Kindle's build): this process may move an entry aside once more, as a fresh process may, and
+/// the next check the UI queues is the first of a run again (USERFONTS_AFRESH).
 #[cfg(any(test, feature = "sim"))]
 pub fn userfonts_aside_reset() {
     MOVED_ASIDE.store(false, std::sync::atomic::Ordering::Relaxed);
+    with(|st| st.afresh_given = false);
 }
 
 /// The entry at `name` in `parent`, the name of Grimoire's own folder, did not pass `own_dir_at`. When it is not a
 /// folder of this user's that no one else may write (a link, a file, a pipe, a folder of another user or one others
-/// may write), the job moves it aside within the parent (`aside_name`) and makes the folder afresh, at most once in
-/// a process. The entry is renamed by descriptor as it stands: never followed, opened, read, listed or deleted; the
+/// may write), the job moves it aside within the parent (`aside_name`) and makes the folder afresh: only the first
+/// check of a run gets here (USERFONTS_AFRESH), and a process tries at most once. The entry is renamed by descriptor as it stands: never followed, opened, read, listed or deleted; the
 /// rename never replaces an entry. Its kind, owner and mode are logged, never its name or what is in it. The fresh
 /// folder is made, opened and held to `own_dir` as every folder of Grimoire's own is, and holds no verdict: every
 /// font is checked once more. When the move fails, or the fresh folder is not Grimoire's own either (another entry
@@ -522,16 +532,18 @@ impl VerdictDir {
     /// Opens the folder, or says why not. In Grimoire's own folder the walk goes name by name from the base's
     /// parent, which is the system's: the base, this data root's folder (`root_tag`) and its `fonts`, each made
     /// when `make` (the job alone asks; the UI makes nothing there and writes no file's text: it only renames a
-    /// verdict to the key of a file renamed in Files), opened without following a link, and held to
+    /// verdict to the key of a file renamed in Files), the base itself only when `afresh` too (the first check
+    /// of a run, USERFONTS_AFRESH), opened without following a link, and held to
     /// be this user's with no write bit for anyone else. The test asks who can write a folder: one that is
     /// there and that others can read is taken, and only the folders made here are 0700. The parent itself is
     /// opened by its path and held to nothing: what stands at the base's name must pass the test whoever put
     /// it there, so a parent that others can write cannot supply a verdict. When what stands there does not
-    /// pass, the job moves it aside and makes the base afresh, once in a process (`base_afresh`), so such a
-    /// parent costs one more check of every font. The folders below the base are the base's own, which no one
+    /// pass, the first check of a run moves it aside and makes the base afresh (`base_afresh`), so such a
+    /// parent costs at most one more check of every font a run; a later check of the run finds the base gone
+    /// or not Grimoire's own and keeps nothing. The folders below the base are the base's own, which no one
     /// else can write: one of them that does not pass is not moved. In the cache: the folder made when `make`,
     /// as the job always made it, then opened; no owner and no mode is asked of it.
-    fn open(make: bool) -> Result<VerdictDir, &'static str> {
+    fn open(make: bool, afresh: bool) -> Result<VerdictDir, &'static str> {
         let Some(base) = state_base() else {
             let cache = cache_dir();
             if make && (!no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0) {
@@ -547,9 +559,10 @@ impl VerdictDir {
         let Some((parent, name)) = base.rsplit_once('/').filter(|(_, n)| !n.is_empty() && *n != "." && *n != "..") else { return Err(NOT_MADE) };
         let parent = open_dir(if parent.is_empty() { "/" } else { parent }, false).ok_or(NOT_THERE)?;
         // (never util::mkdir_p here: it takes any name that is there as made, and makes folders others can read)
-        let base = match own_dir_at(&parent, name, make) {
-            // (the job alone, which makes the folder, moves aside what is at its name)
-            Err(NOT_OWN) if make => base_afresh(&parent, name)?,
+        let afresh = make && afresh;
+        let base = match own_dir_at(&parent, name, afresh) {
+            // (the first check of a run alone, which may make the folder, moves aside what is at its name)
+            Err(NOT_OWN) if afresh => base_afresh(&parent, name)?,
             r => r?,
         };
         let tag = own_dir_at(&base, &root_tag(&store_root()), make)?;
@@ -664,7 +677,7 @@ pub fn userfonts_renamed(old: &str, new: &str) {
     } else {
         keys.push((key_of(old, s.size, s.mtime), key_of(new, s.size, s.mtime)));
     }
-    let vd = VerdictDir::open(false).ok();
+    let vd = VerdictDir::open(false, false).ok();
     let cache = no_link_below(&store_root(), &cache_dir());
     let mut carried = 0;
     for (from, to) in keys.into_iter().filter(|(from, to)| from != to) {
@@ -681,7 +694,7 @@ pub fn userfonts_renamed(old: &str, new: &str) {
 /// The names of the verdicts kept (none when their folder cannot be opened: every font is then "checking",
 /// and the job says why).
 fn verdict_names() -> HashSet<String> {
-    VerdictDir::open(false).map(|vd| vd.names()).unwrap_or_default()
+    VerdictDir::open(false, false).map(|vd| vd.names()).unwrap_or_default()
 }
 
 /// The job's upkeep of Grimoire's own folder: this data root's folder names its root (the file `root`: the
@@ -889,6 +902,9 @@ struct State {
     /// a font was copied into the folder (`userfonts_added`): when the folder is looked at for it. Until then no
     /// look at the folder is queued: the file would only be found too young (bg_font_check) and left for later
     added_ms: Option<u32>,
+    /// the first check of this run was given leave to make Grimoire's own folder, or make it afresh
+    /// (USERFONTS_AFRESH): no later check of the run is
+    afresh_given: bool,
 }
 
 /// Checks in a row that end with no verdict before the session stops asking (H8: no check forked 29 times a
@@ -1237,7 +1253,7 @@ pub fn userfont_resolve(f: &mut UserFont) {
     if f.state != UserFontState::Checked {
         return;
     }
-    f.state = match VerdictDir::open(false).ok().and_then(|vd| verdict_for(&vd, f.key, f.size)) {
+    f.state = match VerdictDir::open(false, false).ok().and_then(|vd| verdict_for(&vd, f.key, f.size)) {
         Some(v) => match v.what {
             VerdictKind::Passed(facts) => UserFontState::Ready(Rc::new(facts), v.hash),
             VerdictKind::Refused(Refuse::Unreadable) => UserFontState::No(FontWhy::Unreadable),
@@ -1271,7 +1287,10 @@ fn queue_check(arg: &str, dpi: f32) {
     }
     // (the first check of a look is what the user waits on; the rest of its fonts are one job each, behind
     // exports, previews and the slices of a PDF import: userfonts_job_done)
-    bg_queue(BgKind::FontCheck, Some(""), Some(arg), dpi, arg != "next");
+    let notify = arg != "next";
+    // (the first check of a run alone may make Grimoire's own folder, or make it afresh: USERFONTS_AFRESH)
+    let arg = if with(|st| !std::mem::replace(&mut st.afresh_given, true)) { format!("{USERFONTS_AFRESH}{arg}") } else { arg.to_string() };
+    bg_queue(BgKind::FontCheck, Some(""), Some(&arg), dpi, notify);
 }
 
 /// A check ended with no verdict for what was wanted: the next one waits (backoff), and a few in a row stop
@@ -1456,7 +1475,7 @@ fn load_file(st: &FsStorage, rel: &str, dpi: f32, room: usize) -> Result<Loaded,
     if name_kind(rel.rsplit('/').next().unwrap_or("")) != NameKind::Font || l.size == 0 || l.size > FONT_FILE_MAX as u64 || guard_out(l.key) {
         return Err(LoadErr::Refused);
     }
-    let Some(v) = VerdictDir::open(false).ok().and_then(|vd| verdict_for(&vd, l.key, l.size)) else {
+    let Some(v) = VerdictDir::open(false, false).ok().and_then(|vd| verdict_for(&vd, l.key, l.size)) else {
         let bad = std::path::Path::new(&cache_file(l.key, "bad")).exists();
         if bad {
             return Err(LoadErr::Refused);
@@ -1486,7 +1505,7 @@ fn pair_of(rel: &str, facts: &FaceFacts) -> Option<String> {
     }
     let folder = |r: &str| r.rfind('/').map_or(String::new(), |i| r[..i].to_string());
     let (files, _) = list_fonts();
-    let vd = VerdictDir::open(false).ok()?;
+    let vd = VerdictDir::open(false, false).ok()?;
     let mut best: Option<(i32, String)> = None;
     for l in files.iter().filter(|l| l.rel != rel && folder(&l.rel) == folder(rel) && l.size <= FONT_FILE_MAX as u64) {
         let Some(Verdict { what: VerdictKind::Passed(f), .. }) = verdict_for(&vd, l.key, l.size) else { continue };
@@ -1848,19 +1867,21 @@ fn write_cache(path: &str, data: &[u8]) -> bool {
 /// BgKind::FontCheck, in the background child: every font file of grimoire/fonts that has no verdict yet is
 /// read whole and checked by the sandboxed worker (fontcheck.rs), one after another, its preview (or its
 /// `.no`) written to the cache and its verdict to where verdicts are kept (`VerdictDir`). `arg` is "" or
-/// "recheck:<key>" (that file's verdict is stale: it is checked again). `dpi` sizes the preview. Returns 0
+/// "recheck:<key>" (that file's verdict is stale: it is checked again), with USERFONTS_AFRESH at its head for the
+/// first check of a run (it may make Grimoire's own folder, or make it afresh). `dpi` sizes the preview. Returns 0
 /// done, 3 some files wait (still being copied, no memory now, or left for their second try), 4 no worker can
 /// be had (nothing is marked), 5 one font was checked and more are left for the next job, 6 what a check finds
 /// cannot be kept (Grimoire's own folder cannot be used, has too little room or takes no write: nothing is
 /// checked and nothing is marked), -1 it could not start, or a mark, a companion or a verdict could not be
 /// written.
 pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
+    let (afresh, arg) = arg.strip_prefix(USERFONTS_AFRESH).map_or((false, arg), |a| (true, a));
     let cache = cache_dir();
     // (its files are written and stale entries deleted there as root: never through a planted link)
     if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {
         return -1;
     }
-    let vd = match VerdictDir::open(true) {
+    let vd = match VerdictDir::open(true, afresh) {
         Ok(vd) => vd,
         Err(why) if state_base().is_some() => {
             // (before any worker starts and before any mark is written; the folder's path is never logged)

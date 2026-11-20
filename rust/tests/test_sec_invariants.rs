@@ -269,25 +269,35 @@ fn the_docs_follow_the_font_checks_verdicts_and_limits() {
 
 // Grimoire's own folder on the Kindle (issue #201): what stands at its name and is not Grimoire's own is moved aside
 // and the folder made afresh. Each rule sentence of the documents is held with the line of userfonts.rs that makes
-// it true: the job alone moves, at the first level only, at most once a process, to a name of Grimoire's own, by a
-// rename that never replaces an entry, looking at the entry without following it. The sentence that says what is
-// never done to the entry is held with the whole function that moves it, so that any change to that function has
+// it true: the job alone moves, at the first level only, at most once a run (the UI gives the first check of a run
+// alone leave to make the folder, or make it afresh, and a later check makes nothing), to a name of Grimoire's own,
+// by a rename that never replaces an entry, looking at the entry without following it. The sentence that says what
+// is never done to the entry is held with the whole function that moves it, so that any change to that function has
 // the sentence read again. The floors of free room stand on the Scribe's answers and are no longer placeholders.
 #[test]
 fn the_docs_follow_the_own_folders_move_aside() {
     let mut fails = Vec::new();
-    let at_base = "Err(NOT_OWN) if make => base_afresh(&parent, name)?,";
+    let at_base = "Err(NOT_OWN) if afresh => base_afresh(&parent, name)?,";
     let below = "let tag = own_dir_at(&base, &root_tag(&store_root()), make)?;";
     let name = "format!(\"{name}.not-own-{secs}-{pid}\")";
-    let once = "MOVED_ASIDE.swap(true, std::sync::atomic::Ordering::Relaxed)";
+    let run = "let arg = if with(|st| !std::mem::replace(&mut st.afresh_given, true)) { format!(\"{USERFONTS_AFRESH}{arg}\") } else { arg.to_string() };";
+    let made = "let base = match own_dir_at(&parent, name, afresh) {";
     let line = "it is moved aside as it was, and the folder is made afresh; every font is checked once more";
-    told_on(&mut fails, DESIGN, "Grimoire never relies on the parent (`/var/local` on the Kindle): when the entry at the own folder's name is not Grimoire's own, the job moves it aside within the parent", USERFONTS, at_base);
+    told_on(&mut fails, DESIGN, "Grimoire never relies on the parent (`/var/local` on the Kindle): when the entry at the own folder's name is not Grimoire's own, the first check of a run moves it aside within the parent", USERFONTS, at_base);
     told_on(&mut fails, TESTING, "Grimoire never relies on /var/local itself: it tests its own folder at every open and moves aside an entry at its name that is not its own", USERFONTS, at_base);
-    told_on(&mut fails, KINDLE, "When the entry at `/var/local/grimoire` is not Grimoire's own (a link, a file, or a folder of another user or that others can write), the next check moves it aside as it is, never opened", USERFONTS, at_base);
+    told_on(&mut fails, KINDLE, "When the entry at `/var/local/grimoire` is not Grimoire's own (a link, a file, or a folder of another user or that others can write), the first check after Grimoire starts moves it aside as it is, never opened", USERFONTS, at_base);
     told_on(&mut fails, DESIGN, "The folders below the own folder are its own, which no one else can write, and are never moved.", USERFONTS, below);
-    told_on(&mut fails, DESIGN, "to `grimoire.not-own-<seconds>-<pid>`, and makes the folder afresh, at most once a process", USERFONTS, name);
-    told_on(&mut fails, DESIGN, "at most once a process (the app forks one for each job)", USERFONTS, once);
+    told_on(&mut fails, DESIGN, "to `grimoire.not-own-<seconds>-<pid>`, and makes the folder afresh, at most once a run", USERFONTS, name);
     told_on(&mut fails, KINDLE, "to `/var/local/grimoire.not-own-<seconds>-<pid>`, and makes the folder afresh", USERFONTS, name);
+    // once a run: the UI's leave, from its memory, for the first check of a run alone; a later check makes nothing
+    told_on(&mut fails, DESIGN, "gives the first check of a run alone leave to make the own folder or make it afresh, from its own memory, never from a file", USERFONTS, run);
+    told_on(&mut fails, DESIGN, "(the own folder itself by the first check of a run alone)", USERFONTS, made);
+    told_on(&mut fails, DESIGN, "or, after the first check of a run, it is gone or not Grimoire's own", USERFONTS, made);
+    let later = "That is done once a run: a later check of the same run that finds such an entry there, or nothing, keeps nothing, and no font is checked until Grimoire starts again.";
+    told_on(&mut fails, KINDLE, later, USERFONTS, run);
+    told_on(&mut fails, KINDLE, later, USERFONTS, made);
+    told_on(&mut fails, KINDLE, "at most once a run, by its first check, which then goes on in the fresh folder", USERFONTS, run);
+    told_on(&mut fails, TESTING, "Once a run: with Grimoire running", USERFONTS, run);
     told_on(&mut fails, DESIGN, "by a rename that never replaces an entry", USERFONTS, "rename_noreplace(parent.as_raw_fd(), &c, parent.as_raw_fd(), &to)");
     told_on(&mut fails, DESIGN, "and is never followed, opened, read, listed or deleted", USERFONTS, "libc::fstatat(parent.as_raw_fd(), c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW)");
     told_on_code(&mut fails, DESIGN, "The entry is renamed by descriptor as it stands, by a rename that never replaces an entry, and is never followed, opened, read, listed or deleted; its kind, owner and mode are logged.", USERFONTS, "fn base_afresh(", BASE_AFRESH);
@@ -808,7 +818,7 @@ fn a_font_added_from_a_file_is_told_as_it_is() {
     // passing verdict's, and guarded_face, the one maker of a face from them. A preview of it in Files' Covers view
     // is the sandboxed worker's sample (font_preview, by font_sample's worker). Those sentences are held with that
     // code; the words that said a copied font is "not sampled" and has "no preview" are gone (Covers makes one).
-    const LOAD_FILE: &str = r#"fn load_file(st: &FsStorage, rel: &str, dpi: f32, room: usize) -> Result<Loaded, LoadErr> { if !userfont_rel_ok(rel) { return Err(LoadErr::Missing); } let sp = StoragePath::new(rel.as_bytes()).ok_or(LoadErr::Missing)?; let s = st.stat(&sp, false).map_err(|_| LoadErr::Missing)?; let l = Listed { rel: rel.to_string(), size: s.size, mtime: s.mtime, key: key_of(rel, s.size, s.mtime) }; if name_kind(rel.rsplit('/').next().unwrap_or("")) != NameKind::Font || l.size == 0 || l.size > FONT_FILE_MAX as u64 || guard_out(l.key) { return Err(LoadErr::Refused); } let Some(v) = VerdictDir::open(false).ok().and_then(|vd| verdict_for(&vd, l.key, l.size)) else { let bad = std::path::Path::new(&cache_file(l.key, "bad")).exists(); if bad { return Err(LoadErr::Refused); } queue_check("", dpi); return Err(LoadErr::Checking); }; let VerdictKind::Passed(facts) = v.what else { return Err(LoadErr::Refused) }; if l.size as usize > room { return Err(LoadErr::Memory); } let data = read_listed(st, &l).ok_or(LoadErr::Missing)?; if font_hash(&data) != v.hash { qlog!("font: a font file is not the one that was checked: checking it again"); queue_check(&format!("recheck:{:016x}", l.key), dpi); return Err(LoadErr::Checking); } Ok(Loaded { data: Rc::new(data), facts: Rc::new(facts), key: l.key }) }"#;
+    const LOAD_FILE: &str = r#"fn load_file(st: &FsStorage, rel: &str, dpi: f32, room: usize) -> Result<Loaded, LoadErr> { if !userfont_rel_ok(rel) { return Err(LoadErr::Missing); } let sp = StoragePath::new(rel.as_bytes()).ok_or(LoadErr::Missing)?; let s = st.stat(&sp, false).map_err(|_| LoadErr::Missing)?; let l = Listed { rel: rel.to_string(), size: s.size, mtime: s.mtime, key: key_of(rel, s.size, s.mtime) }; if name_kind(rel.rsplit('/').next().unwrap_or("")) != NameKind::Font || l.size == 0 || l.size > FONT_FILE_MAX as u64 || guard_out(l.key) { return Err(LoadErr::Refused); } let Some(v) = VerdictDir::open(false, false).ok().and_then(|vd| verdict_for(&vd, l.key, l.size)) else { let bad = std::path::Path::new(&cache_file(l.key, "bad")).exists(); if bad { return Err(LoadErr::Refused); } queue_check("", dpi); return Err(LoadErr::Checking); }; let VerdictKind::Passed(facts) = v.what else { return Err(LoadErr::Refused) }; if l.size as usize > room { return Err(LoadErr::Memory); } let data = read_listed(st, &l).ok_or(LoadErr::Missing)?; if font_hash(&data) != v.hash { qlog!("font: a font file is not the one that was checked: checking it again"); queue_check(&format!("recheck:{:016x}", l.key), dpi); return Err(LoadErr::Checking); } Ok(Loaded { data: Rc::new(data), facts: Rc::new(facts), key: l.key }) }"#;
     const GUARDED_FACE: &str = r#"fn guarded_face(l: &Loaded, bold: bool) -> Option<SafeFace> { if !guard_arm_keys(&[l.key]) { qlog!("font: the guard's mark could not be written: your font is not used"); return None; } let face = SafeFace::new(l.data.clone(), l.facts.clone(), bold); if face.is_none() && !bold { guard_disarm_keys(&[l.key]); } face }"#;
     const FONT_PREVIEW: &str = r#"fn font_preview(data: &[u8]) -> Result<Canvas, Fail> { use crate::fontcheck::*; match font_sample(data, PREVIEW_W, PREVIEW_H, mono_ms() + preview_limit_ms(PreviewKind::Font)) { Ok(px) => gray_of(&px, PREVIEW_W, PREVIEW_H, 1), Err(FontOut::Refused(_)) => Err(Fail::Refused), Err(FontOut::Slow | FontOut::SlowGlyphs { .. }) => Err(Fail::Strike(NoPreview::Slow)), Err(FontOut::Dead(_)) => Err(Fail::Strike(NoPreview::Ended)), Err(FontOut::NoWorker(_)) => Err(Fail::Later(NO_WORKER)), Err(_) => Err(Fail::Later("out of memory")), } }"#;
     let covers = "a preview of it in Files' Covers view is made by the sandboxed worker, as for any font in Files (issue #145)";

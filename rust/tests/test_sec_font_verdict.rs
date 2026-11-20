@@ -127,13 +127,17 @@ fn put(root: &str, rel: &str, bytes: &[u8]) {
     std::fs::write(format!("{root}/fonts/{rel}"), bytes).unwrap();
 }
 
-/// The job in this process, as the background child runs it: one font a job, until none is left (5: more).
+/// The job in this process, as the background child runs it: one font a job, until none is left (5: more). The
+/// first is given leave to make Grimoire's own folder, or make it afresh, as the first check of a run is
+/// (USERFONTS_AFRESH); the ones after it are not, as the app's next jobs are not.
 fn job() -> i32 {
+    let mut arg = USERFONTS_AFRESH.to_string();
     loop {
-        let rc = bg_font_check("", 300.0);
+        let rc = bg_font_check(&arg, 300.0);
         if rc != 5 {
             return rc;
         }
+        arg = "next".to_string();
     }
 }
 
@@ -901,12 +905,13 @@ fn what_is_not_grimoires_own_is_moved_aside() {
     }
 }
 
-// At most once in a process: after a move aside, what stands at the name and is not Grimoire's own again (the fresh
-// folder renamed away and a folder others can write put in its place) is not moved by that process. Nothing is
-// kept (6, as for any folder that is not Grimoire's own), and the entry stays as it is. The next process (the app
-// forks one for each job) moves it, and checks the font once more; but never onto a name that is taken: with an
-// empty folder at every name it could take in the next seconds (one a plain rename of a folder would replace), it
-// gives up and they are as they were.
+// At most once in a process too, even with leave (USERFONTS_AFRESH): after a move aside, what stands at the name
+// and is not Grimoire's own again (the fresh folder renamed away and a folder others can write put in its place) is
+// not moved by that process. Nothing is kept (6, as for any folder that is not Grimoire's own), and the entry stays
+// as it is. A fresh process given leave moves it, and checks the font once more; but never onto a name that is
+// taken: with an empty folder at every name it could take in the next seconds (one a plain rename of a folder would
+// replace), it gives up and they are as they were. (The app gives that leave to the first check of a run alone:
+// `a_run_makes_its_own_folder_afresh_once`.)
 fn moved_aside_at_most_once_a_process() {
     clean_env();
     let r = root("aside-once");
@@ -922,7 +927,7 @@ fn moved_aside_at_most_once_a_process() {
     let was = entry(&state);
     let cache = format!("{r}/fonts/.cache");
     let cache_before = names(&cache);
-    let (rc, text) = with_log(&format!("{r}/once.log"), || bg_font_check("", 300.0));
+    let (rc, text) = with_log(&format!("{r}/once.log"), || bg_font_check(USERFONTS_AFRESH, 300.0));
     check!(rc == 6);
     check!(text.contains("fonts: what the check finds cannot be kept (it is not Grimoire's own); nothing is marked"));
     check!(!text.contains("moved aside"));
@@ -937,7 +942,7 @@ fn moved_aside_at_most_once_a_process() {
     }
     let all_before: Vec<Option<Entry>> = names(&parent).iter().map(|n| entry(&format!("{parent}/{n}"))).collect();
     userfonts_aside_reset();
-    let (rc, text) = with_log(&format!("{r}/once.log"), || bg_font_check("", 300.0));
+    let (rc, text) = with_log(&format!("{r}/once.log"), || bg_font_check(USERFONTS_AFRESH, 300.0));
     check!(rc == 6 && text.contains(") and cannot be moved aside (File exists)") && !text.contains("moved aside as it was"));
     check!(names(&parent).iter().map(|n| entry(&format!("{parent}/{n}"))).collect::<Vec<_>>() == all_before);
     for d in &decoys {
@@ -971,7 +976,7 @@ fn an_entry_back_at_once_is_not_moved_again() {
         std::fs::create_dir(&again).unwrap();
         std::fs::set_permissions(&again, std::fs::Permissions::from_mode(0o777)).unwrap();
     })));
-    let (rc, text) = with_log(&format!("{r}/race.log"), || bg_font_check("", 300.0));
+    let (rc, text) = with_log(&format!("{r}/race.log"), || bg_font_check(USERFONTS_AFRESH, 300.0));
     userfonts_aside_seam(None);
     check!(rc == 6);
     check!(text.matches(MOVED).count() == 1);
@@ -1001,7 +1006,7 @@ fn a_parent_that_takes_no_write_moves_nothing() {
     chmod(&state, 0o775);
     let (was, before) = (entry(&state), names(&parent));
     chmod(&parent, 0o555);
-    let (rc, text) = with_log(&format!("{r}/nowrite.log"), || bg_font_check("", 300.0));
+    let (rc, text) = with_log(&format!("{r}/nowrite.log"), || bg_font_check(USERFONTS_AFRESH, 300.0));
     chmod(&parent, 0o755);
     check!(rc == 6);
     check!(text.contains(&format!("fonts: the entry at the name of Grimoire's own folder is not its own (a folder, owner {uid}, mode 0775) and cannot be moved aside (")));
@@ -1011,7 +1016,7 @@ fn a_parent_that_takes_no_write_moves_nothing() {
     remove_any(&state);
     userfonts_aside_reset();
     chmod(&parent, 0o555);
-    let (rc, text) = with_log(&format!("{r}/nowrite.log"), || bg_font_check("", 300.0));
+    let (rc, text) = with_log(&format!("{r}/nowrite.log"), || bg_font_check(USERFONTS_AFRESH, 300.0));
     chmod(&parent, 0o755);
     check!(rc == 6);
     check!(text.contains("fonts: what the check finds cannot be kept (it cannot be made); nothing is marked"));
@@ -1043,6 +1048,127 @@ fn the_app_moves_aside_what_is_not_its_own() {
     remove_any(&parent);
 }
 
+// At most once a run: the UI gives the first check of a run alone leave to make Grimoire's own folder, or make it
+// afresh (USERFONTS_AFRESH). The run's first look queues a check (forked, as the app forks it) that moves aside the
+// folder others can write at the name and checks the font in the fresh folder. With such a folder at the name again,
+// and then with nothing there, the run's later checks keep nothing (6): they move nothing, make nothing, mark nothing,
+// and say why. The next run (the UI's memory starts afresh) moves it aside once more and checks the font again.
+fn a_run_makes_its_own_folder_afresh_once() {
+    clean_env();
+    let r = root("aside-run");
+    let (parent, state) = own_parent("aside-run");
+    put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o775);
+    let log = format!("{r}/run.log");
+    let (rc, text) = with_log(&log, || {
+        let _ = userfonts_scan(300.0);
+        wait_job()
+    });
+    check!(rc == 0 && text.matches(MOVED).count() == 1 && text.contains("fonts: file 1 of 1 passed"));
+    check!(asides(&parent).len() == 1 && mode_of(&state) == 0o700);
+    // (a later check of the run, queued by a load that finds no verdict)
+    let later = || {
+        check!(userfonts_try_load("Mine.ttf", "") == Err(LoadErr::Checking));
+        wait_job()
+    };
+    std::fs::rename(&state, format!("{parent}/away")).unwrap();
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o775);
+    let (was, cache_before) = (entry(&state), names(&format!("{r}/fonts/.cache")));
+    let (rc, text) = with_log(&log, &later);
+    check!(rc == 6 && !text.contains("moved aside"));
+    check!(text.contains("fonts: what the check finds cannot be kept (it is not Grimoire's own); nothing is marked"));
+    check!(asides(&parent).len() == 1 && entry(&state) == was);
+    remove_any(&state);
+    let (rc, text) = with_log(&log, &later);
+    check!(rc == 6 && text.contains("fonts: what the check finds cannot be kept (it is not there); nothing is marked"));
+    check!(std::fs::symlink_metadata(&state).is_err() && asides(&parent).len() == 1);
+    check!(names(&format!("{r}/fonts/.cache")) == cache_before);
+    // the next run
+    remove_any(&state);
+    std::fs::create_dir(&state).unwrap();
+    chmod(&state, 0o775);
+    userfonts_aside_reset();
+    let (rc, text) = with_log(&log, &later);
+    check!(rc == 0 && text.matches(MOVED).count() == 1 && text.contains("fonts: file 1 of 1 passed"));
+    check!(asides(&parent).len() == 2 && mode_of(&state) == 0o700);
+    check!(loads("Mine.ttf") == Ok("overprint"));
+    remove_any(&parent);
+}
+
+/// A writer of the parent that is never Grimoire, racing the app (the review's helper of issue #201): whenever a
+/// folder of Grimoire's own (0700) stands at the name it renames it away and, when `plant`, puts a folder others can
+/// write in its place. It runs until `stop`; how many folders it took.
+fn racer(parent: String, plant: bool, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) -> std::thread::JoinHandle<u32> {
+    std::thread::spawn(move || {
+        let name = format!("{parent}/grimoire");
+        let mut taken = 0;
+        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            let own = std::fs::symlink_metadata(&name).is_ok_and(|m| m.is_dir() && m.permissions().mode() & 0o777 == 0o700);
+            if own && std::fs::rename(&name, format!("{parent}/taken-{taken}")).is_ok() {
+                taken += 1;
+                let p = format!("{parent}/planting");
+                if plant && std::fs::create_dir(&p).is_ok() {
+                    let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o775));
+                    if std::fs::rename(&p, &name).is_err() {
+                        let _ = std::fs::remove_dir(&p);
+                    }
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_micros(500));
+        }
+        taken
+    })
+}
+
+// The app against a writer of the parent that takes Grimoire's folder away after every check, putting a folder others
+// can write in its place, or leaving nothing. Three fonts, so that a run goes on from check to check (one font a
+// check). One move aside a run at most, and three checks at most: once the run's first check is done, a check that
+// finds the folder gone or not Grimoire's own keeps nothing, and the session checks no more fonts (said once). The
+// next start, with no such writer, moves aside the folder put there once, and the font draws.
+fn a_writer_of_the_parent_costs_one_move_a_run() {
+    for plant in [true, false] {
+        clean_env();
+        let what = if plant { "plant" } else { "away" };
+        let r = root(&format!("app-race-{what}"));
+        let (parent, state) = own_parent(&format!("app-race-{what}"));
+        let font = ttf(&test_font("Regular", 400));
+        for n in ["Mine.ttf", "Two.ttf", "Three.ttf"] {
+            put(&r, n, &font);
+        }
+        std::fs::write(format!("{r}/settings.ini"), OWN).unwrap();
+        if plant {
+            std::fs::create_dir(&state).unwrap();
+            chmod(&state, 0o775);
+        }
+        let env = [("GRIMOIRE_STATE", state.as_str()), ("GRIMOIRE_WORK_EXE", BIN)];
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let racing = racer(parent.clone(), plant, stop.clone());
+        let (code, out) = start(&r, "wait 2500\nquit\n", &env);
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let taken = racing.join().unwrap_or(0);
+        let checks = out.lines().filter(|l| l.contains("bg: font check of")).count();
+        let (moved, stopped) = (out.matches(MOVED).count(), out.matches("no font is checked until Grimoire starts again").count());
+        eprintln!("    {what}: {checks} check(s), {moved} moved aside, {taken} folder(s) taken by the writer, the checks stopped {stopped} time(s)");
+        check!(code == Some(0));
+        check!(taken >= 1 && (1..=3).contains(&checks) && stopped <= 1);
+        check!(moved == usize::from(plant) && asides(&parent).len() == usize::from(plant));
+        check!(!out.contains(&parent));
+        if plant {
+            remove_any(&state);
+            std::fs::create_dir(&state).unwrap();
+            chmod(&state, 0o775);
+            let (code, out) = start(&r, "wait 100\nwaitbg\nwait 300\nexpect font is file:Mine.ttf\nquit\n", &env);
+            check!(code == Some(0) && out.matches(MOVED).count() == 1 && asides(&parent).len() == 2);
+            if code != Some(0) {
+                eprintln!("{out}");
+            }
+        }
+        remove_any(&parent);
+    }
+}
+
 #[test]
 fn test_sec_font_verdict() {
     run!(only_grimoires_own_folder_is_read);
@@ -1063,5 +1189,7 @@ fn test_sec_font_verdict() {
     run!(a_renamed_font_keeps_its_verdict);
     run!(the_app_says_once_that_nothing_can_be_kept);
     run!(the_app_moves_aside_what_is_not_its_own);
+    run!(a_run_makes_its_own_folder_afresh_once);
+    run!(a_writer_of_the_parent_costs_one_move_a_run);
     done();
 }

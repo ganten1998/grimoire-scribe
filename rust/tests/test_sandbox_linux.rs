@@ -720,7 +720,8 @@ fn a_folder_of_another_user_at_the_own_folders_name_is_moved_aside() {
     std::env::set_var("GRIMOIRE_STATE", &state);
     assert_eq!(store_init(data.to_str().unwrap()), 0);
     userfonts_aside_reset();
-    let rc = bg_font_check("", 300.0);
+    // (as the first check of a run, which alone may make the folder afresh)
+    let rc = bg_font_check(USERFONTS_AFRESH, 300.0);
     std::env::remove_var("GRIMOIRE_STATE");
     assert_eq!(rc, 0);
     let mut names: Vec<String> = std::fs::read_dir(&parent).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
