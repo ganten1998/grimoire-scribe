@@ -223,8 +223,8 @@ pentap panel undo
 wait 400
 expect editor.strokes is 7
 expect display.dark.420.900.440.100 is 0
-# the page lassoed whole and made larger by its corner (a resize moves the erase strokes apart, their widths
-# stay): the erased word still shows nothing on the page, and its halo goes as the page shows it
+# the page lassoed whole and made larger by its corner (a resize scales the erase strokes with the ink, their
+# widths too, z_lasso_28): the erased word still shows nothing on the page, and its halo goes as the page shows it
 tap panel tool-picker
 wait 100
 tap panel picker.select

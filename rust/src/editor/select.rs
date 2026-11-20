@@ -2328,8 +2328,8 @@ fn sel_move(a: &mut App, dx: i32, dy: i32) {
 }
 
 /// The resize released: the selection scaled from box `from` to `to` about the corner opposite `handle`,
-/// one undo step (the ink off its place, the group scaled and put at the end of the page with its erasing,
-/// carried link areas scaled).
+/// one undo step (the ink off its place, the group scaled, its widths with its points, and put at the end of
+/// the page with its erasing, carried link areas scaled).
 fn sel_scale(a: &mut App, from: Rect, to: Rect, handle: i32) {
     if from.w <= 0 || from.h <= 0 || to.w <= 0 || to.h <= 0 {
         return;
@@ -2394,7 +2394,9 @@ fn sel_place(a: &mut App, spot: Spot) {
     let sp = splice_plan(s, ip, &idx);
     let idx: Vec<usize> = sp.as_ref().map_or(idx, |sp| sp.sel.clone());
     let page = s.hist[ip].page.as_deref().unwrap();
-    let g = lasso_lift(page, &idx, carried.clone(), dpi);
+    let mut g = lasso_lift(page, &idx, carried.clone(), dpi);
+    // a resize (a move's spot has scale 1): the widths scale with the points, its erasing's too (issue #204)
+    lasso_scale_widths(&mut g, spot.scale);
     let src_seeds = staying_link_seeds(s, pid, &carried);
     // take the selection off
     let page = s.hist[ip].page.as_deref_mut().unwrap();
