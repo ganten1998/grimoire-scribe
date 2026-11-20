@@ -260,6 +260,13 @@ Options considered:
   cut before lifting.
 - At the lift the selection appears as today (box and bar) and the halo stays on the selected ink,
   redrawn in grays, so the selection says exactly what it holds.
+- Erased ink (2.2, issue #187): the halo goes along the ink as the page draws it (LASSO-DESIGN.md 6.2,
+  `stroke_shown_runs`: what shows across the stroke at each place), none across an erased gap, however many
+  passes made it and however narrow they were against the ink's width, and none on ink the page shows nothing
+  of, which the lasso may still select; the preview sends no refresh for such ink when it flips. The
+  preview judges erased ink by an index of the erase strokes (`Erasers`): on a page of 1,160 words with its
+  middle rows erased, its worst batch round those rows went from 18.4 ms to 3.5 ms (Mac, release; about 18 to
+  28 ms on the Kindle at 5 to 8 times), round the whole page from 28.3 to 8.6 ms.
 
 Why a halo: it is the house style of the selection box and link outlines (`canvas_dither_poly`,
 `canvas_dither_rect`), it is pure black and white so a DU refresh shows it faithfully, it works at

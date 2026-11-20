@@ -2,7 +2,8 @@
 // and 4, tests 7 and 8): folded in batches of any size, the preview's answer equals the lift's
 // (lasso_enclosed, lasso_select) for random lassos (loops, figure 8s, back-tracking, points off the page,
 // a lasso past LASSO_MAX that drops every other point) on pages with erased ink, floors and beta.5 ink
-// links; a stroke exactly half inside is decided the same both ways; and the preview's cost on a dense
+// links; judging erased ink by the index of erase strokes gives the rule's own answers, at a bounded cost per
+// batch (issue #187); a stroke exactly half inside is decided the same both ways; and the preview's cost on a dense
 // page (printed: cargo test --release --test test_lasso_live -- --nocapture; the owner's 1,090-stroke page
 // with GRIMOIRE_DENSE_PAGE=/path/to/a/copy/p72.qpg, never the original).
 #![allow(clippy::needless_range_loop)]
@@ -211,6 +212,139 @@ fn preview_equals_lift() {
     check!(bad == 0);
 }
 
+/// A page of handwriting-like words (about 1,160 ink strokes), its middle rows erased wholly by zigzag passes
+/// of a 4 mm precise eraser (300 points each), and a narrow gap erased through every third other word: the
+/// review's page for issue #187 (a lasso over such a region "kept cutting off").
+fn erased_rows_page() -> Page {
+    SEED.store(0xBEEF, Ordering::Relaxed);
+    let (w, h) = (1860, 2480);
+    let mut p = page_new(w, h, PAPER_NARROW);
+    let stroke = |t: ToolKind, size: f32, pts: &[(f32, f32)]| {
+        let mut prm = ToolParams::default();
+        tool_params_default(t, &mut prm);
+        prm.size_min_mm = size;
+        prm.size_max_mm = size;
+        let seed = if t == TOOL_ERASER { erase_seed(TOOL_ERASER, rnd()) } else { rnd() & 0xFFFFFF };
+        let mut s = stroke_new(t, &prm, seed);
+        for (k, &(x, y)) in pts.iter().enumerate() {
+            stroke_append(&mut s, &PenSample { x, y, pressure: 0.7, t_ms: k as u32 * 6, ..Default::default() }, DPI);
+        }
+        s
+    };
+    let rows: Vec<f32> = (0..29).map(|k| 300.0 + 70.0 * k as f32).collect();
+    let mut words = Vec::new();
+    for &ry in &rows {
+        let mut x = 100.0f32;
+        while x < 1560.0 {
+            let ww = frand(90.0, 150.0);
+            words.push((x, ry, ww));
+            for k in 0..4 {
+                let x0 = x + ww * k as f32 / 4.0;
+                let n = 40 + rnd() % 30;
+                let pts: Vec<(f32, f32)> = (0..n)
+                    .map(|i| {
+                        let t = i as f32 / (n - 1) as f32;
+                        (x0 + ww / 4.0 * t + 6.0 * (t * 9.0).sin(), ry + 18.0 * (t * 6.28 * 1.5 + k as f32).sin())
+                    })
+                    .collect();
+                page_add(&mut p, stroke(TOOL_BALLPOINT, 0.4, &pts));
+            }
+            x += ww + 30.0;
+        }
+    }
+    for &(x, ry, ww) in &words {
+        if (rows[10]..=rows[20]).contains(&ry) {
+            let pts: Vec<(f32, f32)> = (0..300)
+                .map(|i| {
+                    let (j, leg) = (i % 25, i / 25);
+                    let t = j as f32 / 24.0;
+                    (x - 10.0 + (ww + 20.0) * if leg % 2 == 0 { t } else { 1.0 - t }, ry - 26.0 + 52.0 * (i as f32 / 299.0))
+                })
+                .collect();
+            page_add(&mut p, stroke(TOOL_ERASER, 4.0, &pts));
+        } else if rnd() % 3 == 0 {
+            let cx = x + ww / 2.0;
+            let pts: Vec<(f32, f32)> = (0..11).map(|i| (cx, ry - 30.0 + 6.0 * i as f32)).collect();
+            page_add(&mut p, stroke(TOOL_ERASER, 2.0, &pts));
+        }
+    }
+    *p
+}
+
+/// Judging erased ink (issue #187): the live preview judges each stroke as the lasso reaches it, on the
+/// pen's path, and every sample was held to every segment of every erase stroke near it, its dab measured
+/// each time: a lasso over much erased ink came near the time after which the kernel drops pen events. The
+/// erase strokes are indexed now (lasso.rs Erasers: each one's cores measured once, its segments in chunks
+/// with boxes). The answers are the rule's as written out (Erasers::plain), on random pages with erased ink
+/// and a scoped floor and on a page of erased rows; and a lasso round those rows, folded as the pen draws it,
+/// holds samples to a bounded number of segments in any batch, a small part of what the rule written out
+/// would.
+fn judging_erased_ink_is_indexed() {
+    let same = |p: &Page| -> (u32, u64, u64) {
+        let floors = page_floors(p);
+        let (quick, plain) = (Erasers::new(p), Erasers::plain(p));
+        let mut bad = 0;
+        for i in 0..p.strokes.len() {
+            if !stroke_is_ink(&p.strokes[i]) {
+                continue;
+            }
+            let (a, b) = (judged_samples(p, floors.as_deref(), i, DPI, &quick), judged_samples(p, floors.as_deref(), i, DPI, &plain));
+            let alike = match (&a, &b) {
+                (Some(a), Some(b)) => a.samples == b.samples && a.total == b.total && a.long == b.long,
+                (None, None) => true,
+                _ => false,
+            };
+            bad += !alike as u32;
+            let (va, vb) = (stroke_visible_runs(p, floors.as_deref(), &p.strokes[i], i, DPI, &quick), stroke_visible_runs(p, floors.as_deref(), &p.strokes[i], i, DPI, &plain));
+            bad += (va != vb) as u32;
+        }
+        (bad, quick.tests(), plain.tests())
+    };
+    let mut bad = 0;
+    for round in 0..12 {
+        SEED.store(0xE4A5 + round, Ordering::Relaxed);
+        let (p, _) = fixture(900, 1100, 260);
+        bad += same(&p).0;
+    }
+    check!(bad == 0);
+    let p = erased_rows_page();
+    let (bad, quick, plain) = same(&p);
+    check!(bad == 0);
+    check!(quick * 5 < plain);
+    // a lasso round the erased rows (screen px 80..1680 x 960..1740 at 100%), a point every 2 px, folded every
+    // 24 points
+    let corners = [(80.0, 960.0), (1680.0, 960.0), (1680.0, 1740.0), (80.0, 1740.0), (80.0, 980.0)];
+    let mut path = Vec::new();
+    for c in corners.windows(2) {
+        let (a, b): ((f32, f32), (f32, f32)) = (c[0], c[1]);
+        let n = (((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt() / 2.0) as usize;
+        for k in 0..n {
+            let f = k as f32 / n as f32;
+            path.push((a.0 + (b.0 - a.0) * f, a.1 + (b.1 - a.1) * f));
+        }
+    }
+    let mut live = LassoLive::new(&p, &[], DPI, path[0]);
+    let (mut pts, mut from, mut worst, mut before) = (vec![path[0]], 1, 0u64, 0u64);
+    for chunk in path[1..].chunks(24) {
+        pts.extend_from_slice(chunk);
+        live.extend(&p, &pts, from);
+        from = pts.len();
+        worst = worst.max(live.hide_tests() - before);
+        before = live.hide_tests();
+    }
+    let l = Lasso::new(&pts).unwrap();
+    check!(live.enclosed() == lasso_enclosed(&p, &l, DPI));
+    let n = live.enclosed().iter().filter(|&&b| b).count();
+    check!(n > 400);
+    check!(worst < WORST_BATCH_TESTS);
+    eprintln!("  erased rows: {n} strokes selected; segment tests {quick} indexed against {plain} written out; the preview's worst batch {worst}, in all {}", live.hide_tests());
+}
+
+/// The most segment tests a batch of the lasso round the erased rows may make (judging_erased_ink_is_indexed):
+/// it made 68,459 when the index came (2.2, issue #187); the rule written out makes about 9 times as many, each
+/// with its dab measured again.
+const WORST_BATCH_TESTS: u64 = 120_000;
+
 /// A removed closing edge takes away exactly what it added: an edge whose crossing of a row, computed
 /// from its other end, lands an ulp apart, and a sample exactly at the larger of the two. Folding a point
 /// after it (the edge goes) leaves every winding the table's.
@@ -240,7 +374,7 @@ fn removed_edge_subtracts_exactly() {
         stroke_append(&mut st, &PenSample { x: x - 64.0, y, pressure: 0.6, ..Default::default() }, DPI);
         stroke_append(&mut st, &PenSample { x: x + 64.0, y, pressure: 0.6, t_ms: 8, ..Default::default() }, DPI);
         page_add(&mut p, st);
-        let j = judged_samples(&p, None, 0, DPI, &[]).unwrap();
+        let j = judged_samples(&p, None, 0, DPI, &Erasers::default()).unwrap();
         if !j.samples.iter().any(|q| q.0 == x && q.1.floor() as i32 == r) {
             continue;
         }
@@ -360,7 +494,7 @@ fn exact_short_strokes_lift_as_shown() {
     // the owner's case: a dot 12 px (about 1 mm) long, the lasso's right edge swept across it
     let mut p = page_new(800, 600, PAPER_BLANK);
     page_add(&mut p, dot(500.0, 300.0, 12.0, 1));
-    check!(judged_samples(&p, None, 0, DPI, &[]).is_some_and(|j| !j.long));
+    check!(judged_samples(&p, None, 0, DPI, &Erasers::default()).is_some_and(|j| !j.long));
     let mut bad = 0;
     for e in 490..=525 {
         let e = e as f32;
@@ -517,6 +651,7 @@ fn dense_page_preview_cost() {
 #[test]
 fn test_lasso_live() {
     run!(preview_equals_lift);
+    run!(judging_erased_ink_is_indexed);
     run!(removed_edge_subtracts_exactly);
     run!(shown_follows_links_and_flips);
     run!(half_inside_decided_alike);
