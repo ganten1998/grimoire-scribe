@@ -97,15 +97,15 @@ pen leave
 wait 100
 expect editor.shapes_menu is 1
 expect editor.strokes is 0
-# Sideways: the menu at 826,126, the rows centred at y 840 and 976, the tracks from x 1415.
+# Sideways: the menu at 826,41, the rows centred at y 755 and 891, the tracks from x 1415.
 rotate 1
 wait 300
-expect editor.tools_rect is 826 126 1116 1212
+expect editor.tools_rect is 826 41 1116 1212
 shot 04-menu-sideways
-touch down 1530 840
+touch down 1530 755
 expect settings.shape_corner is 25
-touch up 1530 840
-tap 1553 976
+touch up 1530 755
+tap 1553 891
 expect settings.shape_min_mm is 14
 shot 05-sideways-set
 rotate 0

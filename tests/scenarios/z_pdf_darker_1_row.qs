@@ -9,7 +9,7 @@
 tap library settings
 wait 100
 expect library.sheet is settings
-tap library settings.cat.5
+tap library settings.cat.6
 wait 100
 expect settings.pdf_gamma is 1.0
 shot 01-system
@@ -46,7 +46,7 @@ wait 600
 expect screen is library
 tap library settings
 wait 100
-tap library settings.cat.5
+tap library settings.cat.6
 wait 100
 tap library darker-lines
 wait 100

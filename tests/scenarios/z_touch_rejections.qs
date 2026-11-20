@@ -70,11 +70,11 @@ wait 100
 tap 1564 2254
 wait 300
 expect screen is editor
-expect editor.panel_at.1768.1674 is display
-pen hover 1530 1674
-finger 1 down 1768 1674
+expect editor.panel_at.1768.1782 is display
+pen hover 1530 1782
+finger 1 down 1768 1782
 frame 40
-finger 1 up 1768 1674
+finger 1 up 1768 1782
 frame
 wait 300
 expect editor.modal is display

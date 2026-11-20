@@ -11735,7 +11735,7 @@ mod tests {
         library_init(&mut a);
         crate::pdfimport::set_darker(crate::pdfwork::Gamma::Off);
         lib(&mut a).modal = Modal::Settings;
-        lib(&mut a).settings_cat = 5;
+        lib(&mut a).settings_cat = 6;
         hits_clear(&mut lib(&mut a).hits);
         draw_settings(&mut a);
         assert!(a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SET_DARKER), "the System row");
@@ -11788,7 +11788,7 @@ mod tests {
         assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
         library_init(&mut a);
         lib(&mut a).modal = Modal::Settings;
-        lib(&mut a).settings_cat = 5;
+        lib(&mut a).settings_cat = 6;
         hits_clear(&mut lib(&mut a).hits);
         draw_settings(&mut a);
         assert!(

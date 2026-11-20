@@ -27,7 +27,7 @@ expect library.sheet is settings
 expect font is terminess
 expect settings.kept.font is comic-sans
 # Another setting saved: the line stays
-tap library settings.cat.5
+tap library settings.cat.6
 wait 50
 tap library mirror
 wait 50

@@ -1,6 +1,6 @@
 // The editor's floating panel. With 0 to 3 pens pinned it fits the
 // 2022/2024 Scribes' screen and the Scribe 3's and Colorsoft's, upright and sideways, keeping its
-// 12 px margins (88 px buttons with three pins on older Scribes sideways, otherwise full size).
+// 12 px margins (one, two and three pins sideways on older Scribes take 99, 93 and 88 px buttons).
 // The collapsed square never changes. Next and previous
 // tool go through its pens alone, and the tool picker's next and previous through the picker's nine.
 // Index loops and float comparisons are written as the C test writes them.

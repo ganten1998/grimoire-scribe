@@ -54,7 +54,7 @@ expect editor.strokes is 1
 expect editor.wear is 8
 pen leave
 wait 400
-expect display.presents is ui 270 220 1562 1734
+expect display.presents is ui 270 220 1562 1842
 expect editor.wear is 8
 # The scribble erased: past a quarter, but the pen is still near, so no flash yet.
 eraser line 800 650 820 1750 20
