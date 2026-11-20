@@ -1455,6 +1455,36 @@ fn display_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) 
     })
 }
 
+/// "display.dark.X.Y.W.H": how many pixels of that screen rect the simulated panel shows darker than
+/// mid-gray, the colors as drawn (Invert colors undone): what a person sees there, ink and the overlays
+/// drawn over it (issue #187: a selection's halo over erased ink). -1 (unknown key) before there is an App
+/// or a panel, or for a key that is not four numbers.
+fn display_dark(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> bool {
+    let Some(rest) = key.strip_prefix(b"display.dark.") else { return false };
+    let Some(a) = a else { return false };
+    let v: Vec<i32> = std::str::from_utf8(rest).unwrap_or("").split('.').filter_map(|t| t.parse().ok()).collect();
+    if v.len() != 4 {
+        return false;
+    }
+    with(|st| {
+        let ew = st.w;
+        if st.eink.is_empty() || a.screen.w != ew || a.screen.h != st.h {
+            return false;
+        }
+        let r = rect_intersect(Rect { x: v[0], y: v[1], w: v[2], h: v[3] }, Rect { x: 0, y: 0, w: ew, h: st.h });
+        let mut n = 0i64;
+        for y in r.y..r.y + r.h {
+            for x in r.x..r.x + r.w {
+                let shown = st.eink[y as usize * ew as usize + x as usize];
+                let shown = if st.sim_invert { 255 - shown } else { shown };
+                n += (shown < 128) as i64;
+            }
+        }
+        csnprintf!(out, cap, "%lld", n);
+        true
+    })
+}
+
 /// "live.stale.X.Y.W.H": how many pixels of that screen rect the browser's picture (live_picture_now: the
 /// frame's tiles with the toolbar's and the corner's layers over them and the toast with its alpha, every
 /// layer switched on) shows more than a unit of gray off what the simulated panel shows there, the panel's
@@ -1617,6 +1647,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !watching
         && !with(|st| st.display_probe(&key, &mut got, GOT_CAP))
         && !display_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
+        && !display_dark(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_toast_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_frame_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
