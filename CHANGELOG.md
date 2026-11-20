@@ -112,7 +112,9 @@
 
 - **Your own fonts: a stricter background check.** What the check found of a font is now kept on the
   Kindle itself (`/var/local/grimoire`, a few hundred bytes a font) and tied to the font file by its
-  SHA-256. The check also times each glyph as Grimoire will draw it: a glyph that would take too long is
+  SHA-256. Grimoire keeps that folder to itself: anything else found at its name is moved aside untouched
+  (`grimoire.not-own-...` beside it), the folder is made afresh, and the fonts are checked once more. The
+  check also times each glyph as Grimoire will draw it: a glyph that would take too long is
   drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
   once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
   Deleting `grimoire/fonts/.cache` still has every font checked again.
@@ -137,6 +139,11 @@
   when to wait, when the storage is full, or when the page must be reloaded; otherwise "Not imported.". Share still
   has no password: anyone on your Wi-Fi can open its page while it is open, so only send, and only tap Import, when
   you expect it and the two codes are the same.
+- **No faint marks in a lasso selection** (#187). Selecting with the lasso no longer shows faint outlines where ink
+  was erased (on a page you copied from, or erased on after a paste): the dotted halo follows the ink as the page
+  shows it, whatever the eraser's size and however many strokes of it, and after a move or a resize too. The
+  lasso's work over much erased ink is several times quicker, so its line keeps up with the pen there (it could
+  cut straight across part of the way).
 
 ## 2.1.0 (2026-11-13)
 

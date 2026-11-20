@@ -27,6 +27,8 @@
 //! (sel_finger_arm), from the same hold that opens a link's card.
 
 use super::*;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum SelState {
@@ -138,6 +140,15 @@ pub(super) struct SelMode {
     plan: Vec<(StrokeId, Vec<(Box<Stroke>, bool)>)>,
     /// a drag as the screen shows it (the module's head)
     dv: DragView,
+    /// what shows of each stroke with a halo, as the page draws it (lasso.rs stroke_shown_runs), by identity,
+    /// for the page as it was when they were found (visible_key: its stroke count and its newest stroke, as
+    /// erasing that covers a stroke can only come after it): the halo goes along it, never over erased ink
+    /// (issue #187). The preview's and then the selection's (halo_shown fills it as it draws)
+    visible: RefCell<HashMap<StrokeId, Option<VisibleRuns>>>,
+    visible_key: Cell<(usize, StrokeId)>,
+    /// the probe editor.halo_found: how many times the halo, the preview's or the selection's, found what shows
+    /// of a stroke since the lasso began (once a stroke for the page as it is: kept, and handed over at the lift)
+    halo_found: Cell<u32>,
     /// a resize of the selection's box: the corner dragged (0 none, 1 top-left, 2 top-right, 3 bottom-left,
     /// 4 bottom-right), the box it began with, and the box it last drew (page px)
     pub(super) resize_handle: i32,
@@ -929,6 +940,8 @@ fn lasso_begin_at(s: &mut EditorState, px: f32, py: f32, finger: bool, t: u32, d
     s.sel.exact = exact_mode() != (hidkeys_mods_held() & (KEYMOD_SHIFT | KEYMOD_ALT) != 0);
     s.sel.kept.clear();
     s.sel.plan.clear();
+    s.sel.visible.borrow_mut().clear();
+    s.sel.halo_found.set(0);
     let pid = s.open_pid();
     let links: Vec<NavLink> = s.nav.links.iter().filter(|l| l.pid == pid).copied().collect();
     s.sel.live = match s.open_page() {
@@ -1142,6 +1155,7 @@ fn halo_rect(s: &EditorState, st: &Stroke) -> Rect {
 /// the ink whose halo came or went is drawn again by fast refreshes (`show`: the lift redraws instead).
 fn preview_fold(a: &mut App, t: u32, show: bool) {
     let dpi = a.dpi;
+    halo_paper(a);
     let s = ed(a);
     let Some(mut live) = s.sel.live.take() else { return };
     s.sel.fold_at = t;
@@ -1157,7 +1171,12 @@ fn preview_fold(a: &mut App, t: u32, show: bool) {
             let flips = if halved { live.rebuild(p, &pts) } else { live.extend(p, &pts, folded) };
             let mut rects = Vec::with_capacity(flips.len());
             let mut area: i64 = 0;
+            let found = halo_shown(s, p, flips.iter().map(|&i| (&*p.strokes[i], i)), dpi, true);
+            let kept = s.sel.visible.borrow();
             for &i in &flips {
+                if shown_in(&kept, &found, &p.strokes[i]).is_some_and(|r| r.is_empty()) {
+                    continue; // (ink the page shows none of has no halo: nothing came or went, issue #187)
+                }
                 let st = &p.strokes[i];
                 rects.push(halo_rect(s, st));
                 let w = (2.0 * mm_to_px(st.params.size_max_mm.max(0.1), dpi) * zoom) as i64 + 2 * halo as i64;
@@ -1256,44 +1275,27 @@ fn preview_tick(a: &mut App, now: u32) {
 /// menus.
 pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
     let dpi = a.dpi;
+    halo_paper(a);
     let clip = rect_intersect(r, lasso_clip(a));
     let s = ed_ref(a);
     if rect_is_empty(clip) || !s.open || sheet_open(s) || s.peek.active {
         return;
     }
     let Some(p) = s.open_page() else { return };
-    // what has a halo: strokes whole, or exact area's inside runs
-    let mut items: Vec<(&Stroke, Option<Vec<(f32, f32, bool)>>)> = Vec::new();
-    match s.sel.state {
-        SelState::Lasso => match s.sel.live.as_deref() {
-            Some(l) if l.holds(p) => {
-                for (i, runs) in l.halo_list() {
-                    items.push((&p.strokes[i], runs));
-                }
-            }
-            _ => return,
-        },
-        SelState::Selected | SelState::Dragging => {
-            let Some(v) = sel_indices(s) else { return };
-            for i in v {
-                items.push((&p.strokes[i], None));
-            }
-            for (_, pieces) in &s.sel.plan {
-                for (pc, inside) in pieces {
-                    if *inside {
-                        items.push((&**pc, None));
-                    }
-                }
-            }
-        }
-        _ => return,
-    }
-    items.retain(|(st, _)| rect_overlaps(halo_rect(s, st), clip));
+    let Some(mut items) = halo_items(s, p) else { return };
+    items.retain(|(st, _, _)| rect_overlaps(halo_rect(s, st), clip));
     if items.is_empty() {
         return;
     }
+    // what shows of each as the page draws it (issue #187): the halo goes along that, never over erased ink;
+    // found once and kept while the page stays as it is (sel.visible)
+    let found = halo_shown(s, p, items.iter().map(|(st, i, _)| (*st, *i)), dpi, true);
+    let kept = s.sel.visible.borrow();
+    let visible = |st: &Stroke| shown_in(&kept, &found, st);
+    // (ink the page shows none of has no halo at all)
+    items.retain(|(st, _, _)| visible(st).is_none_or(|v| !v.is_empty()));
     let mut u = RECT_EMPTY;
-    for (st, _) in &items {
+    for (st, _, _) in &items {
         u = rect_union(u, halo_rect(s, st));
     }
     let u = rect_intersect(u, rect_intersect(clip, Rect { x: 0, y: 0, w: a.screen.w, h: a.screen.h }));
@@ -1307,9 +1309,9 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
     // polylines (screen px, each point with its band's width) and ticks (screen segments)
     let mut paths: Vec<Vec<(f32, f32, i32)>> = Vec::new();
     let mut ticks: Vec<((f32, f32), (f32, f32))> = Vec::new();
-    for (st, runs) in &items {
-        match runs {
-            None => paths.push(
+    for (st, _, runs) in &items {
+        match (runs, visible(st)) {
+            (None, None) => paths.push(
                 st.pts
                     .iter()
                     .map(|q| {
@@ -1318,14 +1320,34 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
                     })
                     .collect(),
             ),
-            Some(v) => {
+            // (partly erased: along the runs of it that show)
+            (None, Some(vis)) => {
+                for run in vis {
+                    paths.push(
+                        run.iter()
+                            .map(|&(x, y, rad)| {
+                                let (sx, sy) = scr(x, y);
+                                (sx, sy, (2.0 * rad * zoom).round() as i32 + 2 * halo)
+                            })
+                            .collect(),
+                    );
+                }
+            }
+            // (exact area's inside runs, of the samples it is judged by: only those the page shows, and never
+            // joined across a place it does not, which the samples judged by may skip: a run of what shows each
+            // is in, by its place)
+            (Some(v), shown) => {
+                let run_at: Option<HashMap<(u32, u32), usize>> = shown.map(|runs| runs.iter().enumerate().flat_map(|(r, run)| run.iter().map(move |q| ((q.0.to_bits(), q.1.to_bits()), r))).collect());
+                let run = |x: f32, y: f32| run_at.as_ref().map_or(Some(0), |m| m.get(&(x.to_bits(), y.to_bits())).copied());
                 let ink = 2.0 * mm_to_px(st.params.size_max_mm.max(0.1), dpi) * 0.5 * zoom;
                 let t = ink.round() as i32 + 2 * halo;
                 let mut cur: Vec<(f32, f32, i32)> = Vec::new();
                 for k in 0..v.len() {
-                    let (x, y, inside) = v[k];
-                    let joined = k > 0 && ((x - v[k - 1].0).powi(2) + (y - v[k - 1].1).powi(2)).sqrt() <= near;
-                    if k > 0 && joined && inside != v[k - 1].2 {
+                    let (x, y, judged_in) = v[k];
+                    let at = run(x, y);
+                    let inside = judged_in && at.is_some();
+                    let joined = k > 0 && at.is_some() && at == run(v[k - 1].0, v[k - 1].1) && ((x - v[k - 1].0).powi(2) + (y - v[k - 1].1).powi(2)).sqrt() <= near;
+                    if k > 0 && joined && judged_in != v[k - 1].2 {
                         // a cut here: a tick across the ink halfway between the two samples
                         let (mx, my) = ((x + v[k - 1].0) / 2.0, (y + v[k - 1].1) / 2.0);
                         let (dx, dy) = (x - v[k - 1].0, y - v[k - 1].1);
@@ -1350,6 +1372,8 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
             }
         }
     }
+    drop(items);
+    drop(kept);
     // the page under the halos, to put the ink back over them
     let stride = a.screen.stride;
     let mut under = Vec::with_capacity((u.w * u.h) as usize);
@@ -1404,6 +1428,119 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
     }
 }
 
+/// What has a halo now, on page p (the open page): the preview's strokes while a lasso is drawn (with exact
+/// area's inside runs), the selection's after; each with the index on the page whose erasing covers it (an
+/// exact-area piece stands where the stroke it was cut from is). None when nothing can have one.
+#[allow(clippy::type_complexity)]
+fn halo_items<'s>(s: &'s EditorState, p: &'s Page) -> Option<Vec<(&'s Stroke, usize, Option<Vec<(f32, f32, bool)>>)>> {
+    let mut items: Vec<(&Stroke, usize, Option<Vec<(f32, f32, bool)>>)> = Vec::new();
+    match s.sel.state {
+        SelState::Lasso => match s.sel.live.as_deref() {
+            Some(l) if l.holds(p) => {
+                for (i, runs) in l.halo_list() {
+                    items.push((&p.strokes[i], i, runs));
+                }
+            }
+            _ => return None,
+        },
+        SelState::Selected | SelState::Dragging => {
+            for i in sel_indices(s)? {
+                items.push((&p.strokes[i], i, None));
+            }
+            let at = plan_indices(s).unwrap_or_default();
+            for (k, (_, pieces)) in s.sel.plan.iter().enumerate() {
+                let Some(&i) = at.get(k) else { continue };
+                for (pc, inside) in pieces {
+                    if *inside {
+                        items.push((&**pc, i, None));
+                    }
+                }
+            }
+        }
+        _ => return None,
+    }
+    Some(items)
+}
+
+/// The halo goes along ink the page shows (issue #187): near a place, pixels darker than their paper by more
+/// than INK_SHOWS levels, as dark as one black pixel in all by the levels past that. A faint pixel or two an
+/// eraser's soft rim can leave of erased ink is no ink anyone sees there, and gets no halo.
+const HALO_INK_MASS: i32 = 255 - INK_SHOWS;
+
+/// The page as drawn, for what shows of a stroke (lasso.rs Drawn): the page canvas, when it holds the open
+/// page, and its paper alone (s.paper, page_paper), when that is the page's and current.
+fn drawn_page(s: &EditorState) -> Option<Drawn<'_>> {
+    let pc = &s.page_canvas;
+    let paper = s.paper.px.as_deref()?;
+    let page = s.open_page()?;
+    let ok = s.canvas_page == s.open_page_ref() && !pc.px.is_empty() && s.paper.w == pc.w && s.paper.h == pc.h && s.paper_k == page.paper && !s.paper_stale;
+    ok.then_some(Drawn { canvas: pc, paper, paper_stride: s.paper.stride, shows: INK_SHOWS, mass: HALO_INK_MASS })
+}
+
+/// The open page's paper alone (page_paper) made or made again, if a halo may need it to tell what shows of a
+/// stroke: a lasso or a selection on a page with erase strokes.
+fn halo_paper(a: &mut App) {
+    let dpi = a.dpi;
+    let s = ed(a);
+    if !matches!(s.sel.state, SelState::Lasso | SelState::Selected | SelState::Dragging) || drawn_page(s).is_some() {
+        return;
+    }
+    if s.open_page().is_some_and(|p| p.strokes.iter().any(|st| stroke_is_erase(st) && !is_floor_marker(st))) {
+        page_paper(s, dpi);
+    }
+}
+
+/// What shows of `items` (strokes of page p, the open page, each with the index whose erasing covers it) for
+/// their halo, as the page draws it (lasso.rs stroke_shown_runs), each found unless sel.visible holds it for
+/// the page as it is. A redraw (`keep`) keeps what it finds there, and counts it (editor.halo_found); a probe
+/// keeps nothing. What could not be kept is returned (found without the page drawn to go by: the estimate,
+/// stroke_visible_runs).
+fn halo_shown<'x>(s: &EditorState, p: &Page, items: impl Iterator<Item = (&'x Stroke, usize)>, dpi: f32, keep: bool) -> HashMap<StrokeId, Option<VisibleRuns>> {
+    let key = visible_key(p);
+    let mut kept = s.sel.visible.borrow_mut();
+    let current = s.sel.visible_key.get() == key;
+    if keep && !current {
+        kept.clear();
+        s.sel.visible_key.set(key);
+    }
+    let held = keep || current;
+    let mut out = HashMap::new();
+    let mut judging: Option<(Option<Box<FloorTable>>, Erasers, Option<Drawn>)> = None;
+    for (st, i) in items {
+        let id = stroke_id(st);
+        if (held && kept.contains_key(&id)) || out.contains_key(&id) {
+            continue;
+        }
+        let (floors, erasers, drawn) = judging.get_or_insert_with(|| (page_floors(p), page_erasers(p), drawn_page(s)));
+        let v = match drawn {
+            Some(d) => stroke_shown_runs(p, floors.as_deref(), st, i, dpi, erasers, d),
+            None => stroke_visible_runs(p, floors.as_deref(), st, i, dpi, erasers),
+        };
+        if keep {
+            s.sel.halo_found.set(s.sel.halo_found.get().wrapping_add(1));
+        }
+        if keep && drawn.is_some() {
+            kept.insert(id, v);
+        } else {
+            out.insert(id, v);
+        }
+    }
+    out
+}
+
+/// What shows of stroke st for its halo: from sel.visible's entries (`kept`) or from what halo_shown returned
+/// (`found`); None when it shows whole.
+fn shown_in<'x>(kept: &'x HashMap<StrokeId, Option<VisibleRuns>>, found: &'x HashMap<StrokeId, Option<VisibleRuns>>, st: &Stroke) -> Option<&'x VisibleRuns> {
+    let id = stroke_id(st);
+    found.get(&id).or_else(|| kept.get(&id)).and_then(|v| v.as_ref())
+}
+
+/// What sel.visible's entries hold for: the page's stroke count and its newest stroke (erasing that covers a
+/// stroke comes after it, so a page with neither changed covers its strokes as it did).
+fn visible_key(p: &Page) -> (usize, StrokeId) {
+    (p.strokes.len(), p.strokes.last().map_or(0, |st| stroke_id(st)))
+}
+
 /// The lasso lifted: what it encloses is selected (a toast when nothing is).
 fn lasso_done(a: &mut App) {
     let dpi = a.dpi;
@@ -1442,7 +1579,7 @@ fn lasso_done(a: &mut App) {
     let ms = now_ms().wrapping_sub(t0);
     s.sel.preview_reused = reused;
     if let Some(lv) = live.as_deref() {
-        qlog!("lasso: preview batches=%d made=%d tests=%u reused=%d", lv.batches as i32, lv.made as i32, lv.tests.min(u32::MAX as u64) as u32, reused as i32);
+        qlog!("lasso: preview batches=%d made=%d tests=%u erased=%u reused=%d", lv.batches as i32, lv.made as i32, lv.tests.min(u32::MAX as u64) as u32, lv.hide_tests().min(u32::MAX as u64) as u32, reused as i32);
     }
     let erasure_there = picked.as_ref().is_some_and(|p| p.1);
     let Some((plan, _)) = picked.filter(|(plan, _)| !plan.is_empty()) else {
@@ -1461,7 +1598,19 @@ fn lasso_done(a: &mut App) {
     };
     let s = ed(a);
     let (n, ncut) = (plan.taken(), plan.cut.len());
+    // what shows of the ink taken whole, as the preview's halo found it on this same page (issue #187), kept
+    // through sel_take
+    let key = s.sel.visible_key.get();
+    let handed: Vec<(StrokeId, Option<VisibleRuns>)> = match s.open_page().filter(|p| visible_key(p) == key) {
+        Some(p) => {
+            let mut kept = s.sel.visible.borrow_mut();
+            plan.whole.iter().filter_map(|&i| kept.remove_entry(&stroke_id(&p.strokes[i]))).collect()
+        }
+        None => Vec::new(),
+    };
     sel_take(s, plan, &page_links, pts);
+    s.sel.visible_key.set(key);
+    s.sel.visible.borrow_mut().extend(handed);
     qlog!("lasso: select n=%d cut=%d links=%d exact=%d ms=%u", n as i32, ncut as i32, s.sel.links.len() as i32, exact as i32, ms);
     let quiet = std::mem::take(&mut s.sel.quiet);
     layout_bar(a);
@@ -1514,6 +1663,7 @@ fn sel_take(s: &mut EditorState, plan: CutPlan, page_links: &[NavLink], pts: Vec
     s.sel.state = SelState::Selected;
     s.sel.pid = pid;
     s.sel.ids = ids;
+    s.sel.visible.borrow_mut().clear(); // (an exact-area piece freed since may share a new one's address)
     s.sel.plan = cut;
     s.sel.links = links;
     s.sel.kept = pts;
@@ -2769,14 +2919,11 @@ pub(super) fn sel_probe(a: &App, key: &str) -> Option<String> {
         "layered" => (s.open_page().is_some_and(page_layered) as i32).to_string(),
         "lasso_ms" => format!("{} {}", s.last_lasso_ms.0, s.last_lasso_ms.1),
         // the live preview: the strokes with a halo now (the preview's while a lasso is drawn, the selection's
-        // after), the last lasso's batches and fast refreshes, whether its lift reused the preview's answer,
-        // and whether the lift's redraw covered every preview refresh
-        "halo" => match s.sel.state {
-            SelState::Lasso => s.sel.live.as_deref().map_or(0, |l| l.halo_list().len()),
-            SelState::Selected | SelState::Dragging => sel_indices(s).map_or(0, |v| v.len()) + s.sel.plan.iter().map(|c| c.1.iter().filter(|q| q.1).count()).sum::<usize>(),
-            _ => 0,
-        }
-        .to_string(),
+        // after), how many times the halo found what shows of a stroke since the lasso began (SelMode.halo_found),
+        // the last lasso's batches and fast refreshes, whether its lift reused the preview's answer, and whether
+        // the lift's redraw covered every preview refresh
+        "halo" => halo_count(s, a.dpi).to_string(),
+        "halo_found" => s.sel.halo_found.get().to_string(),
         "preview_batches" => s.sel.preview_batches.to_string(),
         "preview_refreshes" => s.sel.preview_refreshes.to_string(),
         "preview_reused" => (s.sel.preview_reused as i32).to_string(),
@@ -2811,6 +2958,17 @@ pub(super) fn sel_probe(a: &App, key: &str) -> Option<String> {
         }
         _ => return None,
     })
+}
+
+/// The probe editor.halo: how many strokes have a halo now (the preview's while a lasso is drawn, the
+/// selection's after): those the page shows some of (issue #187), as sel_draw_halo finds them (halo_items,
+/// halo_shown; what a redraw kept, the rest found for the probe and not kept).
+fn halo_count(s: &EditorState, dpi: f32) -> usize {
+    let Some(p) = s.open_page() else { return 0 };
+    let Some(items) = halo_items(s, p) else { return 0 };
+    let found = halo_shown(s, p, items.iter().map(|(st, i, _)| (*st, *i)), dpi, false);
+    let kept = s.sel.visible.borrow();
+    items.iter().filter(|(st, _, _)| shown_in(&kept, &found, st).is_none_or(|r| !r.is_empty())).count()
 }
 
 thread_local! {

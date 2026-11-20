@@ -1455,6 +1455,40 @@ fn display_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) 
     })
 }
 
+/// The rect a probe key's tail names: exactly four numbers, X.Y.W.H (display.dark).
+fn probe_rect(rest: &[u8]) -> Option<Rect> {
+    let v = std::str::from_utf8(rest).ok()?.split('.').map(|t| t.parse::<i32>().ok()).collect::<Option<Vec<i32>>>()?;
+    (v.len() == 4).then(|| Rect { x: v[0], y: v[1], w: v[2], h: v[3] })
+}
+
+/// "display.dark.X.Y.W.H": how many pixels of that screen rect the simulated panel shows darker than
+/// mid-gray, the colors as drawn (Invert colors undone): what a person sees there, ink and the overlays
+/// drawn over it (issue #187: a selection's halo over erased ink). -1 (unknown key) before there is an App
+/// or a panel, while the panel and the app's screen differ in size (turned sideways), or for a key that is not
+/// exactly four numbers.
+fn display_dark(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> bool {
+    let Some(rest) = key.strip_prefix(b"display.dark.") else { return false };
+    let Some(a) = a else { return false };
+    let Some(want) = probe_rect(rest) else { return false };
+    with(|st| {
+        let ew = st.w;
+        if st.eink.is_empty() || a.screen.w != ew || a.screen.h != st.h {
+            return false;
+        }
+        let r = rect_intersect(want, Rect { x: 0, y: 0, w: ew, h: st.h });
+        let mut n = 0i64;
+        for y in r.y..r.y + r.h {
+            for x in r.x..r.x + r.w {
+                let shown = st.eink[y as usize * ew as usize + x as usize];
+                let shown = if st.sim_invert { 255 - shown } else { shown };
+                n += (shown < 128) as i64;
+            }
+        }
+        csnprintf!(out, cap, "%lld", n);
+        true
+    })
+}
+
 /// "live.stale.X.Y.W.H": how many pixels of that screen rect the browser's picture (live_picture_now: the
 /// frame's tiles with the toolbar's and the corner's layers over them and the toast with its alpha, every
 /// layer switched on) shows more than a unit of gray off what the simulated panel shows there, the panel's
@@ -1617,6 +1651,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !watching
         && !with(|st| st.display_probe(&key, &mut got, GOT_CAP))
         && !display_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
+        && !display_dark(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_toast_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_frame_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
@@ -4400,6 +4435,17 @@ mod tests {
             if !rounding || !a.is_finite() || !b.is_finite() || (a - b).abs() > tolerance { return false; }
         }
         true
+    }
+
+    #[test]
+    fn display_dark_takes_exactly_four_numbers() {
+        assert!(probe_rect(b"1.2.3.4") == Some(Rect { x: 1, y: 2, w: 3, h: 4 }));
+        assert!(probe_rect(b"-5.0.30.40") == Some(Rect { x: -5, y: 0, w: 30, h: 40 }));
+        assert!(probe_rect(b"1.x.2.3.4").is_none());
+        assert!(probe_rect(b"1.2.3").is_none());
+        assert!(probe_rect(b"1.2.3.4.5").is_none());
+        assert!(probe_rect(b"1.2..3").is_none());
+        assert!(probe_rect(b"").is_none());
     }
 
     #[test]

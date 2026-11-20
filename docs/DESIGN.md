@@ -2199,9 +2199,31 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   (`preview_tick`); the strokes whose halo flipped are drawn again in at most 6 merged fast refreshes
   (DU wear counted), and the lift's Ui redraw covers every one. The halo (`sel_draw_halo`, in compose
   under the panel) is a dither band 3 ui px wider than the ink each side with the page's pixels put back
-  over it by a min, so ink stays on top; it stays on the selection. Probes: `editor.halo`,
-  `preview_batches`, `preview_refreshes`, `preview_reused`, `preview_rect`, `lift_rect`,
-  `lift_covers_preview`.
+  over it by a min, so ink stays on top; it stays on the selection. It goes along the ink as the page draws it
+  (2.2, issue #187: it went along every point, so a lasso drew a dithered ghost of each word erased wholly and
+  bridged each erased gap). `stroke_shown_runs` (lasso.rs) gives the runs of a stroke's spine that show on the
+  page canvas against the page's paper alone (`Drawn`, `drawn_page`; the paper made by `halo_paper`): for a
+  stroke an erase stroke after it in scope reaches (layers and floors as the enclosure takes them), a place of
+  its spine shows where no dab of those reaches its ink, not where one hides it by the enclosure's estimate
+  (`hides`), and elsewhere when the page shows its ink across the stroke there (a pixel darker than the paper by
+  more than `INK_SHOWS` levels in a strip square to the spine, the ink's radius each way and a pixel along)
+  and, at a sample of the spine, near it too (the pixels within its ink's radius as dark as one black pixel in
+  all, each counted past `INK_SHOWS` levels), leaving out pixels one of those erase strokes covers with its hard
+  core (ink drawn there after the erasing is another stroke's). The places are the spine's samples (up to a
+  millimetre apart) and, between two that both show where erasing reaches, places at most 2 px apart
+  (`places_between`), so a cut that passes between two samples has one inside it (a dot, whose spine has no
+  direction, is judged in its ink's radius alone). So ink erased by several passes, a small eraser's or a
+  resize's, or cut across by a pass narrower than the ink is wide (the ink either side of the cut is within
+  the ink's radius of its middle, but not across the stroke there), gets the halo the page shows. A run beside
+  a hidden stretch ends where its ink stops, less the ink's radius, so the band stays out of a narrow gap. The
+  preview's halo and then the selection's find it once for each stroke while the page's stroke count and
+  newest stroke stay (`halo_shown`, `SelMode.visible`), and the lift hands over what the preview found. Ink
+  the page shows none of has no halo, and the preview sends no refresh when it flips. The exact-area preview
+  draws only the judged samples the page shows and never joins two across a place it does not. Without the
+  page drawn to go by, the estimate stands in. Probes: `editor.halo` (strokes with a halo, as `sel_draw_halo`
+  finds them: `halo_items`, `halo_shown`), `halo_found` (how many times the halo found what shows of a stroke
+  since the lasso began), `preview_batches`, `preview_refreshes`, `preview_reused`, `preview_rect`,
+  `lift_rect`, `lift_covers_preview`.
 - Exact area (docs/beta2/PIXEL-LASSO.md 1): `stroke_dabs` runs a stroke's brush dry with
   `BrushState.dab_log` (brush.rs: the dry branch pushes each dab's sample, radius and calligraphy nib) and
   `stroke_cut` splits it into runs of dabs on one side of the lasso: a later piece starts at its first
@@ -2478,9 +2500,23 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   `userfonts.rs`; so from the verdicts numbered 2 on): on the Kindle a folder of Grimoire's own outside the data root, `/var/local/grimoire`,
   with a folder for each data root; in a build that names no such folder (`GRIMOIRE_STATE` unset), the
   cache, as before. The own folder is walked name by name, by descriptor, from its parent: each name is
-  made by the job with mode 0700 when missing, opened without following a link, and must be a folder of the
-  app's user that no one else can write; verdicts are read and written from that descriptor. When it cannot
-  be used, its file system has too little room, or it takes no write (the job writes and removes a small
+  made by the job with mode 0700 when missing (the own folder itself by the first check of a run alone),
+  opened without following a link, and must be a folder of the
+  app's user that no one else can write; verdicts are read and written from that descriptor. Grimoire relies
+  on the parent (`/var/local` on the Kindle) only to hold the own folder's name: it tests the folder it opens
+  at every open, and never trusts the parent's owner or mode. When the entry at the own folder's name is not
+  Grimoire's own, the first check of a run moves it aside within the parent, to
+  `grimoire.not-own-<seconds>-<pid>`, and makes the folder afresh, at most once a run: the UI, which forks a
+  process for each check, gives the first check of a run alone leave to make the own folder or make it
+  afresh, from its own memory, never from a file. The entry is renamed by its name, from the parent's
+  descriptor, as it stands, by a rename that never replaces an entry, and is never followed, opened, read,
+  listed or deleted; its kind, owner and mode, as looked at just before the rename, are logged (an entry
+  another writer of the parent puts at the name in between is the one moved, and is left as it is too).
+  Every font is then checked once more, as after
+  `rm -r /var/local/grimoire`. The folders below the own folder are its own, which no one else can write, and
+  are never moved. When the own folder cannot be used (the move failed, say, the fresh folder is not
+  Grimoire's own either, or, after the first check of a run, it is gone or not Grimoire's own), its file
+  system has too little room, or it takes no write (the job writes and removes a small
   file there before a font's check), the job ends with status 6 before any worker starts: nothing is
   marked, and the session checks no more fonts (the ones that have their verdicts go on loading). The previews and the marks stay in the cache, and a verdict counts only with its companion
   there (a pass with its preview, a refusal with `<key>.no`), so deleting `fonts/.cache` has every font

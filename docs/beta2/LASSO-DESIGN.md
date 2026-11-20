@@ -269,13 +269,26 @@ overlaps existing ink.
   A sample p is hidden if an erase stroke j after it, in scope (floor of j before the ink stroke),
   bbox-overlapping, passes within `rcore_j - r_i(p)` of p, where `rcore = r(1 - rim) - 0.5` from
   `brush_dab` and `look_of` at the nearest point of j, and `r_i` is the ink radius there. An
-  estimate for selection only, never for rendering.
+  estimate for selection only, never for rendering. (2.2, issue #187: the erase strokes are indexed
+  for it, `Erasers`: each one's cores measured once, the first time a stroke near it is judged, and its
+  segments in chunks of 16 with their boxes, so a sample meets only the segments near it. The answers are
+  the same; judging erased ink while the lasso is drawn cost about 5 times a like region's batch before,
+  near the time after which the kernel drops pen events on the Kindle, and a lasso there cut straight
+  across part of its path.)
 - **Rule.** Let V be the visible spine length. If V >= 1.5 mm: selected if at least half of V
   (weighted by length) is inside. If V < 1.5 mm and the stroke has visible samples (i-dots,
   accents, short crossbars): selected if the centroid of its visible samples is inside. If nothing
   is visible: judged on its whole spine by the same half rule (it is invisible both ways; carrying
   it keeps the old place clean). Tune the 50% and 1.5 mm on a handwriting corpus from the
   fixtures and rust/tests/shape_corpus.
+- **What a selection shows of it (2.2, issue #187).** The halo of the live preview and of a selection
+  (docs/beta2/PIXEL-LASSO.md 2) goes along the ink as the page draws it, not by the estimate above: a place
+  of the spine has a halo where the page shows the stroke's ink across it (`stroke_shown_runs`), so none
+  across an erased gap, however narrow the pass that cut it against the ink's width, none where several passes
+  erased together what none of them covers alone, and none at all on ink the page shows nothing of, which the
+  rule above may still select (its box takes it in). Erased ink stays in the page file under its erase strokes
+  until compaction, so before 2.2 each lasso drew it again as a dithered outline: faint marks where ink had
+  been erased, on the page copied from and on the page pasted to.
 - **Links.** A link goes with the selection when:
   - its area (or its outline polygon, when it has one) has at least half of an 8 x 8 sample grid
     inside the lasso; or

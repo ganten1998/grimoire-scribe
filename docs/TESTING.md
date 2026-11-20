@@ -2913,36 +2913,46 @@ What the background check found of a font (its verdict) is kept on the Kindle it
 will draw it. Automated: the tests of `rust/src/sha256.rs`, `rust/tests/test_sec_font_verdict.rs`, the
 functions of `rust/tests/test_fontcheck.rs` about the glyph limit and the second try's mark, the unit tests
 of `fontcheck.rs` and `userfonts.rs`, and (Linux, root, CI's `sandbox` job) the font test of
-`rust/tests/test_sandbox_linux.rs`.
+`rust/tests/test_sandbox_linux.rs` and its test of a folder of another user at the own folder's name.
 
-**Not run on a Scribe, and it must be before a release.** This change can leave a Kindle with no custom font
-(if Grimoire's own folder cannot be used there), can refuse a font that works today or hand some of its
-glyphs to Terminess (the time limit), and changes what the sandboxed worker does for every glyph. Its
-values that are placeholders, and wait for the answers below: the glyph limit (`s1::FONT_GLYPH_CPU_MS` in
-`sandbox.rs`, 20 ms) and the size a draw is timed at (`FONT_TIME_PX` in `fontcheck.rs`, 160 px), which
-steps 6 to 8 answer; the own folder's place (`STATE_BASE` in `userfonts.rs`, `/var/local/grimoire`), which
-steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE_FLOOR`, 4 MB, and
-`STATE_FILES_FLOOR`, 512 files), which step 1 answers.
+**Step 1 is answered on a Scribe (below); the rest is not run on a Scribe yet, and it must be before a
+release.** This change can leave a Kindle with no custom font (if Grimoire's own folder cannot be used there),
+can refuse a font that works today or hand some of its glyphs to Terminess (the time limit), and changes what
+the sandboxed worker does for every glyph. Its values that are placeholders, and wait for the answers below:
+the glyph limit (`s1::FONT_GLYPH_CPU_MS` in `sandbox.rs`, 20 ms) and the size a draw is timed at
+(`FONT_TIME_PX` in `fontcheck.rs`, 160 px), which steps 6 to 8 answer; and the own folder's place
+(`STATE_BASE` in `userfonts.rs`, `/var/local/grimoire`), which steps 5 and 11 answer (step 1's part is
+answered). The two floors of free room beside it are set from step 1's answers.
 
 1. **Before installing, over SSH, with 2.1.0 still on.** `mount | grep /var/local`, `df -k /var/local`,
-   `df -i /var/local`, `ls -ld /var/local`. Write the answers here. /var/local must be a file system of its
-   own that keeps its files across a restart (not the tmpfs at /var) and that keeps owners and modes (ext3
-   or ext4, say; on one without them the test "root's, and no one else can write it" means nothing). It
-   must be root's, with no write bit for group or others (`drwxr-xr-x  root`: Grimoire tests the folders it
-   makes there, never /var/local itself), with well over 4 MB and at least 512 inodes free (a file system
-   that counts no inodes, `df -i` showing 0, is fine). If it is not, stop: the place (`STATE_BASE`) and the
-   floors beside it are set from these numbers before a release. Also keep 2.1.0's grimoire.log lines
+   `df -i /var/local`, `ls -ld /var/local`. The answers on a Scribe (firmware 5.20.1.0.2, Grimoire 2.1.0):
+   /var/local is a file system of its own, `/dev/mmcblk0p9`, ext4, mounted read and write (`df` names it
+   `/var/base-local`); 996,780 KB in all with 868,764 KB free, and 65,536 inodes with 63,718 free. /var/local
+   itself is `drwxrwsr-x`, the system's `framework` user's and `javausers` group's (mode 2775: the group may
+   write it, the setgid bit is set). What Grimoire needs of it: a file system of its own that keeps its files
+   across a restart (not the tmpfs at /var) and that keeps owners and modes (ext3 or ext4, say; on one
+   without them the test "root's, and no one else can write it" means nothing), with well over 4 MB and at
+   least 512 inodes free (a file system that counts no inodes, `df -i` showing 0, is fine). Grimoire never
+   relies on /var/local itself: it tests its own folder at every open and moves aside an entry at its name
+   that is not its own (step 12), so the owner and mode of /var/local ask nothing of a release. The floors
+   stand on these numbers: `STATE_FREE_FLOOR`, 4 MB, and `STATE_FILES_FLOOR`, 512 files, against a check
+   that keeps a few hundred bytes and one file a font (at most 200 for a data folder). If a Kindle answers
+   otherwise (no file system of its own there, or one without owners and modes), stop: the place
+   (`STATE_BASE`) is set from its answers before a release. Also keep 2.1.0's grimoire.log lines
    `fonts: file I of N passed: ... checked in T ms` and `font: custom font loaded: S KB in T ms`.
 2. **The update.** Install, start Grimoire with a font of your own in use. The Library is in Terminess at
    first; the font comes back by itself with one redraw once its check has passed (how long?). Settings >
    Font shows "Checking..." rows meanwhile. grimoire.log has one `fonts: file I of N passed: ...` line a
-   font, and no `work: a font's worker made call N`, no `marked unreadable`, no `cannot be kept`. If the font
+   font, and no `work: a font's worker made call N`, no `marked unreadable`, no `cannot be kept`, no `moved
+   aside` (nothing stood at the folder's name before). If the font
    in use has a Bold file whose name sorts after its own (`Name.ttf` with `NameBold.ttf`), look at text
    Grimoire draws bold once the font is back: it is the regular overprinted until Grimoire is started
    again, then the Bold file's (docs/BACKLOG.md, "Bold stays overprinted").
 3. **Where it is kept.** `ls -ld /var/local/grimoire /var/local/grimoire/* /var/local/grimoire/*/fonts
-   /var/local/grimoire/*/root` (three folders, `drwx------`, and one file, `-rw-------`, all root's; `cat`
-   of the file gives the data folder's path); `ls -l /var/local/grimoire/*/fonts` (one small `.font` a
+   /var/local/grimoire/*/root` (three folders, `drwx------`, and one file, `-rw-------`, all root's; under a
+   /var/local with the setgid bit, as in step 1, the folders show `drwx--S---` and its group, which they take
+   from it and which has no rights in them; `cat` of the file gives the data folder's path);
+   `ls -l /var/local/grimoire/*/fonts` (one small `.font` a
    font); `head -3` of one says `grimoire-font 2` and a 64-digit `hash=`, which is `sha256sum` of
    the font file. `ls /mnt/us/grimoire/fonts/.cache` has a `.pgm` a font (a `.no` for one the check
    refused), and 2.1.0's `.font` files untouched.
@@ -2974,6 +2984,20 @@ steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE
     the worker's narrower system calls and this change's walk are in the same process.
 11. When a firmware update next arrives: is /var/local/grimoire still there? (If not, fonts are checked once
     more: note it in KINDLE.md.)
+12. **What is not Grimoire's own is moved aside.** With Grimoire closed: `mv /var/local/grimoire
+    /var/local/grimoire.test && mkdir -m 775 /var/local/grimoire`. Start Grimoire with a font of your own in
+    use: grimoire.log has once `fonts: the entry at the name of Grimoire's own folder was not its own (a
+    folder, owner 0, mode 0775): it is moved aside as it was, and the folder is made afresh; every font is
+    checked once more` (`mode 2775` if mkdir gave the folder /var/local's setgid bit), then a pass line a font:
+    every font is checked once more, as after `rm -r /var/local/grimoire` (step 9), and the font comes back. `ls -ld
+    /var/local/grimoire*`: the folder made afresh as in step 3, the one mkdir made under
+    `grimoire.not-own-<seconds>-<pid>` with its mode as it was and nothing in it, and `grimoire.test`. A second
+    start moves nothing. Once a run: with Grimoire running, `mv /var/local/grimoire /var/local/grimoire.test2 &&
+    mkdir -m 775 /var/local/grimoire`, then copy a font that is not there yet into `grimoire/fonts`. Nothing more
+    is moved aside: grimoire.log has `cannot be kept (it is not Grimoire's own)` and `no font is checked until
+    Grimoire starts again`, once each, and that font's row says "Unreadable font.". The next start moves the folder
+    aside and checks every font once more. Then, with Grimoire closed, `rm -r /var/local/grimoire.not-own-*
+    /var/local/grimoire.test /var/local/grimoire.test2`.
 
 ## 2.2, From a file... and Use as template (issue #146): device checks
 
@@ -3524,3 +3548,54 @@ lines marked "Over SSH, optional" look at the files themselves and can be left o
     sideways; the page shows the same "Código NNNN", and "Espera 5 segundos y vuelve a enviarlo." for step 3.
 16. **The log**: over USB (or SSH), search `grimoire/grimoire.log` for `upload`: lines `httpd: an upload ...` for each
     step, and no file name, no 32-hex token and no send's code anywhere in it.
+
+## 2.2, lasso and erased ink (issue #187): device checks
+
+Automated: tests/test_lasso.rs (halo_follows_what_shows, halo_follows_the_page, halo_across_a_narrow_cut),
+tests/test_lasso_live.rs (judging_erased_ink_is_indexed), z_lasso_23_erased_marks (the reported steps with the
+precise eraser, a move, a resize, exact area), z_lasso_24_erased_marks_whole (the Whole strokes eraser on the page
+pasted to, white ink on the page copied from), z_lasso_25_erased_passes (a marker line erased by passes narrower
+than it, a line scrubbed out by 2 mm passes), z_lasso_26_erased_small_eraser (the eraser at 1 mm) and
+z_lasso_27_erased_narrow_cut (a wide marker line and a highlighter line, each cut across by one 2 mm pass). They
+check what the halo draws in the headless runner; on the Kindle, check what the screen shows. Erased ink stays in
+the page file under the erasing that covers it until the notebook is compacted, and the lasso selects it, so every
+check below lassoes a page that holds some.
+
+1. **Set up**: Settings > Pen > Eraser > Takes away only what it touches (Precise). In a new notebook write
+   three lines of words on page 1. With the eraser, erase one word wholly and a gap through another.
+2. **The page copied from**: tool picker > Select, and lasso the whole page. The selection's dotted halo hugs
+   the ink you see: no outline where the erased word was, no halo across the gap. The box may reach over the
+   erased word (it is selected with the rest, and goes where the selection goes).
+3. **Copy and paste**: Copy, turn to page 2, Paste. The pasted ink shows the same gap; the erased word is not
+   pasted.
+4. **Erase on the pasted page**: Done. Erase part of a pasted word, write a short word and erase all of it,
+   and erase a gap in another pasted word.
+5. **Lasso again**: Select, and lasso the whole of page 2. The halo hugs only what you see: nothing at any place
+   you erased. Lasso again slowly through those places: the halo that follows the pen shows nothing there
+   either.
+6. **Back to page 1**: lasso the whole page again. The word erased before the copy does not show.
+7. **After a restart**: close Grimoire and start it again, open page 2 and lasso it whole: still nothing at the
+   erased places.
+8. **Whole strokes**: Settings > Pen > Eraser > Takes away whole strokes. In a new notebook write a word and a
+   line on page 1; tool picker > White, draw a gap across the line, then back to black. Lasso the page, Copy,
+   turn to page 2, Paste, Done. Erase the pasted word with the eraser (it goes whole); write a line and erase
+   it. Lasso page 2 whole: only the line with its gap has a halo, none across the gap, none where the word and
+   the line were.
+9. **Moving**: on page 2, lasso a partly erased word and drag it: at its new place it shows the same gaps and
+   the halo hugs what shows. Undo: back as it was.
+10. **A region with many erased marks** (the second report on the issue, the lasso "cutting off"): on a page
+    where you erased a lot, draw a lasso slowly around part of it, then around a part with no erasing. The dashed
+    line follows the pen in both places and never jumps straight across part of the way. If it jumps, copy
+    `grimoire/grimoire.log` over USB and look near that time for "pen events dropped by the kernel" and
+    "lasso: preview" lines (`erased=` counts the work erased ink cost that lasso); attach them to the issue.
+11. **A small eraser, many strokes**: hold the eraser on the toolbar and pick 1 mm. On a fresh page write a line
+    of words; scrub one word out with many short eraser strokes back and forth until nothing of it shows, and cut
+    a narrow gap through another word with one stroke. Lasso the page: no dots or outline where the scrubbed
+    word was, and the halo stops at the ink either side of the gap, never across it. Lasso again slowly over
+    them: nothing there while the lasso is drawn either.
+12. **A wide pen**: hold the marker on the toolbar and pick its widest size, and draw a line. With the eraser at
+    2 mm, erase the middle of the line in several strokes along it until nothing shows there. Lasso the page: no
+    halo over the erased middle. Draw another marker line and a highlighter line, and cut each with one stroke of
+    the 2 mm eraser straight across: lasso the page, and the halo stops either side of each cut, never across it.
+13. **Resizing**: lasso a page holding a word you erased in a few strokes, and drag the selection's bottom-right
+    handle out a little: where the word was the page shows nothing, and no halo either. Done, then Undo.

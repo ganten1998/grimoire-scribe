@@ -69,40 +69,14 @@ no scriptlets, KOReader can open Grimoire instead (see the table).
 
 | Kindle | Status |
 |---|---|
-| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Used daily on 5.20.1.0.2 and runs on 5.20.1 (Vera) |
-| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** Used daily on 5.20.1.0.2 and also runs on 5.20.1 (Vera). If the screen is upside down, see [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting). |
+| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** [@ganten1998](https://github.com/ganten1998) uses 5.20.1.0.2 daily, Grimoire also runs on 5.20.1 (Vera) |
+| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** [@nebuff](https://github.com/nebuff) uses 5.20.1.0.2 daily, Grimoire also runs on 5.20.1 (Vera). If the screen is upside down, see [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting). |
 | Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader)). |
 | Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see [Moving between versions](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting#moving-between-versions)). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
 
 Firmware 5.20.1 is the newest as of October 2026. Check that your jailbreak survives it before
 updating; most people keep OTA updates blocked.
-
-## Documentation
-
-The full manual lives in the wiki, in **English**, **日本語** and **Polski**:
-
-- [English wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home)
-- [日本語の wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-ja)
-- [Polska wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-pl)
-
-| Page | What it covers |
-|---|---|
-| [Install](https://github.com/ganten1998/grimoire-scribe/wiki/Install) | Requirements, the release zip, KPM, updating and uninstalling |
-| [Using Grimoire](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire) | The Library, paper, pens, the toolbar, the Index, links, Live view, Wi-Fi, sleep and the passcode |
-| [Widgets](https://github.com/ganten1998/grimoire-scribe/wiki/Widgets) | Installing, using, updating and removing widgets, and making your own |
-| [Fonts and Language](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language) | English, Spanish, Japanese and Polish, the Classic fonts, and your own fonts |
-| [Importing](https://github.com/ganten1998/grimoire-scribe/wiki/Importing) | Templates, pictures, PDFs and pages you already have |
-| [Getting Pages Off the Kindle](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting) | Wi-Fi Share, Effects, USB PDFs and SSH |
-| [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader) | Opening Grimoire from KOReader, annotating books, and the optional plugin |
-| [Shortcuts](https://github.com/ganten1998/grimoire-scribe/wiki/Shortcuts) | Keyboards and controllers, and `shortcuts.ini` |
-| [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting) | Known issues, common fixes, and moving between versions |
-| [Privacy](https://github.com/ganten1998/grimoire-scribe/wiki/Privacy) | What stays on the Kindle, and what Share exposes |
-| [Contributing](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing) | Bugs, feature requests, pull requests, LLM use and the wiki |
-| [Building from Source](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source) | Toolchains, make targets and tests |
-| [Translating](https://github.com/ganten1998/grimoire-scribe/wiki/Translating) | Improving the Spanish, Japanese and Polish translations, and adding a language |
-
-The wiki's source pages live in [`wiki/`](wiki).
 
 ## License and credits
 
@@ -132,3 +106,5 @@ updater follows those feeds.
 
 Contributions are welcome: see the [Contributing](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing)
 page, and open an issue first for a larger change so we can agree on its shape.
+
+If you want to know about who has been maintaining and ensuring that Grimoire runs at the fullest, Please see [Authors](https://github.com/ganten1998/grimoire-scribe/blob/main/AUTHORS.md) for complete credits
