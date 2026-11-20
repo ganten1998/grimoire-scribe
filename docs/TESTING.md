@@ -3599,3 +3599,55 @@ check below lassoes a page that holds some.
     the 2 mm eraser straight across: lasso the page, and the halo stops either side of each cut, never across it.
 13. **Resizing**: lasso a page holding a word you erased in a few strokes, and drag the selection's bottom-right
     handle out a little: where the word was the page shows nothing, and no halo either. Done, then Undo.
+
+## 2.2, lasso resize and an empty lasso (issues #204, #205): device checks
+
+A selection made larger or smaller by a corner handle now scales the widths of everything in it with its size,
+black ink, white ink and the erasing that goes with the ink alike, so the page after Done looks as the selection
+did, larger or smaller (before, the widths stayed and an enlarged selection showed faint traces of the words it had
+erased). A lasso round only ink you erased wholly selects nothing and says "Nothing to select.", as a lasso round
+empty paper does. Automated: tests/test_lasso.rs (a_resize_scales_widths_with_the_group), z_lasso_28_resize_erased
+(1.1 and 1.5 times, smaller again, half size, each undone; erasing made larger over a line the lasso left out),
+z_lasso_29_erased_only (the precise eraser, white ink, empty paper, erased ink beside ink that shows, exact area,
+the mode button), z_lasso_30_erased_link (erased ink inside a link's area), z_lasso_23_erased_marks and
+z_lasso_24_erased_marks_whole. They check the headless runner's panel; on the Kindle, check what the screen shows.
+Not run on a Scribe.
+
+1. **Set up**: Settings > Pen > Eraser > Takes away only what it touches. In a new notebook write three lines of
+   words on page 1. With the eraser, erase one word wholly in two or three strokes, and cut a gap through a word
+   of another line.
+2. **White ink**: tool picker > White, cover another word wholly with white ink in a few strokes, and draw a gap
+   across a third word with a few white strokes side by side; then back to black.
+3. **A little larger**: tool picker > Select, lasso the three lines, and drag the selection's bottom-right handle
+   out by about a tenth. Done. Where the erased word and the whited-out word were, the page shows nothing, not
+   even a faint gray; both gaps are clean. The writing is a tenth larger, its lines a tenth wider.
+4. **Much larger**: Undo (the page is as it was). Lasso the lines again and drag the handle out to about one and a
+   half times. Done. The same: nothing where the erased words were, both gaps clean; the lines are half as thick
+   again. Undo.
+5. **Smaller**: lasso the lines again and drag the handle in to about half. Done. The words and their gaps are half
+   as large, the lines half as thick, and the ink beside each gap still shows (before 2.2 the gaps kept their width
+   and ate into the words). Undo.
+6. **Back again**: lasso the lines, make them one and a half times as large, then drag the same handle back to
+   where it began, and Done: the writing looks as it did before both, its lines as thick.
+7. **Over other writing**: write a word to the right of the lines, apart from them. Lasso only the three lines and
+   make them larger until the box reaches over that word. Done: that word shows whole, also where the erased words'
+   erasing now passes over it.
+8. **The widest erasing**: erasing is drawn at most 12 mm wide, so the default eraser's marks (8 mm at full
+   pressure) stop growing past about one and a half times, and the 12 mm eraser's at once. Erase a word with the
+   12 mm eraser (hold the eraser on the toolbar to pick it), lasso it with a word that shows, and make them twice
+   as large: note whether any trace of the erased word comes back at the edge of the erasing.
+9. **An empty lasso**: Select, and lasso round the erased word alone: "Nothing to select." shows at the bottom, no
+   box is drawn, and Select mode stays. The same round the whited-out word. Round empty paper: "Nothing to select."
+   as before. Round a white stroke drawn over paper alone: "Nothing to select: white ink and eraser marks move with
+   the ink under them." as before.
+10. **Erased ink beside ink that shows**: lasso the erased word together with a word beside it that shows: both are
+    selected (the box takes in both, the halo only the word that shows). Delete: both go. Undo.
+11. **Exact area**: tap the bar's mode button for Exact area, and lasso round the erased word alone: "Nothing to
+    select.". Then lasso round the erased word and a short piece of a long line that shows: both are selected. Tap
+    the mode button again (Whole strokes): the line is mostly outside the lasso, so only the erased word would be
+    selected: the selection goes with "Nothing to select.", and Select mode stays.
+12. **Whole strokes**: Settings > Pen > Eraser > Takes away whole strokes. Erase a word (it goes whole) and lasso
+    where it was: "Nothing to select.", as before.
+13. **A link**: on a page with a link drawn round some writing (Link to...), erase that writing wholly, and lasso
+    round where it was: the link is selected (its area dashed, "1 link" on the bar), as before; Done.
+14. **Spanish**: Settings > Language > Español: the empty lasso says "Nada que seleccionar.".
