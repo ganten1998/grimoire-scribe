@@ -691,3 +691,86 @@ fn a_scribe_sized_colour_page_mirrors_under_the_mirror_childs_cap() {
     assert_eq!(String::from_utf8_lossy(&pdf).matches("/DeviceRGB").count(), 4, "every page in colour");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// Grimoire's own folder (issue #201), as root as on the Kindle, in a parent like the Kindle's /var/local: another
+// user's and another group's, mode 02775 (the group may write it, the setgid bit is set). A folder of another user at
+// the own folder's name, which no one else may write (so its owner alone makes it not Grimoire's own), is moved aside
+// as it is, by a rename that never replaces an entry: the same inode and mode, still that user's, what it holds
+// unchanged. The folder is made afresh, root's, and takes the parent's group and setgid bit: 02700. It is Grimoire's
+// own: a second check takes it and moves nothing. A member of that group, not root, cannot make a file in it. No
+// worker is needed: the fonts folder is empty.
+#[test]
+fn a_folder_of_another_user_at_the_own_folders_name_is_moved_aside() {
+    use grimoire::prelude::*;
+    use grimoire::userfonts::*;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    if !root() {
+        return;
+    }
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let base = std::env::temp_dir().join(format!("grimoire-sandbox-statedir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let (data, parent) = (base.join("grimoire"), base.join("local"));
+    std::fs::create_dir_all(data.join("fonts")).unwrap();
+    std::fs::create_dir_all(&parent).unwrap();
+    // (the parent's owner, its group, and a member of that group who is neither: none of them root)
+    let (owner, group, member) = (65534, 65533, 65532);
+    std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::chown(&parent, Some(owner), Some(group)).unwrap();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o2775)).unwrap();
+    assert_eq!(std::fs::metadata(&parent).unwrap().mode() & 0o7777, 0o2775);
+    let state = parent.join("grimoire");
+    std::fs::create_dir(&state).unwrap();
+    std::fs::write(state.join("keep.me"), b"not Grimoire's").unwrap();
+    std::os::unix::fs::chown(&state, Some(owner), Some(owner)).unwrap();
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let was = std::fs::symlink_metadata(&state).unwrap();
+    std::env::set_var("GRIMOIRE_STATE", &state);
+    assert_eq!(store_init(data.to_str().unwrap()), 0);
+    userfonts_aside_reset();
+    // (as the first check of a run, which alone may make the folder afresh)
+    let rc = bg_font_check(USERFONTS_AFRESH, 300.0);
+    std::env::remove_var("GRIMOIRE_STATE");
+    assert_eq!(rc, 0);
+    let mut names: Vec<String> = std::fs::read_dir(&parent).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert_eq!(names[0], "grimoire");
+    assert!(names[1].starts_with("grimoire.not-own-") && names[1].ends_with(&format!("-{}", std::process::id())), "{names:?}");
+    let aside = parent.join(&names[1]);
+    let moved = std::fs::symlink_metadata(&aside).unwrap();
+    assert!(moved.is_dir() && moved.ino() == was.ino() && moved.mode() == was.mode() && moved.uid() == owner);
+    assert_eq!(std::fs::read(aside.join("keep.me")).unwrap(), b"not Grimoire's");
+    let fresh = std::fs::symlink_metadata(&state).unwrap();
+    assert!(fresh.is_dir() && fresh.uid() == 0 && fresh.gid() == group && fresh.mode() & 0o7777 == 0o2700, "{:o} gid {}", fresh.mode(), fresh.gid());
+    // Grimoire's own: a second check, itself given leave to move, takes it as it is and moves nothing
+    std::env::set_var("GRIMOIRE_STATE", &state);
+    userfonts_aside_reset();
+    let rc = bg_font_check(USERFONTS_AFRESH, 300.0);
+    std::env::remove_var("GRIMOIRE_STATE");
+    assert_eq!(rc, 0);
+    assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 2);
+    let again = std::fs::symlink_metadata(&state).unwrap();
+    assert!(again.ino() == fresh.ino() && again.mode() == fresh.mode() && again.gid() == group);
+    // A member of its group, not root, cannot make a file in it.
+    let probe = std::ffi::CString::new(state.join("probe").into_os_string().into_encoded_bytes()).unwrap();
+    // SAFETY: the child makes only raw system calls on data made before the fork (setgroups, setgid, setuid, open,
+    // _exit) and ends with _exit; the parent waits for it.
+    let code = unsafe {
+        let pid = libc::fork();
+        if pid == 0 {
+            let refused = libc::setgroups(0, std::ptr::null()) == 0
+                && libc::setgid(group) == 0
+                && libc::setuid(member) == 0
+                && libc::open(probe.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL, 0o600) < 0
+                && *libc::__errno_location() == libc::EACCES;
+            libc::_exit(if refused { 0 } else { 1 });
+        }
+        let mut status = 0;
+        libc::waitpid(pid, &mut status, 0);
+        libc::WIFEXITED(status).then(|| libc::WEXITSTATUS(status))
+    };
+    assert_eq!(code, Some(0), "a member of the folder's group could make a file in it, or could not become one");
+    assert!(std::fs::symlink_metadata(state.join("probe")).is_err());
+    let _ = std::fs::remove_dir_all(&base);
+}

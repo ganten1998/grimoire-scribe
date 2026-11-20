@@ -825,7 +825,8 @@ SHA-256, and the glyph limit; docs/TESTING.md has the device checks, none of whi
   entry above: the font would then load before its family's Bold file has passed in every family, not only
   in those whose Bold file sorts later.
 - **Hashing a font while it is read** (one pass, not two), if the load time on the Scribe asks for it.
-- **Removing `/var/local/grimoire` when the package is removed** (today: by hand, KINDLE.md).
+- **Removing `/var/local/grimoire` when the package is removed**, with any `grimoire.not-own-*` entry moved aside
+  beside it (today: by hand, KINDLE.md).
 - **A font with a slow glyph ahead of its broken ones** ends as "Took too long to read." (after its second
   check) where the broken glyphs alone would have made it "Unreadable font.": the check ends at the first
   count that is too many, and says what it knows then.
@@ -834,9 +835,6 @@ SHA-256, and the glyph limit; docs/TESTING.md has the device checks, none of whi
   stand before it, and a second folder for one data folder that was named by two paths. An empty folder
   with no `root` file cannot be told from one another data root's job is making at that moment, so it is
   left. What holds in the end is the free-room test before every check.
-- **The parent of Grimoire's own folder is not tested** (`/var/local` on the Kindle): the code holds the
-  folder itself and the two below it to "root's, and no one else can write it", and the parent is the
-  device check's (TESTING.md).
 
 From the whole-release review of 2.1.0-beta.2 (the fix round, lane F3; the review's finding IDs). Fixed there: H8,
 M17, M19, M20, the watchdog timeout that was a verdict for good (a second timeout is the verdict now), the

@@ -645,7 +645,12 @@ What the check found of a font, its verdict, is kept on the Kindle itself and no
 verdicts numbered 2 on, FORMAT.md; 2.1.0 kept its own in `grimoire/fonts/.cache/`):
 `/var/local/grimoire/<16 hex digits>/fonts/<key>.font`, a few hundred bytes a font (at most 200 files of 8 KiB
 for a data folder), in folders Grimoire makes for root alone (mode 0700; a folder that is already there is used
-only while it is root's and no one else can write it). The 16 digits name the data folder (a second one, a
+only while it is root's and no one else can write it). When the entry at `/var/local/grimoire` is not Grimoire's
+own (a link, a file, or a folder of another user or that others can write), the first check after Grimoire starts
+moves it aside as it is, never opened, to `/var/local/grimoire.not-own-<seconds>-<pid>`, and makes the folder
+afresh: every font is then checked once more, as after `rm -r /var/local/grimoire`. That is done once a run: a
+later check of the same run that finds such an entry there, or nothing, keeps nothing, and no font is checked
+until Grimoire starts again. The 16 digits name the data folder (a second one, a
 development copy, has its own, and the file `root` beside `fonts` says which folder it is of); what was kept for
 a data folder that is gone is removed at the next check. The previews and marks stay in `grimoire/fonts/.cache/`,
 and a verdict counts only with its preview (or, for a font the check refused, its `.no` file) there. So after the
@@ -654,7 +659,7 @@ after a factory reset, or with the storage moved to another Kindle, once more th
 worker died (its `.bad` file in `grimoire/fonts/.cache/`) is not checked again by this: it stays out until
 its file changes or the cache is deleted. `/var/local/grimoire` is
 left when Grimoire is removed; `rm -r /var/local/grimoire` over SSH, with Grimoire closed, removes it, at the
-price of one more check of every font. A `.font` file in `grimoire/fonts/.cache/` is 2.1.0's: it is not read,
+price of one more check of every font. An entry moved aside is left too: Grimoire never opens or removes it. A `.font` file in `grimoire/fonts/.cache/` is 2.1.0's: it is not read,
 and 2.1.0 finds it again if you go back.
 
 What grimoire.log says (never a file's name or a family's: counts, sizes, timings, reasons):
@@ -685,6 +690,12 @@ What grimoire.log says (never a file's name or a family's: counts, sizes, timing
   system that went read-only). No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session, and fonts that have their
   verdicts go on working. `fonts: N data folder(s) are gone: what was kept for them is removed from Grimoire's
   own folder`.
+- `fonts: the entry at the name of Grimoire's own folder was not its own (<kind>, owner <uid>, mode <mode>): it
+  is moved aside as it was, and the folder is made afresh; every font is checked once more`: at most once a
+  run, by its first check, which then goes on in the fresh folder. When the move cannot be made, `... is not its own (...) and
+  cannot be moved aside (<why>)`, or when another entry stands at the name again at once, `fonts: the folder made
+  afresh is not Grimoire's own either (<why>); nothing more is moved aside`; either is followed by `what the
+  check finds cannot be kept (it is not Grimoire's own)` above.
 - `fonts: the check ended badly; N file(s) marked unreadable`: the background job itself died on a file.
   `fonts: what the check found could not be written. Is the storage, or Grimoire's own folder, full?`.
 - `font: custom font loaded: S KB in T ms, bold by its weight axis|a Bold file|overprint, K glyph(s) from
