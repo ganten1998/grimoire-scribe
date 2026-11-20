@@ -300,7 +300,10 @@ fn own_dir(fd: &OwnedFd) -> bool {
     }
 }
 
-/// Whether a stat is of a folder of this user's that no one else may write.
+/// Whether a stat is of a folder of this user's that no one else may write. Only the write bits of group and others
+/// are asked. The setgid bit is taken: a folder made under a parent that has it, as /var/local has on the Kindle,
+/// comes out with it and with the parent's group (mode 02700), and that group has no rights in it. So is the sticky
+/// bit, which only narrows who may remove names inside. Neither lets anyone else write the folder.
 fn own_stat(st: &libc::stat) -> bool {
     // SAFETY: geteuid takes no arguments.
     (st.st_mode & libc::S_IFMT) == libc::S_IFDIR && st.st_uid == unsafe { libc::geteuid() } && st.st_mode & 0o022 == 0
@@ -2324,6 +2327,30 @@ mod tests {
         assert_eq!(kind_of(libc::S_IFLNK | 0o777), "a link");
         assert_eq!(kind_of(libc::S_IFREG | 0o644), "a file");
         assert_eq!(kind_of(libc::S_IFIFO | 0o644), "a pipe");
+    }
+
+    // own_stat's rule, by mode: a folder of this user's with no write bit for group or others. A folder made under
+    // the Kindle's /var/local (setgid) is 02700 and is Grimoire's own; the setgid and sticky bits never make a folder
+    // Grimoire's own when a write bit does not let it be.
+    #[test]
+    fn own_stat_asks_only_who_may_write() {
+        // SAFETY: geteuid takes no arguments.
+        let me = unsafe { libc::geteuid() };
+        let st = |kind: libc::mode_t, mode: u32, uid: libc::uid_t| {
+            // SAFETY: a stat is plain data: all zero is a valid one.
+            let mut s: libc::stat = unsafe { std::mem::zeroed() };
+            s.st_mode = kind | mode as libc::mode_t;
+            s.st_uid = uid;
+            s
+        };
+        for mode in [0o700, 0o750, 0o755, 0o2700, 0o2750, 0o2755, 0o1700, 0o1755, 0o3700] {
+            assert!(own_stat(&st(libc::S_IFDIR, mode, me)), "{mode:04o} is Grimoire's own");
+        }
+        for mode in [0o720, 0o702, 0o770, 0o777, 0o2720, 0o2770, 0o2702, 0o2777, 0o1777, 0o1770, 0o3770] {
+            assert!(!own_stat(&st(libc::S_IFDIR, mode, me)), "{mode:04o} is not Grimoire's own");
+        }
+        assert!(!own_stat(&st(libc::S_IFDIR, 0o2700, me.wrapping_add(1))));
+        assert!(!own_stat(&st(libc::S_IFLNK, 0o700, me)) && !own_stat(&st(libc::S_IFREG, 0o700, me)));
     }
 
     #[test]

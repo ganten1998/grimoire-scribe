@@ -298,6 +298,10 @@ fn the_docs_follow_the_own_folders_move_aside() {
     told_on(&mut fails, KINDLE, later, USERFONTS, made);
     told_on(&mut fails, KINDLE, "at most once a run, by its first check, which then goes on in the fresh folder", USERFONTS, run);
     told_on(&mut fails, TESTING, "Once a run: with Grimoire running", USERFONTS, run);
+    // under the Kindle's setgid /var/local the folders Grimoire makes are 02700 and of its group: own_stat asks only
+    // the write bits of group and others, so they are Grimoire's own
+    let own = "(st.st_mode & libc::S_IFMT) == libc::S_IFDIR && st.st_uid == unsafe { libc::geteuid() } && st.st_mode & 0o022 == 0";
+    told_on(&mut fails, TESTING, "under a /var/local with the setgid bit, as in step 1, the folders show `drwx--S---` and its group, which they take from it and which has no rights in them", USERFONTS, own);
     told_on(&mut fails, DESIGN, "by a rename that never replaces an entry", USERFONTS, "rename_noreplace(parent.as_raw_fd(), &c, parent.as_raw_fd(), &to)");
     told_on(&mut fails, DESIGN, "and is never followed, opened, read, listed or deleted", USERFONTS, "libc::fstatat(parent.as_raw_fd(), c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW)");
     told_on_code(&mut fails, DESIGN, "The entry is renamed by descriptor as it stands, by a rename that never replaces an entry, and is never followed, opened, read, listed or deleted; its kind, owner and mode are logged.", USERFONTS, "fn base_afresh(", BASE_AFRESH);
