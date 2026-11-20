@@ -40,12 +40,31 @@ expect editor.erase_strokes is 3
 expect editor.live_matches_render is 1
 expect display.dark.420.900.440.100 is 0
 expect display.dark.815.1130.30.40 is 0
-# the whole page lassoed: the erased word is selected with the rest (nothing of it shows: judged by its whole
-# spine), but has no halo; the line's halo stops at its gap
+# a lasso drawn round the erased word alone: the preview shows no halo there and refreshes nothing for it
 tap panel tool-picker
 wait 100
 tap panel picker.select
 wait 100
+pen down 330 870
+pen move 950 870
+pen move 950 1030
+wait 200
+pen move 330 1030
+wait 200
+expect editor.select is lasso
+expect editor.preview_batches is 2
+expect editor.halo is 0
+expect editor.preview_refreshes is 0
+# (between two of the paper's rules: the lasso's fast refreshes show the gray rules dark until the lift)
+expect display.dark.420.912.440.50 is 0
+pen up 330 880
+wait 300
+expect editor.select is selected
+expect editor.selected is 1
+expect editor.halo is 0
+expect display.dark.420.910.440.80 is 0
+# the whole page lassoed (the pen down outside the selection ends it): the erased word is selected with the
+# rest (nothing of it shows: judged by its whole spine), but has no halo; the line's halo stops at its gap
 pen down 100 550
 pen move 1600 550
 pen move 1600 1750
