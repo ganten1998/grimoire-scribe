@@ -1,8 +1,8 @@
 # settings: status_mode=1
 # The panel with 0 to 3 pinned pens on the Scribe 3's and the Scribe Colorsoft's screen
 # (1986x2648), upright and sideways: always inside the screen with 12 px free above and below it,
-# its buttons at full size (editor.panel_fits); older Scribes need smaller buttons sideways with
-# two or three pins (z_tool_9_fit). Each
+# its buttons at full size upright (editor.panel_fits); sideways three pins need 95 px buttons.
+# The older Scribes' screen: z_tool_9_fit. Each
 # pen is pinned in the tool picker's Pin mode, in a notebook b_library made.
 # root: b_library
 # env: GRIMOIRE_SIM_SIZE=1986x2648
@@ -76,7 +76,7 @@ expect editor.pins is highlighter,fineliner,marker
 expect editor.panel_fits is 1
 rotate 1
 wait 300
-expect editor.panel_fits is 1
+expect editor.panel_fits is 0
 rotate 0
 wait 300
 expect editor.panel_fits is 1
@@ -99,7 +99,7 @@ expect editor.pins is highlighter,fineliner,marker
 expect editor.panel_fits is 1
 rotate 1
 wait 300
-expect editor.panel_fits is 1
+expect editor.panel_fits is 0
 shot 01-three-pins-sideways
 rotate 2
 wait 300
@@ -109,8 +109,8 @@ expect editor.panel_button is 100
 rotate 3
 wait 300
 expect size is 2648x1986
-expect editor.panel_fits is 1
-expect editor.panel_button is 100
+expect editor.panel_fits is 0
+expect editor.panel_button is 95
 rotate 0
 wait 300
 expect editor.panel_fits is 1

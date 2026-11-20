@@ -15,10 +15,10 @@ tap 510 460
 tap 1564 2254
 wait 400
 expect screen is editor
-# The panel down the left of the page, as low as it goes: 100 px from the left edge, to y 746 (the screen's height less the panel's 1734).
+# The panel down the left of the page, as low as it goes: 100 px from the left edge, to y 638 (the screen's height less the panel's 1842).
 drag touch 1737 260 133 1200 6
 wait 400
-expect editor.panel_rect is 100 746 128 1734
+expect editor.panel_rect is 100 638 128 1842
 expect editor.layers is ok
 # The Links bar, along the bottom, over the panel's foot; closed again.
 key 37 0
@@ -74,15 +74,15 @@ tap panel tool-picker
 wait 400
 # The quick sizes card (an eraser held 600 ms) beside the panel at the left, over the page: five chips (the fifth
 # at 12 mm), no Pen feel chip, the whole 912 x 416 card on the screen.
-touch down 164 992
+touch down 164 884
 wait 700
-touch up 164 992
+touch up 164 884
 wait 300
 expect editor.modal is quick-size
 expect editor.layers is ok
-expect editor.quicksize.rect is 238 942 912 416
+expect editor.quicksize.rect is 238 834 912 416
 expect editor.quicksize.chip.4 is 12 mm
-expect editor.at.quicksize.4 is 1046 1127
+expect editor.at.quicksize.4 is 1046 1019
 expect editor.at.quicksize.5 is
 expect editor.at.quicksize.pen-feel is
 shot 05-quick-sizes-over-panel
@@ -101,7 +101,7 @@ wait 500
 expect editor.modal is none
 expect editor.layers is ok
 # Dragged to the middle of the page (by its grip) and the Display sheet opened over most of it.
-drag touch 133 774 833 760 6
+drag touch 133 666 833 760 6
 wait 400
 expect editor.modal is none
 expect editor.layers is ok
@@ -113,14 +113,14 @@ tap 70 70
 wait 400
 expect editor.layers is ok
 # The same with the panel in the middle of the page: the card goes beside it, never over the held button.
-touch down 864 978
+touch down 864 870
 wait 700
-touch up 864 978
+touch up 864 870
 wait 300
 expect editor.modal is quick-size
 expect editor.layers is ok
-expect editor.quicksize.rect is 814 1052 912 416
-expect editor.at.quicksize.4 is 1622 1237
+expect editor.quicksize.rect is 814 958 912 416
+expect editor.at.quicksize.4 is 1622 1143
 expect editor.at.quicksize.5 is
 expect editor.at.quicksize.pen-feel is
 shot 07-quick-sizes-panel-in-the-middle

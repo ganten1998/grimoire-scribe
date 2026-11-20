@@ -14,7 +14,7 @@ wait 100
 tap 1564 2254
 wait 200
 expect screen is editor
-expect editor.panel_rect is 1704 220 128 1734
+expect editor.panel_rect is 1704 220 128 1842
 # (the launch repaints the whole screen 1.2 s and 3.5 s after it starts: past both before counting)
 wait 3700
 expect display.presents not -1
@@ -42,9 +42,9 @@ expect display.stale.800.300.400.1800 not 0
 expect display.presents not -1
 touch up 1737 700
 wait 300
-expect editor.panel_rect is 1704 660 128 1734
+expect editor.panel_rect is 1704 638 128 1842
 # one flash of the whole trail, where it began, went round and ended
-expect display.presents is clean 867 220 965 2174
+expect display.presents is clean 867 220 965 2260
 expect display.stale.800.300.400.1800 is 0
 expect display.stale.0.300.1860.2100 is 0
 expect editor.wear is 0
@@ -63,7 +63,7 @@ finger 1 move 1100 900
 frame 100
 pen hover 300 300
 wait 300
-expect editor.panel_rect is 1067 746 128 1734
+expect editor.panel_rect is 1067 638 128 1842
 expect display.presents has ui
 expect display.presents not has clean
 expect editor.wear is 0 owed

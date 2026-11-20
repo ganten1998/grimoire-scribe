@@ -14,7 +14,7 @@ wait 400
 expect screen is editor
 expect editor.pins is highlighter,fineliner,marker
 expect editor.panel_button is 100
-expect editor.panel_rect is 1704 220 128 2058
+expect editor.panel_rect is 1704 220 128 2166
 pen line 300 700 1300 720 20 0.6 0.6
 tap panel undo
 expect editor.strokes is 0
@@ -27,10 +27,10 @@ expect editor.tool is eraser
 pentap panel tool:marker
 wait 200
 expect editor.tool is marker
-# sideways: the added Settings cog leaves 93 px buttons with three pins.
+# sideways: the Widgets button leaves 88 px buttons with three pins.
 rotate 1
 wait 400
-expect editor.panel_button is 93
+expect editor.panel_button is 88
 expect editor.panel_fits is 0
 pen line 300 700 1300 720 20 0.6 0.6
 tap panel undo

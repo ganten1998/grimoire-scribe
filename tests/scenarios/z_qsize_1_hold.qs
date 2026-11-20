@@ -59,7 +59,7 @@ expect editor.quicksize.chip.0 is 1 mm
 expect editor.quicksize.chip.4 is 12 mm
 expect editor.quicksize.rect is 782 632 912 416
 # (the button's press look, then the card with the whole toolbar, whose marks moved with the pen, in one Ui)
-expect display.presents is fast 1718 632 100 100, ui 782 220 1050 1950
+expect display.presents is fast 1718 632 100 100, ui 782 220 1050 2058
 shot 01-eraser-card
 # The lift after the hold acts as nothing: the card stays, the eraser is not put back to the pencil.
 touch up 1768 682

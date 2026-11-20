@@ -610,7 +610,7 @@ expect editor.strokes is 24
 expect editor.undo_kind is lasso
 expect editor.sel_box is 1077 437 193 186
 expect editor.drag_copy is 0
-expect display.presents is ui 10 220 1822 1734
+expect display.presents is ui 10 220 1822 1842
 expect editor.live_matches_render is 1
 expect editor.layers is ok
 shot 03-moved

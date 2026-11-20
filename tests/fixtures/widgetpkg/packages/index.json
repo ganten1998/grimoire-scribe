@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "packages": [
+    {"id":"com.example.timer","name":"Timer","version":"1.0.0","author":"Jane Doe","description":"A small timer widget.","icon":"timer","path":"packages/widgets/com.example.timer/timer.bin","sha":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08","installed_at":1,"source_url":"https://example.org/timer.yaml"}
+  ]
+}

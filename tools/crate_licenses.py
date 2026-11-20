@@ -2,7 +2,8 @@
 """app/licenses/rust-crates.txt (2.1.0-beta.2, DESIGN.md 5, D22): the licenses of the Rust crates Cargo.lock
 names for the Kindle binary (all of them: built in, build time only, or named and not compiled), and the notices
 of the data hayro carries (Foxit's standard fonts, Adobe's CMaps, the ICC profiles). Written at package time from
-`cargo metadata --frozen` for the Kindle target, so it names exactly the crates Cargo.lock holds;
+`cargo metadata --frozen`, so it names exactly the crates Cargo.lock holds, including proc macros that
+run only on the build host;
 tests/package_check.sh checks every one of them is in it.
 
 A crate offered under "A OR B" is taken under the first of MIT, Zlib, BSD-3-Clause, Unlicense, 0BSD and
@@ -68,7 +69,7 @@ def main():
     cargo = sys.argv[3] if len(sys.argv) > 3 else "cargo"
     meta = json.loads(
         subprocess.run(
-            [cargo, "metadata", "--format-version", "1", "--frozen", "--filter-platform", "armv7-unknown-linux-musleabihf"],
+            [cargo, "metadata", "--format-version", "1", "--frozen"],
             cwd=rust, check=True, capture_output=True, text=True,
         ).stdout
     )

@@ -94,13 +94,18 @@ const P_SHAPE_MIN: i32 = 64;
 const P_SHAPE_CORNER: i32 = 65;
 const P_SHAPE_DONE: i32 = 30;
 const P_SETTINGS: i32 = 31;
+/// the Widgets button on the toolbar, and its popup's rows
+const P_WIDGETS: i32 = 32;
+const P_WIDGET_SPAWN: i32 = 33;
+/// the popup's Manage widgets... row
+const P_WIDGET_MANAGE: i32 = 34;
 /// the tool picker's Select (Select mode, select.rs)
 const P_PICK_SELECT: i32 = 66;
 
 /// Which input started the current gesture, and what it does.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Owner {
+pub(crate) enum Owner {
     #[default]
     None = 0, // OWN_NONE
     Draw = 1,      // OWN_DRAW
@@ -137,13 +142,18 @@ enum Owner {
     /// the contact that opened the quick sizes card (a pen button held HOLD_MS), which may slide to a chip, or one
     /// that began on the card (quicksize.rs)
     QuickSize = 22,
+    /// a contact that began on the Widgets popup
+    Widgets = 23,
+    /// a contact that began on a widget frame (its title, close, minimize, grip or body)
+    Widget = 24,
 }
 
 /// The owner's name in grimoire.log and the `editor.owner` probe.
 fn owner_name(o: Owner) -> &'static str {
-    const K: [&str; 23] = [
+    const K: [&str; 25] = [
         "none", "draw", "erase", "panel", "modal", "display", "pages", "tools", "build", "templates", "link", "bar",
         "outside", "find", "lasso", "card", "linkto", "strip", "map", "pen-drag", "select", "add-pad", "quick-size",
+        "widgets", "widget",
     ];
     K[o as usize]
 }
@@ -334,6 +344,22 @@ struct ShapeHold {
 }
 struct ShapePreview { saved: Canvas, region: Rect, raw_n: usize, stroke: Box<Stroke> }
 
+/// How a widget drag shows its newest place: a dithered border at the frame's new rect over a copy of
+/// the screen without the border's old strips, as a selection's drag does (select.rs). The frame itself
+/// stays where it was until the lift, so no page or frame content is composed while the contact moves.
+#[derive(Default)]
+struct WidgetDragView {
+    /// the frame rect the border was last drawn at
+    shown: Option<Rect>,
+    /// the screen without the border (and without the panel), copied as the first border shows
+    base: Option<Canvas>,
+    base_at: Rect,
+    shown_at: u32,
+    moved_at: u32,
+    samples: u32,
+    samples_at_last_show: u32,
+}
+
 #[derive(Default)]
 pub struct EditorState {
     /// when the open page's Pages preview was last made from its canvas (save_page), and whether the
@@ -428,7 +454,7 @@ pub struct EditorState {
     page_views: Vec<PageView>,
 
     // Pointer ownership: which input started the current gesture and what it does.
-    owner: Owner,
+    pub(crate) owner: Owner,
     owner_is_pen: bool,
     /// grimoire.log's contact and link-making lines (diag): their budget, and the link-making state last said
     diag: DiagBudget,
@@ -582,6 +608,18 @@ pub struct EditorState {
     /// a press on a Smart shapes slider has come over its track: the knob follows it to the lift
     tools_slider: bool,
 
+    // Widgets (widgets.rs): the open frames, the popup beside the panel, and the contact on one of them.
+    pub(crate) widgets: WidgetHost,
+    widgets_open: bool,
+    /// where the popup's top is meant to be: the panel's, as it opened
+    widgets_y: i32,
+    widgets_rect: Rect,
+    widgets_hits: HitList,
+    widgets_press: Press,
+    /// the popup's button pressed, shown pressed until the lift
+    widgets_pressed: Option<Rect>,
+    widget_drag: Option<WidgetDrag>,
+    widget_drag_view: WidgetDragView,
     /// the Pages view (pagesview.h)
     pv: PagesView,
     destination: NotebookPicker,
@@ -679,10 +717,10 @@ pub struct EditorState {
 }
 
 // (The C's S, a->ed.)
-fn ed(a: &mut App) -> &mut EditorState {
+pub(crate) fn ed(a: &mut App) -> &mut EditorState {
     a.ed.as_deref_mut().unwrap()
 }
-fn ed_ref(a: &App) -> &EditorState {
+pub(crate) fn ed_ref(a: &App) -> &EditorState {
     a.ed.as_deref().unwrap()
 }
 
@@ -1487,8 +1525,9 @@ fn draw_panel(a: &mut App) {
     y += btn_h() + gap();
     canvas_hline(c, x, x + w, y + div_h() / 2 - ui_px(6.0), ui_px(3.0), 160);
     y += div_h();
-    // Paper, Display, Settings and Library (icons only, like the rest of the panel).
-    let rest: [(IconKind, i32); 4] = [
+    // Widgets, Paper, Display, Settings and Library (icons only, like the rest of the panel).
+    let rest: [(IconKind, i32); 5] = [
+        (IconKind::Grid, P_WIDGETS),
         (IconKind::Paper, P_PAPER),
         (IconKind::Brightness, P_DISPLAY),
         (IconKind::Gear, P_SETTINGS),
@@ -1522,7 +1561,7 @@ fn panel_hit_at(s: &EditorState, x: f32, y: f32) -> Option<Hit> {
 
 /// The runner's name for a panel button (`tap panel NAME`, `editor.panel_at.X.Y`): grip, collapse,
 /// expand, tool-picker, eraser, tool:NAME (a pinned pen, NAME as `editor.tool` names tools), undo,
-/// redo, clear, previous, pages (the page chip), next, links, paper, display, pen-feel, library. "" for a
+/// redo, clear, previous, pages (the page chip), next, links, widgets, paper, display, pen-feel, library. "" for a
 /// hit that is not one of the panel's.
 fn panel_name(h: &Hit) -> String {
     match h.id {
@@ -1543,6 +1582,7 @@ fn panel_name(h: &Hit) -> String {
         P_PAGES => "pages".into(),
         P_NEXT => "next".into(),
         P_LINKS => "links".into(),
+        P_WIDGETS => "widgets".into(),
         P_PAPER => "paper".into(),
         P_DISPLAY => "display".into(),
         P_PENSET => "pen-feel".into(),
@@ -1593,6 +1633,49 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if let Some(control)=name.strip_prefix("select."){return sel_control_point(s,control);}
     if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
     if let Some(control)=name.strip_prefix("linkto."){return linkbar_control_point(&s.lt,control);}
+    // The Widgets popup's rows: `tap panel widgets.com.example.widget` opens or raises one.
+    if s.widgets_open {
+        if let Some(id)=name.strip_prefix("widgets.") {
+            if id == "manage" {
+                return s.widgets_hits.h.iter().find(|h| h.id == P_WIDGET_MANAGE)
+                    .map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
+            }
+            let i = widget_catalog().iter().position(|d| d.id == id)? as i32;
+            return s.widgets_hits.h.iter().find(|h| h.id == P_WIDGET_SPAWN && h.arg == i)
+                .map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
+        }
+    }
+    // A widget frame's parts: `tap panel widget.com.example.widget.close` (title, close, minimize,
+    // resize, body), while it is open and not minimized (a minimized frame has only its title).
+    if let Some(n)=name.strip_prefix("widget.") {
+        // A frame may be named by its index (widget.0.hit.12) or by a package id that has dots
+        // (widget.com.example.widget.close).
+        let (id, part) = match n.split_once('.') {
+            Some((num, rest)) if num.parse::<usize>().is_ok() => (num, rest),
+            _ => n.rsplit_once('.')?,
+        };
+        let i = id.parse::<usize>().ok().filter(|&i| i < s.widgets.frames.len()).or_else(|| s.widgets.index_of(id))?;
+        let f = s.widgets.frames.get(i)?;
+        if f.layout.minimized && part != "title" { return None; }
+        if let Some(hit) = part.strip_prefix("hit.") {
+            let hit: i32 = hit.parse().ok()?;
+            let r = f.runtime.as_ref()?.hit(hit)?;
+            let body = widget_body(f);
+            return Some(((body.x + r.x + r.w / 2) as f32, (body.y + r.y + r.h / 2) as f32));
+        }
+        let r = match part {
+            "title" => f.title_rect(),
+            "close" => f.close_rect(),
+            "min" | "minimize" => f.minimize_rect(),
+            "resize" => f.resize_rect(),
+            "body" => {
+                let t = f.title_rect();
+                Rect { x: f.rect().x, y: t.y + t.h, w: f.rect().w, h: f.rect().h - t.h }
+            }
+            _ => return None,
+        };
+        return Some(((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32));
+    }
     if s.tools_open {
         let target=if name=="picker.pin-mode" {Some((P_PIN_MODE,0))}
             else if name=="picker.select" {Some((P_PICK_SELECT,0))}
@@ -2203,6 +2286,136 @@ fn draw_tools(a: &mut App) {
     }
 }
 
+/// The canvas widgets sit on: the whole screen under the status corner.
+fn widget_area(a: &App) -> Rect {
+    let top = status_reserved(a);
+    Rect { x: 0, y: top, w: a.w, h: a.h - top }
+}
+
+/// The Widgets popup: the catalog's rows beside the panel. Its rows open a widget (or raise it);
+/// Manage widgets... opens Settings → Packages → Widgets.
+fn draw_widgets_popup(a: &mut App) {
+    let App { screen: c, ed, .. } = a;
+    let s = ed.as_deref_mut().unwrap();
+    if !s.widgets_open {
+        return;
+    }
+    hits_clear(&mut s.widgets_hits);
+    let defs = widget_catalog();
+    let n = defs.len() as i32;
+    let w = ui_px(560.0);
+    let pad = ui_px(30.0);
+    let gap = ui_px(14.0);
+    let row_h = ui_px(120.0);
+    let header = ui_px(104.0);
+    let h = header + n * (row_h + gap) + row_h + pad;
+    let mut x = s.panel.x - w - ui_px(20.0);
+    if x < ui_px(10.0) {
+        x = s.panel.x + s.panel.w + ui_px(20.0);
+    }
+    x = clampi(x, ui_px(10.0), (a.w - w - ui_px(10.0)).max(ui_px(10.0)));
+    let y = clampi(s.widgets_y, ui_px(10.0), (a.h - h - ui_px(10.0)).max(ui_px(10.0)));
+    s.widgets_rect = Rect { x, y, w, h };
+    ui_frame(c, s.widgets_rect, ui_px(22.0), 255, true, 0);
+    ui_frame(c, s.widgets_rect, ui_px(22.0), 0, false, ui_px(6.0));
+    // TRANSLATORS: the widget popup's title, beside the toolbar's Widgets button.
+    ui_text(c, FontFace::Bold, ui_text_size(), ui_small_size(), Rect { x: x + pad, y, w: w - 2 * pad, h: header }, tr("Widgets"), 2, false, 0);
+    let mut ry = y + header;
+    for (i, def) in defs.iter().enumerate() {
+        let r = Rect { x: x + pad, y: ry, w: w - 2 * pad, h: row_h };
+        let open = s.widgets.is_open(def.id);
+        let row = if open { Row::selected(def.icon, def.name) } else { Row::new(def.icon, def.name) };
+        ui_row(c, r, &row);
+        hits_add(&mut s.widgets_hits, r, P_WIDGET_SPAWN, i as i32);
+        ry += row_h + gap;
+    }
+    // TRANSLATORS: the widget popup's row that opens the Packages page.
+    let r = Rect { x: x + pad, y: ry, w: w - 2 * pad, h: row_h };
+    let manage = Row::new(IconKind::Gear, tr("Manage widgets..."));
+    ui_row(c, r, &manage);
+    hits_add(&mut s.widgets_hits, r, P_WIDGET_MANAGE, 0);
+}
+
+/// The widget frames, below the panel and menus and above the page.
+fn draw_widgets(a: &mut App, r: Rect) {
+    let order = ed_ref(a).widgets.draw_order();
+    let clip = a.screen.clip;
+    canvas_set_clip(&mut a.screen, r);
+    for i in order {
+        let rect = ed_ref(a).widgets.frames[i].rect();
+        if !rect_overlaps(r, rect) {
+            continue;
+        }
+        draw_widget_frame(a, i);
+    }
+    a.screen.clip = clip;
+}
+
+fn widget_body(f: &WidgetFrame) -> Rect {
+    let r = f.rect();
+    let title = f.title_rect();
+    Rect { x: r.x + ui_px(14.0), y: title.y + title.h + ui_px(8.0), w: r.w - ui_px(28.0), h: r.h - title.h - ui_px(22.0) }
+}
+
+fn draw_widget_frame(a: &mut App, i: usize) {
+    let App { screen: c, ed, .. } = a;
+    let s = ed.as_deref_mut().unwrap();
+    let Some(f) = s.widgets.frames.get_mut(i) else { return };
+    let r = f.rect();
+    let title = f.title_rect();
+    ui_frame(c, r, ui_px(18.0), 255, true, 0);
+    ui_frame(c, r, ui_px(18.0), 0, false, ui_px(3.0));
+    if f.layout.minimized {
+        let icon = Rect { x: r.x + (r.w - ui_px(48.0)) / 2, y: r.y + (r.h - ui_px(48.0)) / 2, w: ui_px(48.0), h: ui_px(48.0) };
+        ui_icon(c, f.def.icon, icon, 0);
+        return;
+    }
+    // The title bar: icon, title, minimize, close.
+    canvas_hline(c, r.x + ui_px(8.0), r.x + r.w - ui_px(8.0), title.y + title.h - ui_px(2.0), ui_px(2.0), 0);
+    let icon = Rect { x: r.x + ui_px(12.0), y: r.y + ui_px(10.0), w: ui_px(44.0), h: ui_px(44.0) };
+    ui_icon(c, f.def.icon, icon, 0);
+    let cr = f.close_rect();
+    let mr = f.minimize_rect();
+    let tx = icon.x + icon.w + ui_px(10.0);
+    let tw = (mr.x - tx - ui_px(8.0)).max(0);
+    ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size() * 0.55, Rect { x: tx, y: r.y, w: tw, h: title.h }, f.def.name, 1, false, 0);
+    ui_icon(c, IconKind::Close, Rect::new(cr.x + ui_px(14.0), cr.y + ui_px(14.0), cr.w - ui_px(28.0), cr.h - ui_px(28.0)), 0);
+    ui_icon(c, IconKind::Minus, Rect::new(mr.x + ui_px(14.0), mr.y + ui_px(14.0), mr.w - ui_px(28.0), mr.h - ui_px(28.0)), 0);
+    // The body is the package's own WASM runtime. A package that cannot start shows why.
+    let body = widget_body(f);
+    if body.w > 0 && body.h > 0 {
+        f.ensure_runtime();
+        if let Some(rt) = f.runtime.as_mut() {
+            rt.draw(c, body);
+        }
+        if let Some(err) = f.error() {
+            let mut text = format!("{}\nv{}", f.def.name, f.def.version);
+            if !f.def.author.is_empty() {
+                text.push_str(&format!(" · {}", f.def.author));
+            }
+            text.push('\n');
+            text.push_str(err);
+            ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), body, &text, 6, false, 0);
+        } else if f.runtime.is_none() {
+            let mut text = f.def.name.to_string();
+            if !f.def.version.is_empty() {
+                text.push_str(&format!(" v{}", f.def.version));
+            }
+            if !f.def.author.is_empty() {
+                text.push_str(&format!(" · {}", f.def.author));
+            }
+            ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y, w: body.w, h: ui_small_size() as i32 + ui_px(6.0) }, &text, 1, false, 0);
+            if !f.def.description.is_empty() {
+                ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y + ui_small_size() as i32 + ui_px(10.0), w: body.w, h: body.h }, f.def.description, 4, false, 0);
+            }
+        }
+    }
+    if f.def.resizable {
+        let gr = f.resize_rect();
+        ui_icon(c, IconKind::Expand, Rect::new(gr.x + ui_px(18.0), gr.y + ui_px(18.0), gr.w - ui_px(36.0), gr.h - ui_px(36.0)), 150);
+    }
+}
+
 fn draw_shape_menu(a: &mut App) {
     let (aw,ah)=(a.w,a.h);
     let App {screen:c,settings:st,ed,..}=a;
@@ -2510,6 +2723,7 @@ fn compose(a: &mut App, r: Rect) {
     sel_draw_halo(a, r);
     draw_area_wait(a, r);
     draw_card_border(a, r);
+    draw_widgets(a, r);
     if rect_overlaps(r, ed(a).panel) && !ed(a).live_no_panel {
         // Only the part of the panel inside r: the page was blitted there alone, and the rest of the panel (and
         // whatever menu is over it) is on the screen as it was; drawn again, the panel would lay itself over
@@ -2550,6 +2764,13 @@ fn draw_menus(a: &mut App, r: Rect) {
     let s = ed_ref(a);
     if s.tools_open && rect_overlaps(r, s.tools_rect) {
         draw_tools(a);
+    }
+    let s = ed_ref(a);
+    if s.widgets_open && rect_overlaps(r, s.widgets_rect) {
+        let clip = a.screen.clip;
+        canvas_set_clip(&mut a.screen, r);
+        draw_widgets_popup(a);
+        a.screen.clip = clip;
     }
     // The Find sheet's card of rows and keyboard, where r meets them.
     let s = ed_ref(a);
@@ -2744,7 +2965,7 @@ fn show(a: &mut App, page_rect: Rect, m: RefreshMode) {
     app_invalidate(a, r, m);
 }
 
-fn compose_all(a: &mut App, m: RefreshMode) {
+pub(crate) fn compose_all(a: &mut App, m: RefreshMode) {
     compose(a, Rect { x: 0, y: 0, w: a.w, h: a.h ,
         },
     );
@@ -4376,6 +4597,7 @@ fn sheet_open(s: &EditorState) -> bool {
         || s.map.open
         || s.pv.open
         || s.tools_open
+        || s.widgets_open
         || s.mb.open
         || s.dm.open
         || s.paper_open
@@ -4397,6 +4619,7 @@ pub fn editor_pen_not_ink(a: &App) -> bool {
             || s.pb_drag.is_some()
             || s.sh.preview.is_some()
             || s.lb.open
+            || s.widgets_open
             || s.find.open
             || s.card.open
             || s.qs.open
@@ -4412,7 +4635,7 @@ pub fn editor_live_style(a: &App, ev: &InEvent, out: &mut LiveStyle) {
     if crate::library::library_settings_active(a) {return;}
     let Some(s) = a.ed.as_deref() else { return };
     let Some(page) = s.open_page() else { return };
-    if !s.open || pb_contact_bound(a, ev) || s.sh.preview.is_some() || page.readonly || sheet_open(s) || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
+    if !s.open || pb_contact_bound(a, ev) || s.sh.preview.is_some() || page.readonly || sheet_open(s) || s.widgets.hit(ev.x.round_ties_even() as i32, ev.y.round_ties_even() as i32).is_some() || s.pinching || s.lm.state != LmState::Off || (s.owner != Owner::None && s.owner != Owner::Draw && s.owner != Owner::Erase) || editor_pen_not_ink(a) {
         return;
     }
     let st = &a.settings;
@@ -7658,6 +7881,439 @@ fn open_shape_menu(a: &mut App) {
     let r=ed(a).tools_rect;app_invalidate(a,r,RefreshMode::Ui);
 }
 
+// ---- the Widgets popup ----
+
+fn widgets_union(s: &EditorState) -> Rect {
+    let mut r = s.widgets_rect;
+    for f in &s.widgets.frames {
+        r = rect_union(r, f.rect());
+    }
+    r
+}
+
+fn open_widgets(a: &mut App) {
+    if ed_ref(a).widgets_open {
+        close_widgets(a);
+        return;
+    }
+    if ed_ref(a).tools_open {
+        close_tools(a);
+    }
+    let s = ed(a);
+    s.widgets_open = true;
+    // Beside its toolbar button, as a sidebar tool's hold opens beside it, not at the panel's top.
+    s.widgets_y = s.hits.h.iter().find(|h| h.id == P_WIDGETS).map_or(s.panel.y, |h| h.r.y);
+    draw_widgets_popup(a);
+    let r = ed(a).widgets_rect;
+    app_invalidate(a, r, RefreshMode::Ui);
+}
+
+fn close_widgets(a: &mut App) {
+    if !ed_ref(a).widgets_open {
+        return;
+    }
+    let a_rect = ed(a).widgets_rect;
+    ed(a).widgets_open = false;
+    ed(a).widgets_hits = HitList::default();
+    compose(a, a_rect);
+    app_invalidate(a, a_rect, RefreshMode::Ui);
+}
+
+fn widgets_spawn(a: &mut App, def: &'static WidgetDef) {
+    let area = widget_area(a);
+    let panel = ed(a).panel;
+    ed(a).widgets.spawn(def, area, panel);
+    // The popup closes on the choice: the new frame would otherwise start under it, and the first
+    // tap on the frame should reach the frame.
+    ed(a).widgets_open = false;
+    ed(a).widgets_hits = HitList::default();
+    let r = widgets_union(ed(a));
+    compose(a, r);
+    app_invalidate(a, r, RefreshMode::Ui);
+    ed(a).widgets.save();
+}
+
+fn widgets_tap(a: &mut App, x: f32, y: f32) {
+    let s = ed(a);
+    let hit = hits_find(&s.widgets_hits, x, y).copied();
+    match hit {
+        Some(h) if h.id == P_WIDGET_SPAWN => {
+            if let Some(def) = widget_catalog().get(h.arg as usize) {
+                widgets_spawn(a, def);
+            }
+        }
+        Some(h) if h.id == P_WIDGET_MANAGE => {
+            close_widgets(a);
+            // The package manager is Settings > Packages > Widgets, over the notebook as Settings is.
+            crate::library::library_settings_from_notebook(a);
+            packages_ui_open(a);
+        }
+        _ => close_widgets(a),
+    }
+}
+
+fn widgets_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
+    let (x0, y0) = {
+        let s = ed(a);
+        press_move(&mut s.widgets_press, ev.x, ev.y);
+        if ph != 2 {
+            return;
+        }
+        s.owner = Owner::None;
+        (s.widgets_press.x0, s.widgets_press.y0)
+    };
+    let mut pressed = ed(a).widgets_pressed.take();
+    let back = app_press_release(a, &mut pressed);
+    if !rect_is_empty(back) {
+        app_invalidate(a, back, RefreshMode::Ui);
+    }
+    if touch_cancelled(ev) {
+        return;
+    }
+    widgets_tap(a, x0, y0);
+    // (pen and finger alike: the popup swallows the contact, and a tap outside closes it)
+    let _ = pen;
+}
+
+// A widget drag's border, as a selection's: one fast refresh a show, paced by the panel and the pen.
+const WIDGET_SHOW_MS: u32 = DRAG_SHOW_MS;
+const WIDGET_PAUSE_MS: u32 = 50;
+const WIDGET_SHOW_SAMPLES: u32 = 60;
+
+/// The screen a frame may show on: under the status bar, with the panel's part taken out below.
+fn widget_drag_area(a: &App) -> Rect {
+    rect_intersect(widget_area(a), Rect { x: 0, y: 0, w: a.w, h: a.h })
+}
+
+/// r cut into the pieces of `widget_drag_area` a border may draw on (the panel draws over the rest).
+fn widget_clip_pieces(a: &App, r: Rect) -> Vec<Rect> {
+    let r = rect_intersect(r, widget_drag_area(a));
+    if rect_is_empty(r) {
+        return Vec::new();
+    }
+    let hole = ed_ref(a).panel;
+    if rect_is_empty(hole) || rect_is_empty(rect_intersect(r, hole)) {
+        return vec![r];
+    }
+    let mut v = Vec::with_capacity(4);
+    let top_h = hole.y - r.y;
+    if top_h > 0 {
+        v.push(Rect { x: r.x, y: r.y, w: r.w, h: top_h });
+    }
+    let bottom_y = hole.y + hole.h;
+    if bottom_y < r.y + r.h {
+        v.push(Rect { x: r.x, y: bottom_y, w: r.w, h: r.y + r.h - bottom_y });
+    }
+    let mid_y = hole.y.max(r.y);
+    let mid_h = (hole.y + hole.h).min(r.y + r.h) - mid_y;
+    if mid_h > 0 {
+        let left_w = hole.x - r.x;
+        if left_w > 0 {
+            v.push(Rect { x: r.x, y: mid_y, w: left_w, h: mid_h });
+        }
+        let right_x = hole.x + hole.w;
+        if right_x < r.x + r.w {
+            v.push(Rect { x: right_x, y: mid_y, w: r.x + r.w - right_x, h: mid_h });
+        }
+    }
+    v
+}
+
+/// The border's strips at b, cut to where they may draw: what a show refreshes and a later show puts back.
+fn widget_preview_strips(a: &App, b: Rect) -> Vec<Rect> {
+    let (band, halo) = (link_band(), ui_px(1.0));
+    let mut v = Vec::with_capacity(4);
+    for s in dither_strips(b, band, halo) {
+        for p in widget_clip_pieces(a, s) {
+            let q = rect_intersect(s, p);
+            if !rect_is_empty(q) && !v.contains(&q) {
+                v.push(q);
+            }
+        }
+    }
+    v
+}
+
+fn widget_preview_draw(a: &mut App, b: Rect) {
+    let (band, halo) = (link_band(), ui_px(1.0));
+    let clip = a.screen.clip;
+    for p in widget_clip_pieces(a, b) {
+        canvas_set_clip(&mut a.screen, p);
+        canvas_dither_rect(&mut a.screen, b, band, halo);
+    }
+    a.screen.clip = clip;
+}
+
+/// Two strips joined only when one rect over both covers no more than they do apart: a short move's
+/// old and new border overlap (as a selection drag's strips, select.rs drag_present).
+fn widget_join_strips(mut v: Vec<Rect>) -> Vec<Rect> {
+    let area = |r: Rect| if rect_is_empty(r) { 0 } else { r.w as i64 * r.h as i64 };
+    loop {
+        let mut best: Option<(i64, usize, usize)> = None;
+        for i in 0..v.len() {
+            for j in i + 1..v.len() {
+                let waste = area(rect_union(v[i], v[j])) - area(v[i]) - area(v[j]);
+                if best.is_none_or(|b| waste < b.0) {
+                    best = Some((waste, i, j));
+                }
+            }
+        }
+        match best {
+            Some((waste, i, j)) if waste <= 0 => {
+                let u = rect_union(v[i], v[j]);
+                v.swap_remove(j);
+                v[i] = u;
+            }
+            _ => break,
+        }
+    }
+    v
+}
+
+/// A show: the last border's strips put back from the copy of the screen, the border at the newest place
+/// drawn, and each changed strip refreshed on its own (one fast DU each, as a selection drag's outline).
+fn widget_preview_paint(a: &mut App, old: Option<Rect>, new: Rect, now: u32) {
+    let old_strips = old.map(|r| widget_preview_strips(a, r)).unwrap_or_default();
+    let new_strips = widget_preview_strips(a, new);
+    if let Some(old) = old {
+        let has_base = ed_ref(a).widget_drag_view.base.is_some();
+        if has_base {
+            let App { screen, ed, .. } = a;
+            let s = ed.as_ref().unwrap();
+            let base_at = s.widget_drag_view.base_at;
+            if let Some(base) = s.widget_drag_view.base.as_ref() {
+                for r in &old_strips {
+                    let srect = Rect { x: r.x - base_at.x, y: r.y - base_at.y, w: r.w, h: r.h };
+                    canvas_blit(screen, base, srect, r.x, r.y);
+                }
+            }
+        } else {
+            // No memory for the copy: the old border comes off by composing both places.
+            compose(a, rect_union(old, new));
+        }
+    }
+    widget_preview_draw(a, new);
+    let mut v = old_strips;
+    v.extend(new_strips);
+    v.retain(|r| !rect_is_empty(*r));
+    let v = widget_join_strips(v);
+    if live_on() {
+        let all = v.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r));
+        if !rect_is_empty(all) {
+            live_push(&a.screen, all);
+        }
+    }
+    if !rect_is_empty(a.dirty) {
+        app_flush(a);
+    }
+    for r in v {
+        app_invalidate(a, r, RefreshMode::Fast);
+        app_flush(a);
+    }
+    let s = ed(a);
+    s.widget_drag_view.shown = Some(new);
+    s.widget_drag_view.shown_at = now;
+    s.widget_drag_view.samples_at_last_show = s.widget_drag_view.samples;
+}
+
+fn widget_preview_begin(a: &mut App, now: u32, shown: Rect) {
+    let at = widget_drag_area(a);
+    let mut base = Canvas::default();
+    let based = !rect_is_empty(at) && canvas_init(&mut base, at.w, at.h) == 0;
+    if based {
+        canvas_blit(&mut base, &a.screen, at, 0, 0);
+    }
+    let s = ed(a);
+    s.widget_drag_view.base = based.then_some(base);
+    s.widget_drag_view.base_at = at;
+    s.widget_drag_view.shown = None;
+    s.widget_drag_view.shown_at = now;
+    s.widget_drag_view.samples_at_last_show = s.widget_drag_view.samples;
+    widget_preview_paint(a, None, shown, now);
+}
+
+/// editor_tick: a widget's newest place shown once the panel finished the last fast refresh, as a
+/// selection's drag is (select.rs drag_tick): never one DU queued behind another. The frame stays where
+/// it was, only its border moves; the lift composes the real frame once.
+fn widget_tick(a: &mut App, now: u32) {
+    let s = ed_ref(a);
+    let Some(d) = s.widget_drag else { return };
+    if s.owner != Owner::Widget
+        || !d.moved
+        || !matches!(d.part, WidgetPart::Title | WidgetPart::Resize)
+        || !s.open
+        || sheet_open(s)
+        || s.peek.active
+        || crate::library::library_settings_active(a)
+        || display_fast_busy()
+    {
+        return;
+    }
+    let Some(cur) = s.widgets.frames.get(d.index).map(|f| f.rect()) else { return };
+    let v = &s.widget_drag_view;
+    if v.shown.is_none() {
+        widget_preview_begin(a, now, cur);
+        return;
+    }
+    if v.shown == Some(cur) {
+        return;
+    }
+    let by_samples = v.samples >= v.samples_at_last_show + WIDGET_SHOW_SAMPLES;
+    let by_time = now.wrapping_sub(v.shown_at) as i32 >= WIDGET_SHOW_MS as i32;
+    let by_pause = now.wrapping_sub(v.moved_at) as i32 >= WIDGET_PAUSE_MS as i32;
+    if by_samples || by_time || by_pause {
+        widget_preview_paint(a, v.shown, cur, now);
+    }
+}
+
+/// editor_tick: an open package that asked for a later draw (a clock, a countdown) has its frame
+/// refreshed then; a package that never asks is only drawn when something else repaints it.
+fn widget_runtime_tick(a: &mut App) {
+    let s = ed_ref(a);
+    if !s.open || a.asleep || s.owner != Owner::None || s.peek.active || sheet_open(s) || crate::library::library_settings_active(a) {
+        return;
+    }
+    let now = std::time::Instant::now();
+    let mut dirty: Option<Rect> = None;
+    for f in &s.widgets.frames {
+        if f.runtime.as_ref().is_some_and(|r| r.redraw_due(now)) {
+            dirty = Some(dirty.map_or(f.rect(), |r| rect_union(r, f.rect())));
+        }
+    }
+    if let Some(r) = dirty {
+        app_invalidate(a, r, RefreshMode::Ui);
+    }
+}
+
+fn widget_down(a: &mut App, index: usize, part: WidgetPart, ev: &InEvent, pen: bool) {
+    let s = ed(a);
+    s.widgets.raise(index);
+    s.widget_drag_view = WidgetDragView::default();
+    let Some((start, close_r, min_r)) = s.widgets.frames.get(index).map(|f| (f.rect(), f.close_rect(), f.minimize_rect())) else { return };
+    s.widget_drag = Some(WidgetDrag {
+        index,
+        part,
+        down_x: ev.x.round_ties_even() as i32,
+        down_y: ev.y.round_ties_even() as i32,
+        start,
+        moved: false,
+    });
+    s.owner = Owner::Widget;
+    s.owner_is_pen = pen;
+    if part == WidgetPart::Close || part == WidgetPart::Minimize {
+        let r = if part == WidgetPart::Close { close_r } else { min_r };
+        app_press_feedback(a, r);
+        ed(a).widgets_pressed = Some(r);
+    }
+}
+
+fn widget_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
+    let dpi = a.dpi;
+    let Some(mut d) = ed(a).widget_drag.take() else { ed(a).owner = Owner::None; return };
+    if ph == 1 {
+        let dx = ev.x.round_ties_even() as i32 - d.down_x;
+        let dy = ev.y.round_ties_even() as i32 - d.down_y;
+        let slop = mm_to_px(TAP_SLOP_MM, dpi) as i32;
+        if dx.abs() > slop || dy.abs() > slop {
+            d.moved = true;
+        }
+        let area = widget_area(a);
+        let (old, new) = {
+            let Some(f) = ed(a).widgets.frames.get_mut(d.index) else { ed(a).owner = Owner::None; return };
+            let old = f.rect();
+            match d.part {
+                WidgetPart::Title => {
+                    f.move_to(d.start.x + dx, d.start.y + dy, area);
+                }
+                WidgetPart::Resize => {
+                    f.resize_to(d.start.w + dx, d.start.h + dy, area);
+                }
+                _ => {}
+            }
+            (old, f.rect())
+        };
+        if old != new {
+            // Only note the newest place: widget_tick draws a border there, a fast refresh at a time.
+            let v = &mut ed(a).widget_drag_view;
+            v.moved_at = now_ms();
+            v.samples = v.samples.wrapping_add(1);
+        }
+        ed(a).widget_drag = Some(d);
+        return;
+    }
+    // The lift. A close or minimize only acts on a tap; a title tap restores a minimized frame.
+    let mut pressed = ed(a).widgets_pressed.take();
+    let back = app_press_release(a, &mut pressed);
+    if !rect_is_empty(back) {
+        app_invalidate(a, back, RefreshMode::Ui);
+    }
+    ed(a).owner = Owner::None;
+    let cancelled = touch_cancelled(ev);
+    let area = widget_area(a);
+    let mut redraw = d.start;
+    if let Some(p) = ed(a).widget_drag_view.shown {
+        redraw = rect_union(redraw, p);
+    }
+    let mut save = false;
+    let mut close = false;
+    {
+        let Some(f) = ed(a).widgets.frames.get_mut(d.index) else {
+            ed(a).widget_drag_view = WidgetDragView::default();
+            return;
+        };
+        redraw = rect_union(redraw, f.rect());
+        if !cancelled && !d.moved {
+            match d.part {
+                WidgetPart::Close => close = true,
+                WidgetPart::Minimize => {
+                    f.layout.minimized = !f.layout.minimized;
+                    redraw = rect_union(redraw, f.rect());
+                    save = true;
+                }
+                WidgetPart::Title if f.layout.minimized => {
+                    f.layout.minimized = false;
+                    f.clamp(area);
+                    redraw = rect_union(redraw, f.rect());
+                    save = true;
+                }
+                WidgetPart::Body => {
+                    let body = widget_body(f);
+                    f.ensure_runtime();
+                    if let Some(rt) = f.runtime.as_mut() {
+                        rt.tap(d.down_x - body.x, d.down_y - body.y);
+                        redraw = rect_union(redraw, body);
+                    }
+                }
+                _ => {}
+            }
+        } else if d.moved && (d.part == WidgetPart::Title || d.part == WidgetPart::Resize) {
+            save = true;
+        }
+        if cancelled && (d.part == WidgetPart::Title || d.part == WidgetPart::Resize) {
+            // A cancelled drag goes back where it started, as a panel drag does.
+            f.layout.x = d.start.x;
+            f.layout.y = d.start.y;
+            f.layout.w = d.start.w;
+            f.layout.h = d.start.h;
+            redraw = rect_union(redraw, f.rect());
+        }
+    }
+    if close {
+        ed(a).widgets.close(d.index);
+        redraw = rect_union(redraw, widgets_union(ed(a)));
+        save = true;
+    }
+    ed(a).widget_drag = None;
+    ed(a).widget_drag_view = WidgetDragView::default();
+    compose(a, redraw);
+    app_invalidate(a, redraw, RefreshMode::Ui);
+    if save {
+        ed(a).widgets.save();
+    }
+    // (pen is the contact's input, not a choice here: a frame takes both)
+    let _ = pen;
+}
+
 // ---- the Find sheet ----
 
 // Go to page or name: the sheet opens over the page with an empty field (the sheet's own refresh: a Ui of the
@@ -8426,6 +9082,7 @@ fn panel_act(a: &mut App, h: Hit) {
             clear_page(a);
         }
         P_SHAPES => open_shape_menu(a),
+        P_WIDGETS => open_widgets(a),
         P_PAGES => pages_show(a),
         // The dedicated toolbar button creates a link; the upward swipe opens the Links bar.
         P_LINKS => {
@@ -8495,6 +9152,9 @@ fn front_menu(s: &EditorState) -> i32 {
     if s.pv.open {
         return if (s.pv.unified&&!s.pv.picking)||s.pv.index_tab{SHORTCUT_INDEX_MAP}else{SHORTCUT_PAGES};
     }
+    if s.widgets_open {
+        return SHORTCUT_CLOSE_MENU;
+    }
     if s.tools_open {
         return SHORTCUT_TOOL_PICKER;
     }
@@ -8556,6 +9216,9 @@ fn close_front(a: &mut App, draw: bool) {
         return;
     }
     let mut r = if s.tools_open { rect_union(s.tools_rect, s.panel) } else { RECT_EMPTY };
+    if s.widgets_open {
+        r = rect_union(r, s.widgets_rect);
+    }
     if s.qs.open {
         r = rect_union(r, s.qs.rect);
     }
@@ -9533,6 +10196,7 @@ pub fn editor_free(a: &mut App) {
     }
     close_notebook(a);
     let s = ed(a);
+    s.widgets.save();
     if let Some(cur) = s.cur.take() {
         stroke_free(cur);
     }
@@ -9577,6 +10241,7 @@ fn close_sheets(a: &mut App) {
     s.mb.open = false;
     s.tools_open = false;
     s.pin_mode = false;
+    s.widgets_open = false;
     tplsheet_close(&mut s.ts);
 }
 
@@ -9628,9 +10293,20 @@ pub fn editor_enter(a: &mut App) {
         if let Some(beside_page)=landscape_panel_slot(a,panel_left) {x=beside_page;}
     }
     let p = panel_rect_at(a, x, y);
+    let (aw, ah, top) = (a.w, a.h, status_reserved(a));
     let s = ed(a);
     s.panel = p;
     s.tools_y = s.panel.y;
+    s.widgets_y = s.panel.y;
+    let area = Rect { x: 0, y: top, w: aw, h: ah - top };
+    if s.open && !s.widgets.loaded {
+        // (a package whose files were removed by hand leaves the index before its frames are restored)
+        crate::widgetpkg::widget_package_repair();
+        crate::widgetpkg::widget_catalog_invalidate();
+        s.widgets.load(area);
+    } else if turned && s.widgets.reclamp(area) {
+        s.widgets.save();
+    }
     s.owner = Owner::None;
     // The pen in use always has its button on the panel. One that has none (a pin a version without
     // pins dropped, or one taken out of settings.ini by hand) goes to the tool button.
@@ -9988,7 +10664,7 @@ fn fs_can_arm(a: &App, in_links_bar: bool) -> bool {
     if gesturemap_shapes(&a.gestures).is_empty() && !gesturemap_has_onefinger(&a.gestures) {
         return false;
     }
-    if s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.find.open || s.lt.open || s.card.open || s.qs.open
+    if s.pv.open || s.tools_open || s.widgets_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.find.open || s.lt.open || s.card.open || s.qs.open
         || s.lm.state != LmState::Off || s.pv.kb.open || s.find.kb.open || s.lm.kb.open || s.card.kb.open || s.add_kb.open
     {
         return false;
@@ -10799,6 +11475,17 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             pages_event(a, 0, ev);
             return;
         }
+        // The Widgets popup takes every contact while it is up: a row opens or raises, anything else
+        // closes it with nothing else done (the panel included).
+        if s.widgets_open {
+            s.owner = Owner::Widgets;
+            press_begin(&mut s.widgets_press, ev.x, ev.y, ev.t_ms);
+            if let Some(h) = hits_find(&s.widgets_hits, ev.x, ev.y).copied() {
+                app_press_feedback(a, h.r);
+                ed(a).widgets_pressed = Some(h.r);
+            }
+            return;
+        }
         if s.tools_open {
             s.owner = Owner::Tools;
             s.tools_slider = false;
@@ -10861,6 +11548,8 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
                 settle_now(a);
             }
             ui_pointer(a, 0, ev, false);
+        } else if let Some((index, part)) = s.widgets.hit(ev.x.round_ties_even() as i32, ev.y.round_ties_even() as i32) {
+            widget_down(a, index, part, ev, pen);
         } else if s.lm.state == LmState::Off && sel_takes(s, pen, ev.x, ev.y) {
             // Select mode: the bar, a drag of the selection, or the pen's lasso (never ink).
             sel_down(a, ev, pen);
@@ -11152,6 +11841,8 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                 bar_stay(a);
             }
         }
+        Owner::Widgets => widgets_pointer(a, ph, ev, pen),
+        Owner::Widget => widget_pointer(a, ph, ev, pen),
         Owner::Tools => {
             press_move(&mut s.tools_press, ev.x, ev.y);
             let slider = hits_find(&s.tools_hits, s.tools_press.x0, s.tools_press.y0).filter(|h| shape_slider_id(h.id)).copied();
@@ -11511,6 +12202,10 @@ pub fn editor_tick(a: &mut App, now: u32) {
     // A pen held still in Select mode: a paste there (select.rs).
     if ed(a).open {
         sel_tick(a, now);
+        widget_runtime_tick(a);
+        if ed_ref(a).owner == Owner::Widget {
+            widget_tick(a, now);
+        }
     }
     // A press held on a chip of the Links bar (a finger or the pen): the long-press card for its entry (8.10).
     let s = ed(a);
@@ -11838,6 +12533,77 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
             }
             "armed" => { csnprintf!(out, cap, "%d", i32::from(fs_can_arm(a, true))); }
             _ => return -1,
+        }
+        return 0;
+    }
+    // The widget windows: "N id id...", "widgets.open" 1 while the popup is up, and a frame's place or
+    // state ("widget.ID.rect" -> "x y w h", "widget.ID.state" -> normal or minimized).
+    if key == "widgets" {
+        let s = ed_ref(a);
+        let mut text = format!("{}", s.widgets.frames.len());
+        for f in &s.widgets.frames {
+            text.push(' ');
+            text.push_str(f.def.id);
+        }
+        csnprintf!(out, cap, "%s", &text);
+        return 0;
+    }
+    if key == "widgets.open" {
+        csnprintf!(out, cap, "%d", ed_ref(a).widgets_open as i32);
+        return 0;
+    }
+    if let Some(n) = key.strip_prefix("widget.") {
+        let Some((id, what)) = n.rsplit_once('.') else { return -1 };
+        let s = ed_ref(a);
+        let Some(i) = id.parse::<usize>().ok().filter(|&i| i < s.widgets.frames.len()).or_else(|| s.widgets.index_of(id)) else { return -1 };
+        let f = &s.widgets.frames[i];
+        match what {
+            "rect" => {
+                let r = f.rect();
+                csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
+            }
+            "state" => { csnprintf!(out, cap, "%s", if f.layout.minimized { "minimized" } else { "normal" }); }
+            "status" => { csnprintf!(out, cap, "%s", f.runtime.as_ref().map_or("", WidgetRuntime::status)); }
+            "text" => { csnprintf!(out, cap, "%s", f.runtime.as_ref().map_or(String::new(), WidgetRuntime::text).as_str()); }
+            "hits" => { csnprintf!(out, cap, "%d", f.runtime.as_ref().map_or(0, |r| r.hit_count() as i32)); }
+            "error" => { csnprintf!(out, cap, "%s", f.error().unwrap_or("")); }
+            _ => return -1,
+        }
+        return 0;
+    }
+    // The widget packages: "N id version id version...", packages.open while the page is up, and an
+    // installed package's version (empty for one that is not installed).
+    if key == "packages" {
+        let ui = &a.pkg;
+        let mut text = format!("{}", ui.items.len());
+        for it in &ui.items {
+            text.push_str(&format!(" {} {}", it.id, it.version));
+        }
+        csnprintf!(out, cap, "%s", &text);
+        return 0;
+    }
+    if key == "packages.open" {
+        csnprintf!(out, cap, "%d", a.pkg.open as i32);
+        return 0;
+    }
+    if let Some(rest) = key.strip_prefix("package.") {
+        // package.ID.settings.KEY: a package setting's saved value (the default while there is no file).
+        if let Some((id, setting)) = rest.split_once(".settings.") {
+            let id = match id.parse::<usize>() {
+                Ok(i) => match a.pkg.items.get(i) { Some(x) => x.id.as_str(), None => return -1 },
+                Err(_) => id,
+            };
+            let Some(m) = crate::widgetpkg::widget_package_installed_manifest(id) else { return -1 };
+            let Some(s) = m.settings.iter().find(|s| s.key == setting) else { return -1 };
+            let values = crate::widgetpkg::widget_settings_load(id, &m.settings);
+            csnprintf!(out, cap, "%s", crate::widgetpkg::widget_setting_value(&values, &s.key, &s.default));
+            return 0;
+        }
+        let ui = &a.pkg;
+        if let Some(it) = ui.items.iter().find(|x| x.id == rest) {
+            csnprintf!(out, cap, "%s", &it.version);
+        } else {
+            csnprintf!(out, cap, "%s", "");
         }
         return 0;
     }
@@ -14148,12 +14914,12 @@ mod tests {
             assert!(p.x >= 0 && p.x + p.w <= w && p.y >= 0 && p.y + p.h <= h && p.h + 2 * m <= h);
             assert_eq!(p.h, panel_height(g_fit(), pins as i32));
             // The buttons from the top: grip, collapse, the tool button, the pins, the eraser, (undo,
-            // redo, clear and previous greyed out), the page chip, next, links, paper, display, pen feel,
+            // redo, clear and previous greyed out), the page chip, next, links, widgets, paper, display, pen feel,
             // the library, whose gap under it ends the panel but for its last 6 px.
             let ids: Vec<i32> = s.hits.h.iter().map(|h| h.id).collect();
             let mut want = vec![P_GRIP, P_COLLAPSE, P_TOOLPICK];
             want.extend(std::iter::repeat_n(P_TOOL, pins));
-            want.extend([P_TOOL, P_SHAPES, P_PENSET, P_PAGES, P_NEXT, P_LINKS, P_PAPER, P_DISPLAY, P_SETTINGS, P_LIBRARY]);
+            want.extend([P_TOOL, P_SHAPES, P_PENSET, P_PAGES, P_NEXT, P_LINKS, P_WIDGETS, P_PAPER, P_DISPLAY, P_SETTINGS, P_LIBRARY]);
             assert_eq!(ids, want);
             let last = s.hits.h.last().unwrap().r;
             assert_eq!(last.y + last.h + gap(), p.y + p.h - ui_px(6.0));

@@ -191,7 +191,7 @@ U+2E2C
 # the replacement character
 U+FFFD
 
-# Icons: 84 code points
+# Icons: 86 code points
 # Icons: the app's icons (rust/src/ui.rs, the icon table)
 U+F064F  # md-lead_pencil: the Pencil tool
 U+F0CB6  # md-pencil_outline: the Mechanical pencil tool
@@ -224,6 +224,8 @@ U+F0455  # md-rename_box: Rename
 U+F0252  # md-folder_move: moving to a folder
 U+F0257  # md-folder_plus: a new folder
 U+F01DA  # md-download: downloads and exports
+U+F00EC  # md-calculator: the calculator widget
+U+F03D7  # md-package_variant_closed: Packages
 U+F0652  # md-marker: the Highlighter tool
 U+F00E2  # md-broom: clearing a page
 U+F00DF  # md-brightness_6: the front light
@@ -244,7 +246,7 @@ U+F018F  # md-content_copy: Copy
 U+F0339  # md-link_variant: links
 U+F0119  # md-cast_connected: Live view
 U+F0297  # md-gamepad_variant: controllers and keys
-U+F06B0  # md-update: Updates
+U+F06B0  # md-update: Updates and Update all
 U+F0150  # md-clock_outline: the clock and battery corner
 U+F0349  # md-magnify: the Index: Go to page or name
 U+F0208  # md-eye: showing or hiding link areas

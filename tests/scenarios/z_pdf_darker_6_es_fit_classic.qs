@@ -8,7 +8,7 @@
 # rust-only
 tap library settings
 wait 100
-tap library settings.cat.5
+tap library settings.cat.6
 wait 100
 shot 01-row-off
 tap library darker-lines

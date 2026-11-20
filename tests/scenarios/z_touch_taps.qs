@@ -53,9 +53,9 @@ expect editor.modal is none
 # the nearest button; a greyed-out button (Previous, on page 1) still takes nothing.
 expect editor.panel_at.1768.517 is eraser
 expect editor.panel_at.1768.522 is shapes
-expect editor.panel_at.1710.1674 is display
+expect editor.panel_at.1710.1782 is display
 expect editor.panel_at.1768.1190 is
-tap 1710 1674
+tap 1710 1782
 wait 300
 expect editor.modal is display
 tap 1735 95

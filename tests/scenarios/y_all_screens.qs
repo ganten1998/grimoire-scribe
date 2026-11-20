@@ -359,7 +359,7 @@ expect library.sheet is none
 tap 1535 95
 wait 50
 expect library.sheet is settings
-tap library settings.cat.5
+tap library settings.cat.6
 wait 50
 tap library ko
 wait 50
@@ -378,7 +378,7 @@ wait 100
 shot 03-settings-other-style
 tap library theme
 wait 100
-tap library settings.cat.5
+tap library settings.cat.6
 wait 50
 tap library mirror
 wait 50
@@ -1284,18 +1284,18 @@ tap 267 530
 wait 200
 expect screen is editor
 shot 48-editor-landscape
-touch down 2026 264
+touch down 2026 179
 wait 700
-touch up 2026 264
+touch up 2026 179
 wait 100
 expect editor.quicksize is ballpoint
 shot 48-quick-sizes-landscape
 tap 600 700
 wait 150
 expect editor.quicksize is 0
-touch down 2026 372
+touch down 2026 287
 wait 700
-touch up 2026 372
+touch up 2026 287
 wait 100
 expect editor.quicksize is eraser
 shot 48-quick-sizes-eraser-landscape

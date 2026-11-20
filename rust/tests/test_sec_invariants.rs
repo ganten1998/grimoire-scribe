@@ -443,9 +443,13 @@ struct Crates {
 }
 
 /// Packages the lock names for a target or a feature no build of Grimoire has, when neither a ban nor a skip is
-/// the right word for them: (name, version, why the build never compiles it). Empty: the one such crate, glifo,
-/// is banned in deny.toml, which also makes CI's deny job refuse a build that would take it.
-const NAMED_NOT_BUILT: &[(&str, &str, &str)] = &[];
+/// the right word for them: (name, version, why the build never compiles it). glifo, the one such crate before
+/// this, is banned in deny.toml, which also makes CI's deny job refuse a build that would take it.
+const NAMED_NOT_BUILT: &[(&str, &str, &str)] = &[(
+    "string-interner",
+    "0.19.0",
+    "wasmi_collections' optional `hash-collections` feature: grimoire builds wasmi without default features and never asks for it (nor for the hashbrown 0.15.5 below it)",
+)];
 
 fn crates(fails: &mut Vec<String>) -> Crates {
     let pkgs = lock_packages();

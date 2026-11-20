@@ -133,6 +133,10 @@ pub mod share;
 pub mod status; // not a port: the clock and battery corner, Rust only (2.0.0-beta.5)
 pub mod ui;
 pub mod upload; // Send a PDF from the Share page: the request's rules, the name shown, the temporary file (2.2, #175)
+pub mod widgets; // the editor's widget windows and widgets.ini (2.2, issue #200)
+pub mod widgetwasm; // the generic WebAssembly widget host (2.2, issue #200)
+pub mod widgetpkg; // widget packages: manifests, platforms, installs and the packages index (2.2, #200)
+pub mod widgetpkgui; // the Packages page: installed widgets, install from a repository (2.2, #200)
 
 // ---- wave 4: the platform and the main loop ----
 pub mod display; // display.h: the types; the functions are the build's platform's
@@ -235,6 +239,10 @@ pub mod prelude {
     pub use crate::ui::*;
     pub use crate::update::*;
     pub use crate::wifi::*;
+    pub use crate::widgets::*;
+    pub use crate::widgetwasm::*;
+    pub use crate::widgetpkg::*;
+    pub use crate::widgetpkgui::*;
     pub use crate::util::*;
     pub use crate::{buf_printf, cformat, csnprintf, qlog};
 }

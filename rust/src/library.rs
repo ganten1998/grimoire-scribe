@@ -236,6 +236,8 @@ const H_FMORE_HOME: i32 = 210;
 const H_SET_DARKER: i32 = 250;
 const H_DARKER_PICK: i32 = 251;
 const H_DARKER_BACK: i32 = 252;
+// Settings > Packages > Widgets (2.2, issue #200): the widget package manager (widgetpkgui.rs).
+const H_SET_PACKAGES: i32 = 260;
 // Settings > Wi-Fi's top controls and lists: Nearby/Saved (arg: 0 or 1), Rescan, Other... (a hidden
 // network), a saved row's trash (arg: a row), and a network a scan found (arg: an index of
 // WifiSheet.near). The saved rows keep H_WIFI_NET.
@@ -312,7 +314,7 @@ pub struct LibraryState {
     settings_painting: bool,
     settings_editor_fit: bool,
     /// Settings' page: the category whose settings show (0 General, 1 Display, 2 Sleep & Clock,
-    /// 3 Pen, 4 Controls, 5 System; H_SET_CAT), and the page each of its lists is on (ui_row_page):
+    /// 3 Pen, 4 Controls, 5 System, 6 Packages; H_SET_CAT), and the page each of its lists is on (ui_row_page):
     /// the categories, the open category's rows, and the submenu's rows (whose title keys the last,
     /// so another submenu starts at its first page).
     settings_cat: i32,
@@ -4825,6 +4827,7 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
         Updates => H_UPDATES,
         AboutDevice => H_SET_DEVICE,
         DarkerLines => H_SET_DARKER,
+        WidgetPackages => H_SET_PACKAGES,
     }
 }
 
@@ -6237,6 +6240,11 @@ fn toast_floor(a: &App) -> i32 {
 }
 
 fn redraw(a: &mut App, m: RefreshMode) {
+    if a.pkg.open {
+        crate::widgetpkgui::packages_ui_draw(a);
+        app_invalidate_all(a, m);
+        return;
+    }
     if files_shown(a) {
         let mut b = std::mem::take(&mut lib(a).files);
         b.draw(a);
@@ -7402,6 +7410,7 @@ fn act(a: &mut App, h: &Hit) {
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
         }
+        H_SET_PACKAGES => crate::widgetpkgui::packages_ui_open(a),
         H_SET_DISPLAY => {
             let mut dm = std::mem::take(&mut lib(a).dm);
             dispmenu_open(&mut dm, a);
@@ -8799,6 +8808,13 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
 }
 
 fn library_event_in(a: &mut App, ev: &InEvent) {
+    if a.pkg.open {
+        let ph = app_pointer_phase(ev);
+        if ph >= 0 {
+            crate::widgetpkgui::packages_ui_pointer(a, ph, ev);
+        }
+        return;
+    }
     if library_record_active(a) && record_event(a, ev) {
         return;
     }
@@ -8945,6 +8961,10 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
 }
 
 pub fn library_tick(a: &mut App, now: u32) {
+    if a.pkg.open {
+        crate::widgetpkgui::packages_ui_tick(a, now);
+        return;
+    }
     crate::userfonts::userfonts_tick(a, now); // (a font check that ended with no verdict is queued again after its wait)
     if files_shown(a) {
         // (not under Exit Grimoire?, asked at a home inside Files: a draw of Files' own would paint over it)
@@ -9547,6 +9567,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_SET_DARKER => "darker-lines", H_DARKER_PICK => "darker-lines.", H_DARKER_BACK => "darker-lines.back",
                 H_SET_PINCH => "pinch", H_SET_MIRROR => "mirror",
                 H_SET_DEVICE => "about-device", H_DEVICE_BACK => "about-device.back",
+                H_SET_PACKAGES => "settings.packages",
                 _ => "",
             });
             if hit.id == H_LANG_PICK {
@@ -11714,7 +11735,7 @@ mod tests {
         library_init(&mut a);
         crate::pdfimport::set_darker(crate::pdfwork::Gamma::Off);
         lib(&mut a).modal = Modal::Settings;
-        lib(&mut a).settings_cat = 5;
+        lib(&mut a).settings_cat = 6;
         hits_clear(&mut lib(&mut a).hits);
         draw_settings(&mut a);
         assert!(a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SET_DARKER), "the System row");
@@ -11767,7 +11788,7 @@ mod tests {
         assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
         library_init(&mut a);
         lib(&mut a).modal = Modal::Settings;
-        lib(&mut a).settings_cat = 5;
+        lib(&mut a).settings_cat = 6;
         hits_clear(&mut lib(&mut a).hits);
         draw_settings(&mut a);
         assert!(
@@ -12195,6 +12216,10 @@ esac
 
 /// Resolve a runner tap through the same hit names used by ui_at probes.
 pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
+    // Settings > Packages > Widgets: packages.install, packages.row.ID, packages.back, ...
+    if let Some(n)=name.strip_prefix("packages.") {
+        return (a.pkg.open).then(||crate::widgetpkgui::packages_ui_control_point(&a.pkg,n)).flatten();
+    }
     if name.starts_with("music.") {return musicbuild_control_point(&a.lib.as_deref()?.mb,name);}
     if name.starts_with("ui_has.") {return None;}
     // The file picker: files.back, files.row.N, files.more.N, files.item.NAME, files.prev, files.next, files.card.*
@@ -12261,6 +12286,9 @@ fn turn(a: &mut App, next: bool) {
 /// The Library's open on-screen keyboard (a name being typed), None for none: where a hardware key's
 /// input goes (app_type_text).
 pub fn library_keyboard_area(a: &App) -> Option<Rect> {
+    if a.pkg.open && a.pkg.kb.open && !rect_is_empty(a.pkg.kb.area) {
+        return Some(a.pkg.kb.area);
+    }
     let s = a.lib.as_deref()?;
     if s.files.open {
         // (Files' rename keyboard, 2.2: Files takes every contact while it is up)
@@ -12275,3 +12303,8 @@ pub fn library_settings_active(a:&App)->bool {
 }
 pub fn library_settings_redraw(a:&mut App) {redraw(a,RefreshMode::Ui);}
 pub fn library_settings_back(a:&mut App) {close_modal(a);}
+/// The Packages page draws itself whole (widgetpkgui.rs); its callers redraw through here so it
+/// replaces Settings while it is open and Settings comes back when it closes.
+pub(crate) fn packages_redraw(a:&mut App) {redraw(a,RefreshMode::Ui);}
+/// The Packages page's X: the whole of Settings closes, as every Settings submenu's X does.
+pub(crate) fn packages_closed(a:&mut App) {close_settings(a,RefreshMode::Ui);}

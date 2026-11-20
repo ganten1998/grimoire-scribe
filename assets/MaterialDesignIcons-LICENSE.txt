@@ -1,6 +1,6 @@
 Material Design Icons in Grimoire's Terminess
 
-The 84 icons in assets/TerminessNerdFontMono-Regular.ttf and -Bold.ttf, the code points from
+The 86 icons in assets/TerminessNerdFontMono-Regular.ttf and -Bold.ttf, the code points from
 U+F0001 to U+F1AF0 that assets/terminess-keep.txt lists (the icons the app draws, on its tools,
 buttons and sheets and as the clefs of music paper, and those its next version plans), are Material
 Design Icons by Pictogrammers (https://pictogrammers.com/library/mdi/); 52 of them were drawn by

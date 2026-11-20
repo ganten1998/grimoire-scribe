@@ -68,6 +68,9 @@ path = "src/bin/mklogo.rs"
 
 [dependencies]
 libc = "0.2"
+# Installed widgets are WebAssembly modules. wasmi is a pure-Rust interpreter, so it follows the
+# app to the Kindle's armv7 target and needs no C runtime of its own.
+wasmi = { version = "2.0.2", default-features = false, features = ["std", "validate"] }
 # The PDF import (2.1.0-beta.2, DESIGN.md 5): hayro pinned exactly; 0.9.0 is under two weeks old until
 # 2026-11-16 (D12). `png` is already in its tree (same version), used to encode the pages.
 hayro = { version = "=0.8.0", default-features = false, features = ["embed-fonts", "embed-cmaps"] }

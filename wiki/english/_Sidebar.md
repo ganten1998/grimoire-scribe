@@ -4,6 +4,7 @@
 - [About](About)
 - [Install](Install)
 - [Using Grimoire](Using-Grimoire)
+- [Widgets](Widgets)
 - [Fonts and Language](Fonts-and-Language)
 - [Importing](Importing)
 - [Getting Pages Off the Kindle](Exporting)

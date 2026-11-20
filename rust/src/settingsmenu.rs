@@ -116,6 +116,7 @@ pub enum SettingId {
     Updates,
     AboutDevice,
     DarkerLines,
+    WidgetPackages,
 }
 
 /// The state a check row shows, or None for a row drawn as text.
@@ -228,8 +229,8 @@ pub const DISPLAY_NO_LIGHT: &str = n_("Display");
 // (language, updates, Wi-Fi), Display's (front light, theme, dark mode, font, rotation, zoom), Sleep &
 // Clock's (sleep screen, timer, clock), the Pen's (tool settings, its button, the eraser, calibration),
 // Controls'
-// (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring, about the device, darker lines in
-// imported PDFs).
+// (shortcuts, pairing, gestures), Packages' (Widgets), and System's (KOReader, USB PDF mirroring, about
+// the device, darker lines in imported PDFs).
 pub static CATEGORIES: &[Category] = &[
     Category::new(n_("General"), IconKind::Gear, &[
         Item::value(IconKind::Language, Label::Language, SettingId::Language),
@@ -268,6 +269,10 @@ pub static CATEGORIES: &[Category] = &[
         Item::open(IconKind::Gamepad, n_("Shortcuts: keys and controller buttons"), SettingId::Shortcuts),
         Item::open(IconKind::Link, n_("Pair"), SettingId::Pair).when(Show::Pairing),
         Item::open(IconKind::Gestures, n_("Gestures"), SettingId::Gestures),
+    ]),
+    Category::new(n_("Packages"), IconKind::Package, &[
+        // TRANSLATORS: Settings' Packages category row: the widget package manager.
+        Item::open(IconKind::Download, n_("Widgets"), SettingId::WidgetPackages),
     ]),
     Category::new(n_("System"), IconKind::Grid, &[
         Item::open(IconKind::Notebook, n_("KOReader"), SettingId::KOReader).when(Show::KOReader),
@@ -324,30 +329,31 @@ mod tests {
 
     #[test]
     fn the_schema_keeps_the_settings_page_as_it_is() {
-        assert_eq!(CATEGORIES.len(), 6);
+        assert_eq!(CATEGORIES.len(), 7);
         assert_eq!(
             CATEGORIES.iter().map(|c| c.title).collect::<Vec<_>>(),
-            vec!["General", "Display", "Sleep & Clock", "Pen", "Controls", "System"]
+            vec!["General", "Display", "Sleep & Clock", "Pen", "Controls", "Packages", "System"]
         );
         assert_eq!(ids(0), vec![SettingId::Language, SettingId::Updates, SettingId::Wifi]);
         assert_eq!(ids(1), vec![SettingId::Display, SettingId::Theme, SettingId::DarkMode, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
         assert_eq!(ids(2), vec![SettingId::SleepSettings, SettingId::ClockSettings]);
         assert_eq!(ids(3), vec![SettingId::PenFeel, SettingId::SideButton, SettingId::EraserMode, SettingId::Calibration]);
         assert_eq!(ids(4), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
-        assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror, SettingId::AboutDevice, SettingId::DarkerLines]);
-        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 22);
+        assert_eq!(ids(5), vec![SettingId::WidgetPackages]);
+        assert_eq!(ids(6), vec![SettingId::KOReader, SettingId::Mirror, SettingId::AboutDevice, SettingId::DarkerLines]);
+        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 23);
 
         assert_eq!(text(2, 0), "Sleep settings");
         assert_eq!(text(2, 1), "Clock settings");
         assert_eq!(text(0, 2), "Wi-Fi");
-        assert_eq!(text(5, 0), "KOReader");
-        assert_eq!(text(5, 2), "About: device and storage");
+        assert_eq!(text(6, 0), "KOReader");
+        assert_eq!(text(6, 2), "About: device and storage");
         assert!(matches!(CATEGORIES[1].items[0].label, Label::Display));
         assert!(matches!(CATEGORIES[0].items[1].show, Show::Updates));
         assert!(matches!(CATEGORIES[0].items[2].show, Show::Wifi));
         assert!(matches!(CATEGORIES[3].items[3].show, Show::Calibration));
         assert!(matches!(CATEGORIES[4].items[1].show, Show::Pairing));
-        assert!(matches!(CATEGORIES[5].items[0].show, Show::KOReader));
+        assert!(matches!(CATEGORIES[6].items[0].show, Show::KOReader));
         assert_eq!(text(1, 2), "Dark mode");
         assert_eq!(text(1, 4), "Rotation (portrait and landscape)");
         assert_eq!(text(1, 5), "Pinch with two fingers to zoom");
@@ -368,10 +374,10 @@ mod tests {
         assert!(matches!(CATEGORIES[3].items[1].label, Label::SideButton));
         assert!(matches!(CATEGORIES[3].items[2].label, Label::Eraser));
         assert!(matches!(CATEGORIES[0].items[0].label, Label::Language));
-        assert!(matches!(CATEGORIES[5].items[1].label, Label::Mirror));
-        assert!(matches!(CATEGORIES[5].items[1].check, Check::MirrorPdf));
-        assert!(matches!(CATEGORIES[5].items[3].label, Label::DarkerLines));
-        assert!(matches!(CATEGORIES[5].items[3].show, Show::Always));
+        assert!(matches!(CATEGORIES[6].items[1].label, Label::Mirror));
+        assert!(matches!(CATEGORIES[6].items[1].check, Check::MirrorPdf));
+        assert!(matches!(CATEGORIES[6].items[3].label, Label::DarkerLines));
+        assert!(matches!(CATEGORIES[6].items[3].show, Show::Always));
         assert_eq!(DARKER_NAMES, ["Off", "Medium", "Strong"]);
         assert_eq!((SIDE_BUTTON_NAMES.len(), SIDE_BUTTON_LABELS.len()), (4, 4));
         assert_eq!((ERASER_NAMES.len(), ERASER_LABELS.len()), (2, 2));

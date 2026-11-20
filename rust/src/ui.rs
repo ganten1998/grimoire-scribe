@@ -102,10 +102,14 @@ pub enum IconKind {
     Sort = 68,
     FolderOpen = 69,
     Home = 70,
+    /// A calculator icon a widget package may name (2.2, Rust only)
+    Calculator = 71,
+    /// A widget package, and Settings' Packages category (2.2, Rust only)
+    Package = 72,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 71;
+    pub const COUNT: usize = 73;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -330,6 +334,8 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Sort as usize] = 0xF04BA; // md-sort
     k[IconKind::FolderOpen as usize] = 0xF0770; // md-folder_open
     k[IconKind::Home as usize] = 0xF02DC; // md-home
+    k[IconKind::Calculator as usize] = 0xF00EC; // md-calculator
+    k[IconKind::Package as usize] = 0xF03D7; // md-package_variant_closed
     k
 };
 

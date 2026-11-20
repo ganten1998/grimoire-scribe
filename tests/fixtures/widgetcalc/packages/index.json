@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "packages": [
+    {"id":"com.grimoire.calculator","name":"Calculator","version":"1.2.0","author":"Nebuff","description":"Simple, scientific and programming calculators, with a unit converter.","icon":"calculator","path":"packages/widgets/com.grimoire.calculator/calculator.bin","sha":"cbdded0a54dfea3029f85dfe92ecb016dfd4ebe5be9f08ab55c15309269f42cb","installed_at":1,"source_url":""}
+  ]
+}

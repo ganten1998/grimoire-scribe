@@ -1,0 +1,42 @@
+name: Calculator
+id: com.grimoire.calculator
+type: widget
+version: 1.2.0
+author: Nebuff
+description: Simple, scientific and programming calculators, with a unit converter.
+license: MIT
+min_grimoire_version: 2.1.0
+platforms: [all]
+artifact:
+  path: calculator.bin
+  sha256: cbdded0a54dfea3029f85dfe92ecb016dfd4ebe5be9f08ab55c15309269f42cb
+  size: 106958
+capabilities: []
+settings:
+  - key: default_calculator
+    label: Default calculator
+    type: choice
+    default: Simple
+    choices: [Simple, Scientific, Programming]
+  - key: enable_simple
+    label: Simple calculator
+    type: toggle
+    default: true
+  - key: enable_scientific
+    label: Scientific calculator
+    type: toggle
+    default: true
+  - key: enable_programming
+    label: Programming calculator
+    type: toggle
+    default: true
+spec:
+  runtime: wasm
+  entry: _start
+  icon: calculator
+  minimizable: true
+  size:
+    mode: resizable
+    default: [340, 560]
+    min: [280, 480]
+    max: [620, 820]
