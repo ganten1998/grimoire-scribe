@@ -2203,21 +2203,27 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   (2.2, issue #187: it went along every point, so a lasso drew a dithered ghost of each word erased wholly and
   bridged each erased gap). `stroke_shown_runs` (lasso.rs) gives the runs of a stroke's spine that show on the
   page canvas against the page's paper alone (`Drawn`, `drawn_page`; the paper made by `halo_paper`): for a
-  stroke an erase stroke after it in scope reaches (layers and floors as the enclosure takes them), a sample
-  shows where no dab of those reaches its ink, not where one hides it by the enclosure's estimate (`hides`),
-  and elsewhere when the pixels within its ink's radius are darker than the paper by as much as one black pixel
-  in all (each counted past `INK_SHOWS` levels), leaving out pixels one of those erase strokes covers with its
-  hard core (ink drawn there after the erasing is another stroke's). So ink erased by several passes, a small
-  eraser's or a resize's, gets the halo the page shows. A run beside a hidden stretch ends where its ink stops,
-  less the ink's radius, so the band stays out of a narrow gap. The preview's halo and then the selection's
-  find it once for each stroke while the page's stroke count and newest stroke stay (`halo_shown`,
-  `SelMode.visible`), and the lift hands over what the preview found. Ink the page shows none of has no halo,
-  and the preview sends no refresh when it flips. The exact-area preview draws only the judged samples the page
-  shows and never joins two across a place it does not. Without the page drawn to go by, the estimate stands
-  in. Probes: `editor.halo` (strokes with a halo, as `sel_draw_halo` finds them: `halo_items`, `halo_shown`),
-  `halo_found` (how many times the halo found what shows of a stroke since the lasso began),
-  `preview_batches`, `preview_refreshes`, `preview_reused`, `preview_rect`, `lift_rect`,
-  `lift_covers_preview`.
+  stroke an erase stroke after it in scope reaches (layers and floors as the enclosure takes them), a place of
+  its spine shows where no dab of those reaches its ink, not where one hides it by the enclosure's estimate
+  (`hides`), and elsewhere when the page shows its ink across the stroke there (a pixel darker than the paper by
+  more than `INK_SHOWS` levels in a strip square to the spine, the ink's radius each way and a pixel along)
+  and, at a sample of the spine, near it too (the pixels within its ink's radius as dark as one black pixel in
+  all, each counted past `INK_SHOWS` levels), leaving out pixels one of those erase strokes covers with its hard
+  core (ink drawn there after the erasing is another stroke's). The places are the spine's samples (up to a
+  millimetre apart) and, between two that both show where erasing reaches, places at most 2 px apart
+  (`places_between`), so a cut that passes between two samples has one inside it (a dot, whose spine has no
+  direction, is judged in its ink's radius alone). So ink erased by several passes, a small eraser's or a
+  resize's, or cut across by a pass narrower than the ink is wide (the ink either side of the cut is within
+  the ink's radius of its middle, but not across the stroke there), gets the halo the page shows. A run beside
+  a hidden stretch ends where its ink stops, less the ink's radius, so the band stays out of a narrow gap. The
+  preview's halo and then the selection's find it once for each stroke while the page's stroke count and
+  newest stroke stay (`halo_shown`, `SelMode.visible`), and the lift hands over what the preview found. Ink
+  the page shows none of has no halo, and the preview sends no refresh when it flips. The exact-area preview
+  draws only the judged samples the page shows and never joins two across a place it does not. Without the
+  page drawn to go by, the estimate stands in. Probes: `editor.halo` (strokes with a halo, as `sel_draw_halo`
+  finds them: `halo_items`, `halo_shown`), `halo_found` (how many times the halo found what shows of a stroke
+  since the lasso began), `preview_batches`, `preview_refreshes`, `preview_reused`, `preview_rect`,
+  `lift_rect`, `lift_covers_preview`.
 - Exact area (docs/beta2/PIXEL-LASSO.md 1): `stroke_dabs` runs a stroke's brush dry with
   `BrushState.dab_log` (brush.rs: the dry branch pushes each dab's sample, radius and calligraphy nib) and
   `stroke_cut` splits it into runs of dabs on one side of the lasso: a later piece starts at its first

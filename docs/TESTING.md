@@ -3551,14 +3551,15 @@ lines marked "Over SSH, optional" look at the files themselves and can be left o
 
 ## 2.2, lasso and erased ink (issue #187): device checks
 
-Automated: tests/test_lasso.rs (halo_follows_what_shows, halo_follows_the_page), tests/test_lasso_live.rs
-(judging_erased_ink_is_indexed), z_lasso_23_erased_marks (the reported steps with the precise eraser, a move, a
-resize, exact area), z_lasso_24_erased_marks_whole (the Whole strokes eraser on the page pasted to, white ink on
-the page copied from), z_lasso_25_erased_passes (a marker line erased by passes narrower than it, a line scrubbed
-out by 2 mm passes) and z_lasso_26_erased_small_eraser (the eraser at 1 mm). They check what the halo draws in the
-headless runner; on the Kindle, check what the screen shows. Erased ink stays in the page file under the erasing
-that covers it until the notebook is compacted, and the lasso selects it, so every check below lassoes a page that
-holds some.
+Automated: tests/test_lasso.rs (halo_follows_what_shows, halo_follows_the_page, halo_across_a_narrow_cut),
+tests/test_lasso_live.rs (judging_erased_ink_is_indexed), z_lasso_23_erased_marks (the reported steps with the
+precise eraser, a move, a resize, exact area), z_lasso_24_erased_marks_whole (the Whole strokes eraser on the page
+pasted to, white ink on the page copied from), z_lasso_25_erased_passes (a marker line erased by passes narrower
+than it, a line scrubbed out by 2 mm passes), z_lasso_26_erased_small_eraser (the eraser at 1 mm) and
+z_lasso_27_erased_narrow_cut (a wide marker line and a highlighter line, each cut across by one 2 mm pass). They
+check what the halo draws in the headless runner; on the Kindle, check what the screen shows. Erased ink stays in
+the page file under the erasing that covers it until the notebook is compacted, and the lasso selects it, so every
+check below lassoes a page that holds some.
 
 1. **Set up**: Settings > Pen > Eraser > Takes away only what it touches (Precise). In a new notebook write
    three lines of words on page 1. With the eraser, erase one word wholly and a gap through another.
@@ -3594,6 +3595,7 @@ holds some.
     them: nothing there while the lasso is drawn either.
 12. **A wide pen**: hold the marker on the toolbar and pick its widest size, and draw a line. With the eraser at
     2 mm, erase the middle of the line in several strokes along it until nothing shows there. Lasso the page: no
-    halo over the erased middle.
+    halo over the erased middle. Draw another marker line and a highlighter line, and cut each with one stroke of
+    the 2 mm eraser straight across: lasso the page, and the halo stops either side of each cut, never across it.
 13. **Resizing**: lasso a page holding a word you erased in a few strokes, and drag the selection's bottom-right
     handle out a little: where the word was the page shows nothing, and no halo either. Done, then Undo.

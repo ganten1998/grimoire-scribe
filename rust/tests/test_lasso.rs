@@ -343,6 +343,96 @@ fn halo_follows_the_page() {
     check!(stroke_shown_runs(&r, f.as_deref(), &r.strokes[0], 0, DPI, &er, &d).is_none());
 }
 
+/// One pass of the precise eraser across ink wider than the pass (issue #187): a 2.8 mm marker line cut by a 2 mm
+/// pass (also on a slant, and drawn with points as close as a pen's), the highlighter (5.6 mm) by a 2 mm and a 4 mm
+/// pass, and the marker by a 1 mm pass that falls between two samples of its spine (a millimetre apart at most,
+/// where its points are far apart). The page shows paper across the cut, and the halo goes along the ink either
+/// side of it and not over it: two runs, their band (the ink's radius and 3 px) short of the cut's middle and
+/// reaching its edge, ink at each run's end. Every place in the cut has the ink either side of it within its ink's
+/// radius, so the halo, judged by that, bridged the cut; it is judged by the ink across the stroke too, and between
+/// the spine's samples where erasing reaches (lasso.rs stroke_shown_runs). Ink an eraser passes beside without
+/// touching it, of every tool, light or firm, has nothing hidden, as before.
+fn halo_across_a_narrow_cut() {
+    // (tool, ink mm, eraser mm, from, to, the cut's place along the line, its points 1.5 px apart as a pen's are
+    // or 75 px: the spine's samples there 10.7 px apart, one at 400 and the next at 405.4 and 416.1)
+    let cases: [(ToolKind, f32, f32, (f32, f32), (f32, f32), f32, bool); 6] = [
+        (TOOL_MARKER, 2.8, 2.0, (100.0, 150.0), (700.0, 150.0), 0.5, false),
+        (TOOL_HIGHLIGHTER, 5.6, 2.0, (100.0, 150.0), (700.0, 150.0), 0.5, false),
+        (TOOL_HIGHLIGHTER, 5.6, 4.0, (100.0, 150.0), (700.0, 150.0), 0.5, false),
+        (TOOL_MARKER, 2.8, 2.0, (100.0, 60.0), (700.0, 260.0), 0.5, false),
+        (TOOL_MARKER, 2.8, 1.0, (100.0, 150.0), (700.0, 150.0), (411.0 - 100.0) / 600.0, false),
+        (TOOL_MARKER, 2.8, 2.0, (100.0, 150.0), (700.0, 150.0), 0.5, true),
+    ];
+    for (k, &(t, w, e, a, b, f, dense)) in cases.iter().enumerate() {
+        let mut p = page_new(800, 320, PAPER_BLANK);
+        let pts: Vec<(f32, f32)> = if dense { (0..=50).map(|j| (a.0 + (b.0 - a.0) * j as f32 / 50.0, a.1 + (b.1 - a.1) * j as f32 / 50.0)).collect() } else { vec![a, b] };
+        page_add(&mut p, poly(t, &pts, w, 5 + k as u32));
+        let l = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        let (ux, uy) = ((b.0 - a.0) / l, (b.1 - a.1) / l);
+        let cut = (a.0 + (b.0 - a.0) * f, a.1 + (b.1 - a.1) * f);
+        page_add(&mut p, eraser(&[(cut.0 + 90.0 * uy, cut.1 - 90.0 * ux), (cut.0 - 90.0 * uy, cut.1 + 90.0 * ux)], e));
+        let (c, paper) = (render(&p), paper_of(&p));
+        let d = Drawn { canvas: &c, paper: &paper, paper_stride: p.w, shows: 6, mass: 249 };
+        let er = page_erasers(&p);
+        let (r, re) = (mm_to_px(w, DPI) / 2.0, mm_to_px(e, DPI) / 2.0);
+        let at = |x: f32, y: f32| (y.round() as i32 * p.w + x.round() as i32) as usize;
+        let along = |q: &(f32, f32, f32)| (q.0 - cut.0) * ux + (q.1 - cut.1) * uy;
+        // paper all across the ink at the cut's middle, and the estimate, which counts ink erased only where one pass
+        // covers its whole width, has it showing whole
+        let clear = (-2..=2).all(|s| (-(r as i32) - 1..=r as i32 + 1).all(|n| {
+            let (x, y) = (cut.0 + s as f32 * ux - n as f32 * uy, cut.1 + s as f32 * uy + n as f32 * ux);
+            c.px[at(x, y)] == paper[at(x, y)]
+        }));
+        check!(clear);
+        check!(stroke_visible_runs(&p, None, &p.strokes[0], 0, DPI, &er).is_none());
+        let got = stroke_shown_runs(&p, None, &p.strokes[0], 0, DPI, &er, &d);
+        let Some(runs) = got else {
+            eprintln!("  case {k}: drawn whole, across the cut");
+            check!(false);
+            continue;
+        };
+        check!(runs.len() == 2);
+        if runs.len() != 2 {
+            continue;
+        }
+        let (e0, e1) = (*runs[0].last().unwrap(), runs[1][0]);
+        eprintln!("  case {k}: ends {:.1} and {:.1} from the cut's middle (ink radius {r:.1}, the eraser's {re:.1})", along(&e0), along(&e1));
+        check!(runs[0][0].0 == a.0 && runs[0][0].1 == a.1 && runs[1].last().unwrap().0 == b.0 && runs[1].last().unwrap().1 == b.1);
+        check!(runs.iter().flatten().all(|q| along(q).abs() > q.2 + 3.0));
+        check!(along(&e0) + e0.2 + 3.0 >= -re - 1.0 && along(&e1) - e1.2 - 3.0 <= re + 1.0);
+        check!(paper[at(e0.0, e0.1)] as i32 - c.px[at(e0.0, e0.1)] as i32 > 6 && paper[at(e1.0, e1.1)] as i32 - c.px[at(e1.0, e1.1)] as i32 > 6);
+    }
+    // an eraser beside the ink, its dabs a pixel and a half clear of the ink's radius, reaching every place of it
+    // (the pencil's lightest line, a hairline mostly paper between its grains, shows less than one black pixel near
+    // some of its samples and is broken near erasing as before: from half pressure)
+    let mut misses = 0;
+    for t in (0..TOOL_COUNT as i32).map(ToolKind).filter(|&t| t != TOOL_ERASER) {
+        let light = if t == TOOL_PENCIL { 0.5 } else { 0.15 };
+        for &pr in &[light, 0.5, 1.0] {
+            let mut prm = ToolParams::default();
+            tool_params_default(t, &mut prm);
+            let mut s = stroke_new(t, &prm, 11);
+            for j in 0..=40 {
+                stroke_append(&mut s, &PenSample { x: 100.0 + 15.0 * j as f32, y: 150.0, pressure: pr, t_ms: j * 8, ..Default::default() }, DPI);
+            }
+            let r = dab_radius(&s, &s.pts[0], DPI);
+            let re = mm_to_px(1.0, DPI) / 2.0;
+            let mut p = page_new(800, 320, PAPER_BLANK);
+            page_add(&mut p, s);
+            let y = 150.0 + r + re + 1.5;
+            page_add(&mut p, eraser(&[(80.0, y), (720.0, y)], 1.0));
+            let (c, paper) = (render(&p), paper_of(&p));
+            let d = Drawn { canvas: &c, paper: &paper, paper_stride: p.w, shows: 6, mass: 249 };
+            let er = page_erasers(&p);
+            if let Some(runs) = stroke_shown_runs(&p, None, &p.strokes[0], 0, DPI, &er, &d) {
+                eprintln!("  tool {} at pressure {pr}: {} runs beside an eraser that does not touch it", t.0, runs.len());
+                misses += 1;
+            }
+        }
+    }
+    check!(misses == 0);
+}
+
 // ---- 3. links ----
 
 fn link(pid: u32, seed: u32, target: &str, area: Option<Rect>) -> NavLink {
@@ -890,6 +980,7 @@ fn test_lasso() {
     run!(enclosure_on_handwriting);
     run!(halo_follows_what_shows);
     run!(halo_follows_the_page);
+    run!(halo_across_a_narrow_cut);
     run!(links_come_along);
     run!(erase_strokes_go_with_their_ink);
     run!(seeds_kept_when_free);

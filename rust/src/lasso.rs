@@ -489,15 +489,90 @@ pub struct Drawn<'a> {
     pub mass: i32,
 }
 
+/// How far apart the places a stroke's halo is judged at are between two samples of its spine that both show, px
+/// (stroke_shown_runs): the spine's samples may be up to a millimetre apart, and a cut by a small eraser, its hard
+/// core a few pixels across, could pass between two of them.
+const SHOWN_STEP: f32 = 2.0;
+/// Half the width of the strip across a stroke a place is judged by, px (ink_shows): with places SHOWN_STEP apart,
+/// the strips of a stretch meet.
+const ACROSS_HALF: f32 = 1.0;
+
+/// A place a stroke's halo is judged at (stroke_shown_runs): one of its spine's samples, or one between two of
+/// them; with the spine's direction there (a unit vector), or none where the spine does not move (a dot).
+#[derive(Clone, Copy)]
+struct Place {
+    q: Sample,
+    dir: Option<(f32, f32)>,
+    /// one of the spine's own samples (an exact-area preview finds its judged samples among them by place)
+    spine: bool,
+}
+
+/// A stroke's spine samples (`all`) as places, each with the direction of the spine through it: from where it
+/// was SHOWN_STEP before to where it is SHOWN_STEP after, along it (a slow pen's samples are a fraction of a
+/// pixel apart).
+fn spine_places(all: &[Sample]) -> Vec<Place> {
+    let n = all.len();
+    let mut along = Vec::with_capacity(n);
+    let mut t = 0.0f32;
+    for k in 0..n {
+        if k > 0 {
+            let (a, b) = (&all[k - 1], &all[k]);
+            t += ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt();
+        }
+        along.push(t);
+    }
+    let (mut lo, mut hi) = (0, 0);
+    let mut out = Vec::with_capacity(n);
+    for k in 0..n {
+        while lo + 1 < k && along[lo + 1] <= along[k] - SHOWN_STEP {
+            lo += 1;
+        }
+        hi = hi.max(k);
+        while hi + 1 < n && along[hi] < along[k] + SHOWN_STEP {
+            hi += 1;
+        }
+        let (a, b) = (&all[lo.min(k)], &all[hi]);
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let l = (dx * dx + dy * dy).sqrt();
+        let dir = (l >= 0.5 && l.is_finite()).then(|| (dx / l, dy / l));
+        out.push(Place { q: all[k], dir, spine: true });
+    }
+    out
+}
+
+/// The places between spine samples a and b (next to each other), at most SHOWN_STEP apart along the stretch,
+/// their ink radius going from a's to b's: none when the stretch is that short, or `reached` says no erasing
+/// reaches any of it.
+fn places_between(a: &Sample, b: &Sample, reached: &dyn Fn(&Sample) -> bool) -> Vec<Place> {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let l = (dx * dx + dy * dy).sqrt();
+    // (the whole stretch: any place along it is within half its length of its middle)
+    if !(l > SHOWN_STEP && l.is_finite()) || !reached(&Sample { x: a.x + dx * 0.5, y: a.y + dy * 0.5, len: 0.0, r: a.r.max(b.r) + l * 0.5 }) {
+        return Vec::new();
+    }
+    let m = (l / SHOWN_STEP).ceil().min(4096.0) as i32;
+    (1..m)
+        .map(|j| {
+            let t = j as f32 / m as f32;
+            Place { q: Sample { x: a.x + dx * t, y: a.y + dy * t, len: 0.0, r: a.r + (b.r - a.r) * t }, dir: Some((dx / l, dy / l)), spine: false }
+        })
+        .collect()
+}
+
 /// What shows of ink stroke s standing at index i of p (the stroke there, or an exact-area piece of it) as the
 /// page draws it (d): what the selection's halo goes along (issue #187). None when no erase stroke after it in
 /// scope reaches it or none takes any of it away (it shows whole), else the runs of its spine that show (empty:
-/// nothing does). A sample shows where no dab of those erase strokes reaches its ink; where one hides it by the
-/// estimate (stroke_visible_runs) it does not; anywhere else it shows when a pixel within its ink's radius shows
-/// ink on the page, leaving out the pixels one of them covers with its hard core, where none of its ink is left
-/// (ink drawn there after the erasing, or under a scoped floor, is another stroke's). So ink erased by several
-/// passes of a small eraser, by a pass wider than one but not the other, or by passes a resize moved apart is
-/// judged by what the page shows, as the page renderer erased it.
+/// nothing does). It is judged at its spine's samples, and, between two that both show where erasing reaches,
+/// at places SHOWN_STEP or less apart (places_between). A place shows where no dab of those erase strokes reaches
+/// its ink; where one hides it by the estimate (stroke_visible_runs) it does not; anywhere else it shows when the
+/// page shows ink across the stroke there (any pixel of a strip through it square to the spine, the ink's radius
+/// each way and a pixel along) and, at a sample of the spine, near it (the pixels within its ink's radius, as dark
+/// as one black pixel in all: a faint pixel or two an eraser's soft rim leaves is not ink), leaving out the pixels
+/// one of those erase strokes covers with its hard core, where none of its ink is left (ink drawn there after the
+/// erasing, or under a scoped floor, is another stroke's) (ink_shows). So ink erased by several passes of a small
+/// eraser, by a pass wider than one but not the other, by passes a resize moved apart, or cut across by a pass
+/// narrower than the ink is wide (nothing shows across the stroke in the cut, though its ink either side is within
+/// the ink's radius of the cut's middle) is judged by what the page shows, as the page renderer erased it.
 pub fn stroke_shown_runs(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize, dpi: f32, erasers: &Erasers, d: &Drawn) -> Option<VisibleRuns> {
     let c = d.canvas;
     if c.w <= 0 || c.h <= 0 || d.paper_stride < c.w || c.px.len() < (c.h * c.stride) as usize || d.paper.len() < (c.h * d.paper_stride) as usize {
@@ -507,33 +582,58 @@ pub fn stroke_shown_runs(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize,
     if near.is_empty() {
         return None;
     }
-    let all = spine(s, dpi);
     let covered = |x: f32, y: f32| {
         let q = Sample { x, y, len: 0.0, r: 0.0 };
         near.iter().any(|&k| erasers.hides(p, k, &q, dpi))
     };
-    let reached: Vec<bool> = all.iter().map(|q| q.x.is_finite() && q.y.is_finite() && near.iter().any(|&k| erasers.reaches(p, k, q, dpi))).collect();
-    let hidden: Vec<bool> = all.iter().zip(&reached).map(|(q, &r)| r && (near.iter().any(|&k| erasers.hides(p, k, q, dpi)) || !ink_shows(d, q, &covered))).collect();
-    let Some(runs) = runs_of(&all, &hidden) else { return None };
+    let reached = |q: &Sample| q.x.is_finite() && q.y.is_finite() && near.iter().any(|&k| erasers.reaches(p, k, q, dpi));
+    // (a sample: near it, within its ink's radius, as dark as one black pixel in all, and across it, any pixel of
+    // its strip; a place between samples: across it)
+    let judge = |w: &Place| reached(&w.q) && (near.iter().any(|&k| erasers.hides(p, k, &w.q, dpi)) || !ink_shows(d, &w.q, w.dir, &covered, if w.spine { d.mass } else { 0 }));
+    let samples = spine_places(&spine(s, dpi));
+    let shown: Vec<bool> = samples.iter().map(|w| !judge(w)).collect();
+    // between two samples that both show, places close enough that a cut passing between them has one inside it
+    // (beside a sample that does not show, end_at_ink finds where the ink stops)
+    let mut places = Vec::with_capacity(samples.len());
+    let mut hidden = Vec::with_capacity(samples.len());
+    for k in 0..samples.len() {
+        places.push(samples[k]);
+        hidden.push(!shown[k]);
+        if k + 1 < samples.len() && shown[k] && shown[k + 1] {
+            for w in places_between(&samples[k].q, &samples[k + 1].q, &reached) {
+                hidden.push(judge(&w));
+                places.push(w);
+            }
+        }
+    }
+    if !hidden.iter().any(|&h| h) {
+        return None;
+    }
     // a run beside what is hidden ends where its ink stops, less the ink's radius, as a stroke's own end does: the
-    // halo's band reaches that far past it, and from a sample whose ink radius only meets the edge of an erased gap
-    // it stood that much further in (a narrow gap, a small eraser's, looked bridged)
-    let centre = |x: f32, y: f32| ink_shows(d, &Sample { x, y, len: 0.0, r: 1.0 }, &covered);
-    let mut out: VisibleRuns = Vec::with_capacity(runs.len());
+    // halo's band reaches that far past it, and from a place whose ink only meets the edge of an erased gap it
+    // stood that much further in (a narrow gap, a small eraser's, looked bridged)
+    let centre = |x: f32, y: f32| ink_shows(d, &Sample { x, y, len: 0.0, r: 1.0 }, None, &covered, d.mass);
+    let at = |w: &Place| (w.q.x, w.q.y);
+    let mut out: VisibleRuns = Vec::new();
     let mut k = 0;
-    for run in runs {
-        while hidden[k] {
+    while k < places.len() {
+        if hidden[k] {
+            k += 1;
+            continue;
+        }
+        let a = k;
+        while k < places.len() && !hidden[k] {
             k += 1;
         }
-        let (a, b) = (k, k + run.len() - 1);
-        k = b + 1;
-        let mut run = run;
-        if b + 1 < all.len() {
-            run = end_at_ink(run, (all[b + 1].x, all[b + 1].y), &centre);
+        let b = k - 1;
+        // (the spine's samples, and the run's ends: the places between lie on the spine's line between them)
+        let mut run: Vec<(f32, f32, f32)> = (a..=b).filter(|&j| j == a || j == b || places[j].spine).map(|j| (places[j].q.x, places[j].q.y, places[j].q.r)).collect();
+        if b + 1 < places.len() {
+            run = end_at_ink(run, at(&places[b + 1]), &centre);
         }
         if a > 0 {
             run.reverse();
-            run = end_at_ink(run, (all[a - 1].x, all[a - 1].y), &centre);
+            run = end_at_ink(run, at(&places[a - 1]), &centre);
             run.reverse();
         }
         out.push(run);
@@ -575,26 +675,54 @@ fn end_at_ink(run: Vec<(f32, f32, f32)>, past: (f32, f32), centre: &dyn Fn(f32, 
     run
 }
 
-/// Whether the pixels whose centres are within sample q's ink radius (and half a pixel) show ink on the page
-/// drawn (d), those `covered` leaves out aside.
-fn ink_shows(d: &Drawn, q: &Sample, covered: &dyn Fn(f32, f32) -> bool) -> bool {
+/// Whether the page drawn (d) shows ink at sample q, counting pixels darker than the paper by more than `d.shows`
+/// levels, those `covered` leaves out aside: near it, with `mass` above 0 (the pixels whose centres are within q's
+/// ink radius and half a pixel of it, by the levels past that, `mass` darker in all), and across it, with the
+/// spine's direction there (`dir`: any such pixel within the ink's radius and half a pixel of q and within
+/// ACROSS_HALF of the line through it square to that direction: the ink across the stroke at q, not its ink either
+/// side of a cut narrower than the ink is wide); both when both are asked. One pass over the pixels for the two.
+fn ink_shows(d: &Drawn, q: &Sample, dir: Option<(f32, f32)>, covered: &dyn Fn(f32, f32) -> bool, mass: i32) -> bool {
     let c = d.canvas;
     let rr = q.r + 0.5;
-    let (x0, x1) = (((q.x - rr).floor() as i32).max(0), ((q.x + rr).ceil() as i32).min(c.w - 1));
-    let (y0, y1) = (((q.y - rr).floor() as i32).max(0), ((q.y + rr).ceil() as i32).min(c.h - 1));
-    let mut seen = 0;
+    let near = mass > 0;
+    // (how far it looks each way: the disc's box, the strip's, or both)
+    let (mut hx, mut hy) = if near { (rr, rr) } else { (0.0f32, 0.0f32) };
+    if let Some((ux, uy)) = dir {
+        hx = hx.max(uy.abs() * rr + ux.abs() * ACROSS_HALF);
+        hy = hy.max(ux.abs() * rr + uy.abs() * ACROSS_HALF);
+    }
+    let (x0, x1) = (((q.x - hx).floor() as i32).max(0), ((q.x + hx).ceil() as i32).min(c.w - 1));
+    let (y0, y1) = (((q.y - hy).floor() as i32).max(0), ((q.y + hy).ceil() as i32).min(c.h - 1));
+    let (mut seen, mut across) = (0, dir.is_none());
+    // (the pixel under q first, in the strip and the disc both: where it shows ink, as along most of a stroke, the
+    // look across ends there, and the disc's ends as soon as it has its mass)
+    let (qx, qy) = (q.x.floor() as i32, q.y.floor() as i32);
+    if !across && qx >= 0 && qy >= 0 && qx < c.w && qy < c.h {
+        let dark = d.paper[(qy * d.paper_stride + qx) as usize] as i32 - c.px[(qy * c.stride + qx) as usize] as i32 - d.shows;
+        across = dark > 0 && !covered(qx as f32 + 0.5, qy as f32 + 0.5);
+        if across && !near {
+            return true;
+        }
+    }
     for y in y0..=y1 {
         let (row, prow) = ((y * c.stride) as usize, (y * d.paper_stride) as usize);
         let cy = y as f32 + 0.5;
         for x in x0..=x1 {
             let cx = x as f32 + 0.5;
-            if (cx - q.x) * (cx - q.x) + (cy - q.y) * (cy - q.y) > rr * rr {
+            let (vx, vy) = (cx - q.x, cy - q.y);
+            // (what this pixel could still count for)
+            let in_disc = near && seen < mass && vx * vx + vy * vy <= rr * rr;
+            let in_strip = !across && dir.is_some_and(|(ux, uy)| (vx * ux + vy * uy).abs() <= ACROSS_HALF && (vy * ux - vx * uy).abs() <= rr);
+            if !in_disc && !in_strip {
                 continue;
             }
             let dark = d.paper[prow + x as usize] as i32 - c.px[row + x as usize] as i32 - d.shows;
             if dark > 0 && !covered(cx, cy) {
-                seen += dark;
-                if seen >= d.mass {
+                if in_disc {
+                    seen += dark;
+                }
+                across |= in_strip;
+                if across && seen >= mass {
                     return true;
                 }
             }

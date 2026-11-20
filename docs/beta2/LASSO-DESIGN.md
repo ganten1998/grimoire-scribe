@@ -282,13 +282,13 @@ overlaps existing ink.
   it keeps the old place clean). Tune the 50% and 1.5 mm on a handwriting corpus from the
   fixtures and rust/tests/shape_corpus.
 - **What a selection shows of it (2.2, issue #187).** The halo of the live preview and of a selection
-  (docs/beta2/PIXEL-LASSO.md 2) goes along the ink as the page draws it, not by the estimate above: a sample
-  of the spine has a halo where the page shows the stroke's ink within its radius (`stroke_shown_runs`), so
-  none across an erased gap, none where several passes erased together what none of them covers alone, and
-  none at all on ink the page shows nothing of, which the rule above may still select (its box takes it in).
-  Erased ink stays in the page file under its erase strokes until compaction, so before 2.2 each lasso drew
-  it again as a dithered outline: faint marks where ink had been erased, on the page copied from and on the
-  page pasted to.
+  (docs/beta2/PIXEL-LASSO.md 2) goes along the ink as the page draws it, not by the estimate above: a place
+  of the spine has a halo where the page shows the stroke's ink across it (`stroke_shown_runs`), so none
+  across an erased gap, however narrow the pass that cut it against the ink's width, none where several passes
+  erased together what none of them covers alone, and none at all on ink the page shows nothing of, which the
+  rule above may still select (its box takes it in). Erased ink stays in the page file under its erase strokes
+  until compaction, so before 2.2 each lasso drew it again as a dithered outline: faint marks where ink had
+  been erased, on the page copied from and on the page pasted to.
 - **Links.** A link goes with the selection when:
   - its area (or its outline polygon, when it has one) has at least half of an 8 x 8 sample grid
     inside the lasso; or
