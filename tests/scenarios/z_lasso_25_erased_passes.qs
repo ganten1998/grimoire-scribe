@@ -64,8 +64,10 @@ eraser line 952 1400 952 1500 10 0.6 0.6
 eraser line 970 1400 970 1500 10 0.6 0.6
 eraser line 988 1400 988 1500 10 0.6 0.6
 wait 300
-# (the panel settled: the eraser's fast refreshes show the paper's gray rules dark at first)
-wait 2000
+# (the panel settled where it is checked: the eraser's fast refreshes show the paper's gray rules dark until its
+# grays refresh, which a loaded machine sends later than a fixed wait allows)
+waitfor display.stale.750.1110.200.80 is 0
+waitfor display.stale.750.1430.200.40 is 0
 expect editor.strokes is 27
 expect editor.live_matches_render is 1
 expect display.dark.750.1110.200.80 is 0

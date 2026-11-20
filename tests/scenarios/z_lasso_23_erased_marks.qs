@@ -34,7 +34,10 @@ eraser line 300 920 960 920 40
 eraser line 300 950 960 950 40
 eraser line 300 980 960 980 40
 eraser line 830 1090 830 1210 12
-wait 300
+# (the panel settled where it is checked: the eraser's fast refreshes show the paper's gray rules dark until its
+# grays refresh, which a loaded machine sends later than a fixed wait allows)
+waitfor display.stale.420.900.440.100 is 0
+waitfor display.stale.815.1130.30.40 is 0
 expect editor.strokes is 7
 expect editor.erase_strokes is 3
 expect editor.live_matches_render is 1
@@ -112,7 +115,11 @@ wait 100
 pen line 380 1450 1120 1450 60 0.6 0.6
 wait 300
 pentap panel eraser
-wait 2000
+# (the panel settled where it is checked, as above)
+waitfor display.stale.590.700.20.100 is 0
+waitfor display.stale.590.1130.20.40 is 0
+waitfor display.stale.815.1130.30.40 is 0
+waitfor display.stale.450.1430.600.40 is 0
 expect editor.strokes is 8
 expect editor.erase_strokes is 4
 expect editor.live_matches_render is 1
