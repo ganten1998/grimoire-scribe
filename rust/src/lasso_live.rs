@@ -44,7 +44,7 @@ pub struct LassoLive {
     dpi: f32,
     /// the page it was made on: its strokes by identity (an edit in the meantime makes it stale)
     ids: Vec<StrokeId>,
-    erasers: Vec<usize>,
+    erasers: Erasers,
     floors: Option<Box<FloorTable>>,
     /// the grid: its first cell (cells), size (cells), and the ink strokes whose box meets each cell
     gx0: i32,
@@ -219,6 +219,12 @@ impl LassoLive {
     /// Takes what shows of stroke i (visible_runs), for the selection the lift makes from this preview.
     pub fn take_visible(&mut self, i: usize) -> Option<Option<VisibleRuns>> {
         self.tracks.get_mut(i)?.as_mut().map(|t| t.visible.take())
+    }
+
+    /// How many times judging held a sample to an erase stroke's segment so far (lasso.rs Erasers::tests): the
+    /// work erased ink costs the preview, for the tests and the log.
+    pub fn hide_tests(&self) -> u64 {
+        self.erasers.tests()
     }
 
     /// Whether p is still the page it was made on (no stroke added, taken off or replaced since).

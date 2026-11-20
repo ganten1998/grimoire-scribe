@@ -1526,7 +1526,7 @@ fn lasso_done(a: &mut App) {
     let ms = now_ms().wrapping_sub(t0);
     s.sel.preview_reused = reused;
     if let Some(lv) = live.as_deref() {
-        qlog!("lasso: preview batches=%d made=%d tests=%u reused=%d", lv.batches as i32, lv.made as i32, lv.tests.min(u32::MAX as u64) as u32, reused as i32);
+        qlog!("lasso: preview batches=%d made=%d tests=%u erased=%u reused=%d", lv.batches as i32, lv.made as i32, lv.tests.min(u32::MAX as u64) as u32, lv.hide_tests().min(u32::MAX as u64) as u32, reused as i32);
     }
     let erasure_there = picked.as_ref().is_some_and(|p| p.1);
     let Some((plan, _)) = picked.filter(|(plan, _)| !plan.is_empty()) else {

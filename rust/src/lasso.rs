@@ -7,6 +7,7 @@
 //! call it.
 
 use crate::prelude::*;
+use std::cell::{Cell, OnceCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -179,8 +180,10 @@ fn seg_dist2(px: f32, py: f32, a: &PenSample, b: &PenSample) -> f32 {
 
 /// Whether erase stroke e hides sample q of an ink stroke entirely: its hard core (its dab radius less
 /// the rim that fades out, less half a pixel) passes within q's ink radius of it. An estimate for
-/// selection only, never for drawing.
-fn hides(e: &Stroke, q: &Sample, dpi: f32) -> bool {
+/// selection only, never for drawing. Each segment's core is its first point's (EraserCuts::core).
+/// Erasers::hides gives the same answer, its cores measured once and most of its segments skipped by
+/// their chunk's box; this is the rule written out, for the tests (Erasers::plain).
+fn hides_plain(e: &Stroke, q: &Sample, dpi: f32, tests: &Cell<u64>) -> bool {
     if !rect_contains(rect_inflate(e.bbox, 1), q.x as i32, q.y as i32) {
         return false;
     }
@@ -193,11 +196,118 @@ fn hides(e: &Stroke, q: &Sample, dpi: f32) -> bool {
         if core <= 0.0 {
             continue;
         }
+        tests.set(tests.get() + 1);
         if seg_dist2(q.x, q.y, a, b) <= core * core {
             return true;
         }
     }
     false
+}
+
+/// Segments of an erase stroke per chunk (EraserCuts).
+const SEG_CHUNK: usize = 16;
+
+/// What hides needs of one erase stroke, measured once: each point's core radius (its dab radius less the
+/// rim, less half a pixel: hides' expression to the bit, less the sample's radius after), and its segments
+/// in chunks of SEG_CHUNK, each with the box of their ends (x0, y0, x1, y1) and the largest core among them.
+struct EraserCuts {
+    core: Vec<f32>,
+    chunks: Vec<[f32; 5]>,
+}
+
+impl EraserCuts {
+    fn measure(e: &Stroke, dpi: f32) -> EraserCuts {
+        let rim = brush_rim(stroke_render_tool(e));
+        let core: Vec<f32> = e.pts.iter().map(|a| dab_radius(e, a, dpi) * (1.0 - rim) - 0.5).collect();
+        let n = e.pts.len();
+        let chunks = (0..n.div_ceil(SEG_CHUNK))
+            .map(|c| {
+                let (k0, k1) = (c * SEG_CHUNK, ((c + 1) * SEG_CHUNK).min(n));
+                // (segment k runs from point k to point k + 1, the last one to itself)
+                let ends = &e.pts[k0..(k1 + 1).min(n)];
+                let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN, f32::MIN];
+                for q in ends {
+                    b = [b[0].min(q.x), b[1].min(q.y), b[2].max(q.x), b[3].max(q.y), b[4]];
+                }
+                b[4] = core[k0..k1].iter().fold(f32::MIN, |m, &c| m.max(c));
+                b
+            })
+            .collect();
+        EraserCuts { core, chunks }
+    }
+}
+
+/// The erase strokes of a page that may hide ink (markers aside), ascending (`at`), with what hides needs of
+/// each measured the first time a stroke near it is judged (EraserCuts). The live preview judges each stroke
+/// the lasso reaches, on the pen's path: hides measured every point's dab of every erase stroke near a
+/// sample, for every sample, so a lasso over much erased ink spent about 5 times as long a batch as over a
+/// like region, near the time after which the kernel drops pen events on the Kindle (issue #187). A sample
+/// now meets only the segments whose chunk's box it is near, each core measured once.
+#[derive(Default)]
+pub struct Erasers {
+    pub at: Vec<usize>,
+    cuts: Vec<OnceCell<EraserCuts>>,
+    /// every segment, every core measured afresh (the rule as written out: hides_plain), for the tests
+    plain: bool,
+    /// how many times a sample was held to a segment (the work, for the tests and the log)
+    tests: Cell<u64>,
+}
+
+impl Erasers {
+    /// The erase strokes of p that may hide ink.
+    pub fn new(p: &Page) -> Erasers {
+        let at: Vec<usize> = (0..p.strokes.len()).filter(|&j| stroke_is_erase(&p.strokes[j]) && !is_floor_marker(&p.strokes[j])).collect();
+        Erasers { cuts: (0..at.len()).map(|_| OnceCell::new()).collect(), at, plain: false, tests: Cell::new(0) }
+    }
+    /// The same, judged by the rule written out (hides_plain): every segment of each, its core measured
+    /// each time. For the tests, which hold the two to the same answers.
+    pub fn plain(p: &Page) -> Erasers {
+        Erasers { plain: true, ..Erasers::new(p) }
+    }
+    /// How many times a sample was held to a segment so far.
+    pub fn tests(&self) -> u64 {
+        self.tests.get()
+    }
+    /// Whether erase stroke at[k] of p hides sample q entirely (hides_plain's answer).
+    fn hides(&self, p: &Page, k: usize, q: &Sample, dpi: f32) -> bool {
+        let e = &p.strokes[self.at[k]];
+        if self.plain {
+            return hides_plain(e, q, dpi, &self.tests);
+        }
+        if !rect_contains(rect_inflate(e.bbox, 1), q.x as i32, q.y as i32) {
+            return false;
+        }
+        let m = self.cuts[k].get_or_init(|| EraserCuts::measure(e, dpi));
+        let n = e.pts.len();
+        let mut tests = 0u64;
+        let mut hit = false;
+        'chunks: for (c, b) in m.chunks.iter().enumerate() {
+            // (no core of the chunk's reaches past the sample's own radius; or the sample is further from the
+            // box of its segments than the largest core, a pixel to spare for rounding: none of them hides it)
+            let reach = b[4] - q.r;
+            if reach.is_nan() || reach <= 0.0 {
+                continue;
+            }
+            let reach = reach + 1.0;
+            if q.x < b[0] - reach || q.x > b[2] + reach || q.y < b[1] - reach || q.y > b[3] + reach {
+                continue;
+            }
+            for k in c * SEG_CHUNK..((c + 1) * SEG_CHUNK).min(n) {
+                let core = m.core[k] - q.r;
+                if core <= 0.0 {
+                    continue;
+                }
+                tests += 1;
+                let (a, b) = (&e.pts[k], &e.pts[if k + 1 < n { k + 1 } else { k }]);
+                if seg_dist2(q.x, q.y, a, b) <= core * core {
+                    hit = true;
+                    break 'chunks;
+                }
+            }
+        }
+        self.tests.set(self.tests.get() + tests);
+        hit
+    }
 }
 
 /// The spine length under which a stroke is judged by the middle of what shows (i-dots, accents, short
@@ -234,9 +344,9 @@ impl Judged {
     }
 }
 
-/// The erase strokes of p that may hide ink (markers aside), ascending.
-pub fn page_erasers(p: &Page) -> Vec<usize> {
-    (0..p.strokes.len()).filter(|&j| stroke_is_erase(&p.strokes[j]) && !is_floor_marker(&p.strokes[j])).collect()
+/// The erase strokes of p that may hide ink (markers aside), ascending, for judging its ink (Erasers).
+pub fn page_erasers(p: &Page) -> Erasers {
+    Erasers::new(p)
 }
 
 /// What shows of an ink stroke under its erasing, as runs of its spine in order, each sample (x, y, the
@@ -252,18 +362,20 @@ struct Seen {
     hidden: Option<Vec<bool>>,
 }
 
-fn seen(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize, dpi: f32, erasers: &[usize]) -> Seen {
+fn seen(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize, dpi: f32, erasers: &Erasers) -> Seen {
     let all = spine(s, dpi);
     if all.is_empty() {
         return Seen { all, hidden: None };
     }
-    // the erase strokes after it that reach it (and whose floor is before it)
-    let near: Vec<&Stroke> = erasers
-        .iter()
-        .filter(|&&j| j > i && rect_overlaps(p.strokes[j].bbox, s.bbox) && floor_index(p, f, j) < i as i64)
-        .map(|&j| &*p.strokes[j])
+    // the erase strokes after it that reach it (and whose floor is before it), by their place in erasers.at
+    let after = erasers.at.partition_point(|&j| j <= i);
+    let near: Vec<usize> = (after..erasers.at.len())
+        .filter(|&k| {
+            let j = erasers.at[k];
+            rect_overlaps(p.strokes[j].bbox, s.bbox) && floor_index(p, f, j) < i as i64
+        })
         .collect();
-    let hidden = (!near.is_empty()).then(|| all.iter().map(|q| near.iter().any(|e| hides(e, q, dpi))).collect());
+    let hidden = (!near.is_empty()).then(|| all.iter().map(|q| near.iter().any(|&k| erasers.hides(p, k, q, dpi))).collect());
     Seen { all, hidden }
 }
 
@@ -312,7 +424,7 @@ impl Seen {
 }
 
 /// Ink stroke i of p as the lasso judges it (Judged); None when it has no spine.
-pub fn judged_samples(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, erasers: &[usize]) -> Option<Judged> {
+pub fn judged_samples(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, erasers: &Erasers) -> Option<Judged> {
     seen(p, f, &p.strokes[i], i, dpi, erasers).judged(dpi)
 }
 
@@ -320,19 +432,19 @@ pub fn judged_samples(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, eras
 /// under the erase strokes after it in scope, by the estimate the lasso judges by: None when none of them
 /// hides any of its spine, else the runs that show (empty: nothing shows). The selection's halo is drawn
 /// along these, so erased ink never shows through it (issue #187).
-pub fn stroke_visible_runs(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize, dpi: f32, erasers: &[usize]) -> Option<VisibleRuns> {
+pub fn stroke_visible_runs(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize, dpi: f32, erasers: &Erasers) -> Option<VisibleRuns> {
     seen(p, f, s, i, dpi, erasers).visible()
 }
 
 /// judged_samples and stroke_visible_runs of ink stroke i of p together, its spine walked once (the live preview).
-pub fn judged_and_visible(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, erasers: &[usize]) -> (Option<Judged>, Option<VisibleRuns>) {
+pub fn judged_and_visible(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, erasers: &Erasers) -> (Option<Judged>, Option<VisibleRuns>) {
     let v = seen(p, f, &p.strokes[i], i, dpi, erasers);
     (v.judged(dpi), v.visible())
 }
 
 /// Whether the lasso encloses ink stroke i of p: at least half its judged spine inside; a short one (under
 /// LASSO_SHORT_MM visible) by the middle of its judged samples (judged_samples).
-fn encloses(p: &Page, f: Option<&FloorTable>, i: usize, l: &Lasso, dpi: f32, erasers: &[usize]) -> bool {
+fn encloses(p: &Page, f: Option<&FloorTable>, i: usize, l: &Lasso, dpi: f32, erasers: &Erasers) -> bool {
     let Some(j) = judged_samples(p, f, i, dpi, erasers) else { return false };
     let inside: u64 = j.samples.iter().filter(|q| l.inside(q.0, q.1)).map(|q| q.2 as u64).sum();
     j.decide(inside)
@@ -431,13 +543,7 @@ pub fn lasso_select_from(p: &Page, links: &[NavLink], l: &Lasso, mut on: Vec<boo
 /// spine is under some erase stroke's hard core.
 pub fn stroke_visible(p: &Page, i: usize, dpi: f32) -> bool {
     let floors = page_floors(p);
-    let f = floors.as_deref();
-    let s = &p.strokes[i];
-    let near: Vec<&Stroke> = (i + 1..p.strokes.len())
-        .filter(|&j| stroke_is_erase(&p.strokes[j]) && !is_floor_marker(&p.strokes[j]) && rect_overlaps(p.strokes[j].bbox, s.bbox) && floor_index(p, f, j) < i as i64)
-        .map(|j| &*p.strokes[j])
-        .collect();
-    near.is_empty() || spine(s, dpi).iter().any(|q| !near.iter().any(|e| hides(e, q, dpi)))
+    stroke_visible_runs(p, floors.as_deref(), &p.strokes[i], i, dpi, &page_erasers(p)).is_none_or(|r| !r.is_empty())
 }
 
 // ---- which erase strokes go with the ink ----
@@ -1183,7 +1289,7 @@ pub fn lasso_cut_plan(p: &Page, links: &[NavLink], l: &Lasso, dpi: f32, on_whole
     let mut plan = CutPlan::default();
     let in_ws: HashSet<usize> = ws.strokes.iter().copied().collect();
     // (made at the first stroke the lasso's line crosses)
-    let mut judging: Option<(Option<Box<FloorTable>>, Vec<usize>)> = None;
+    let mut judging: Option<(Option<Box<FloorTable>>, Erasers)> = None;
     let mut short = |i: usize| {
         let (floors, erasers) = judging.get_or_insert_with(|| (page_floors(p), page_erasers(p)));
         judged_samples(p, floors.as_deref(), i, dpi, erasers).is_some_and(|j| !j.long)
