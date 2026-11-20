@@ -3551,12 +3551,14 @@ lines marked "Over SSH, optional" look at the files themselves and can be left o
 
 ## 2.2, lasso and erased ink (issue #187): device checks
 
-Automated: tests/test_lasso.rs (halo_follows_what_shows), tests/test_lasso_live.rs
-(visible_runs_are_the_selections), z_lasso_23_erased_marks (the reported steps with the precise eraser) and
-z_lasso_24_erased_marks_whole (the Whole strokes eraser on the page pasted to, white ink on the page copied
-from). They check what the halo draws in the headless runner; on the Kindle, check what the screen shows. Erased
-ink stays in the page file under the erasing that covers it until the notebook is compacted, and the lasso
-selects it, so every check below lassoes a page that holds some.
+Automated: tests/test_lasso.rs (halo_follows_what_shows, halo_follows_the_page), tests/test_lasso_live.rs
+(judging_erased_ink_is_indexed), z_lasso_23_erased_marks (the reported steps with the precise eraser, a move, a
+resize, exact area), z_lasso_24_erased_marks_whole (the Whole strokes eraser on the page pasted to, white ink on
+the page copied from), z_lasso_25_erased_passes (a marker line erased by passes narrower than it, a line scrubbed
+out by 2 mm passes) and z_lasso_26_erased_small_eraser (the eraser at 1 mm). They check what the halo draws in the
+headless runner; on the Kindle, check what the screen shows. Erased ink stays in the page file under the erasing
+that covers it until the notebook is compacted, and the lasso selects it, so every check below lassoes a page that
+holds some.
 
 1. **Set up**: Settings > Pen > Eraser > Takes away only what it touches (Precise). In a new notebook write
    three lines of words on page 1. With the eraser, erase one word wholly and a gap through another.
@@ -3581,7 +3583,17 @@ selects it, so every check below lassoes a page that holds some.
 9. **Moving**: on page 2, lasso a partly erased word and drag it: at its new place it shows the same gaps and
    the halo hugs what shows. Undo: back as it was.
 10. **A region with many erased marks** (the second report on the issue, the lasso "cutting off"): on a page
-    where you erased a lot, draw a lasso slowly around part of it, then around a part with no erasing. Note
-    whether the dashed line follows the pen in both places, or jumps straight across part of the way in the
-    erased one. If it jumps, copy `grimoire/grimoire.log` over USB and look near that time for "pen events
-    dropped by the kernel" and "lasso: preview" lines; attach them to the issue.
+    where you erased a lot, draw a lasso slowly around part of it, then around a part with no erasing. The dashed
+    line follows the pen in both places and never jumps straight across part of the way. If it jumps, copy
+    `grimoire/grimoire.log` over USB and look near that time for "pen events dropped by the kernel" and
+    "lasso: preview" lines (`erased=` counts the work erased ink cost that lasso); attach them to the issue.
+11. **A small eraser, many strokes**: hold the eraser on the toolbar and pick 1 mm. On a fresh page write a line
+    of words; scrub one word out with many short eraser strokes back and forth until nothing of it shows, and cut
+    a narrow gap through another word with one stroke. Lasso the page: no dots or outline where the scrubbed
+    word was, and the halo stops at the ink either side of the gap, never across it. Lasso again slowly over
+    them: nothing there while the lasso is drawn either.
+12. **A wide pen**: hold the marker on the toolbar and pick its widest size, and draw a line. With the eraser at
+    2 mm, erase the middle of the line in several strokes along it until nothing shows there. Lasso the page: no
+    halo over the erased middle.
+13. **Resizing**: lasso a page holding a word you erased in a few strokes, and drag the selection's bottom-right
+    handle out a little: where the word was the page shows nothing, and no halo either. Done, then Undo.
