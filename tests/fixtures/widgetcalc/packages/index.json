@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "packages": [
+    {"id":"com.grimoire.calculator","name":"Calculator","version":"1.0.0","author":"Grimoire","description":"A working four-function calculator with percent, sign and backspace.","path":"packages/widgets/com.grimoire.calculator/calculator.bin","sha":"bc71d7ea6e2b8c021da910845ca332b56cd4aed503f0f20c90b9ce586cabfbfc","installed_at":1,"source_url":"https://github.com/nebuff/gri-calc"}
+  ]
+}

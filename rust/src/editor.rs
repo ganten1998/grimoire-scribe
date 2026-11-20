@@ -97,13 +97,15 @@ const P_SETTINGS: i32 = 31;
 /// the Widgets button on the toolbar, and its popup's rows
 const P_WIDGETS: i32 = 32;
 const P_WIDGET_SPAWN: i32 = 33;
+/// the popup's Manage widgets... row
+const P_WIDGET_MANAGE: i32 = 34;
 /// the tool picker's Select (Select mode, select.rs)
 const P_PICK_SELECT: i32 = 66;
 
 /// Which input started the current gesture, and what it does.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Owner {
+pub(crate) enum Owner {
     #[default]
     None = 0, // OWN_NONE
     Draw = 1,      // OWN_DRAW
@@ -452,7 +454,7 @@ pub struct EditorState {
     page_views: Vec<PageView>,
 
     // Pointer ownership: which input started the current gesture and what it does.
-    owner: Owner,
+    pub(crate) owner: Owner,
     owner_is_pen: bool,
     /// grimoire.log's contact and link-making lines (diag): their budget, and the link-making state last said
     diag: DiagBudget,
@@ -607,7 +609,7 @@ pub struct EditorState {
     tools_slider: bool,
 
     // Widgets (widgets.rs): the open frames, the popup beside the panel, and the contact on one of them.
-    widgets: WidgetHost,
+    pub(crate) widgets: WidgetHost,
     widgets_open: bool,
     /// where the popup's top is meant to be: the panel's, as it opened
     widgets_y: i32,
@@ -618,7 +620,6 @@ pub struct EditorState {
     widgets_pressed: Option<Rect>,
     widget_drag: Option<WidgetDrag>,
     widget_drag_view: WidgetDragView,
-
     /// the Pages view (pagesview.h)
     pv: PagesView,
     destination: NotebookPicker,
@@ -716,10 +717,10 @@ pub struct EditorState {
 }
 
 // (The C's S, a->ed.)
-fn ed(a: &mut App) -> &mut EditorState {
+pub(crate) fn ed(a: &mut App) -> &mut EditorState {
     a.ed.as_deref_mut().unwrap()
 }
-fn ed_ref(a: &App) -> &EditorState {
+pub(crate) fn ed_ref(a: &App) -> &EditorState {
     a.ed.as_deref().unwrap()
 }
 
@@ -1632,22 +1633,53 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if let Some(control)=name.strip_prefix("select."){return sel_control_point(s,control);}
     if let Some(control)=name.strip_prefix("bar."){return linkbar_control_point(&s.lb,control);}
     if let Some(control)=name.strip_prefix("linkto."){return linkbar_control_point(&s.lt,control);}
-    // The Widgets popup's rows: `tap panel widgets.demo.sticky-notes` opens or raises one.
+    // The Widgets popup's rows: `tap panel widgets.com.example.widget` opens or raises one.
     if s.widgets_open {
         if let Some(id)=name.strip_prefix("widgets.") {
-            if id == "manage" { return None; }
+            if id == "manage" {
+                return s.widgets_hits.h.iter().find(|h| h.id == P_WIDGET_MANAGE)
+                    .map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
+            }
             let i = widget_catalog().iter().position(|d| d.id == id)? as i32;
             return s.widgets_hits.h.iter().find(|h| h.id == P_WIDGET_SPAWN && h.arg == i)
                 .map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
         }
     }
-    // A widget frame's parts: `tap panel widget.demo.sticky-notes.close` (title, close, minimize,
+    // The calculator frame's parts without the id (`tap panel calculator.key.12`), for a package id
+    // longer than the runner's 32-byte panel target.
+    if let Some(part) = name.strip_prefix("calculator.") {
+        let f = s.widgets.frames.iter().find(|f| f.def.kind == WidgetKind::Calculator)?;
+        if f.layout.minimized && part != "title" { return None; }
+        if let Some(k) = part.strip_prefix("key.") {
+            let k: usize = k.parse().ok()?;
+            let kr = f.calculator_key(widget_body(f), k);
+            return (!rect_is_empty(kr)).then_some(((kr.x + kr.w / 2) as f32, (kr.y + kr.h / 2) as f32));
+        }
+        let r = match part {
+            "title" => f.title_rect(),
+            "close" => f.close_rect(),
+            "min" | "minimize" => f.minimize_rect(),
+            "resize" => f.resize_rect(),
+            "body" => {
+                let t = f.title_rect();
+                Rect { x: f.rect().x, y: t.y + t.h, w: f.rect().w, h: f.rect().h - t.h }
+            }
+            _ => return None,
+        };
+        return Some(((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32));
+    }
+    // A widget frame's parts: `tap panel widget.com.example.widget.close` (title, close, minimize,
     // resize, body), while it is open and not minimized (a minimized frame has only its title).
     if let Some(n)=name.strip_prefix("widget.") {
         let (id, part) = n.rsplit_once('.')?;
         let i = s.widgets.index_of(id)?;
         let f = s.widgets.frames.get(i)?;
         if f.layout.minimized && part != "title" { return None; }
+        if let Some(k) = part.strip_prefix("key.") {
+            let k: usize = k.parse().ok()?;
+            let kr = f.calculator_key(widget_body(f), k);
+            return (!rect_is_empty(kr)).then_some(((kr.x + kr.w / 2) as f32, (kr.y + kr.h / 2) as f32));
+        }
         let r = match part {
             "title" => f.title_rect(),
             "close" => f.close_rect(),
@@ -2278,7 +2310,7 @@ fn widget_area(a: &App) -> Rect {
 }
 
 /// The Widgets popup: the catalog's rows beside the panel. Its rows open a widget (or raise it);
-/// Manage widgets... is the placeholder the Packages settings page fills in later.
+/// Manage widgets... opens Settings → Packages → Widgets.
 fn draw_widgets_popup(a: &mut App) {
     let App { screen: c, ed, .. } = a;
     let s = ed.as_deref_mut().unwrap();
@@ -2314,12 +2346,11 @@ fn draw_widgets_popup(a: &mut App) {
         hits_add(&mut s.widgets_hits, r, P_WIDGET_SPAWN, i as i32);
         ry += row_h + gap;
     }
-    // TRANSLATORS: the widget popup's row that opens the Packages settings page (which Phase 1 does
-    // not have yet: it is drawn greyed out).
+    // TRANSLATORS: the widget popup's row that opens the Packages page.
     let r = Rect { x: x + pad, y: ry, w: w - 2 * pad, h: row_h };
-    let mut manage = Row::new(IconKind::Gear, tr("Manage widgets..."));
-    manage.style = ButtonStyle::Disabled;
+    let manage = Row::new(IconKind::Gear, tr("Manage widgets..."));
     ui_row(c, r, &manage);
+    hits_add(&mut s.widgets_hits, r, P_WIDGET_MANAGE, 0);
 }
 
 /// The widget frames, below the panel and menus and above the page.
@@ -2335,6 +2366,12 @@ fn draw_widgets(a: &mut App, r: Rect) {
         draw_widget_frame(a, i);
     }
     a.screen.clip = clip;
+}
+
+fn widget_body(f: &WidgetFrame) -> Rect {
+    let r = f.rect();
+    let title = f.title_rect();
+    Rect { x: r.x + ui_px(14.0), y: title.y + title.h + ui_px(8.0), w: r.w - ui_px(28.0), h: r.h - title.h - ui_px(22.0) }
 }
 
 fn draw_widget_frame(a: &mut App, i: usize) {
@@ -2358,41 +2395,43 @@ fn draw_widget_frame(a: &mut App, i: usize) {
     let mr = f.minimize_rect();
     let tx = icon.x + icon.w + ui_px(10.0);
     let tw = (mr.x - tx - ui_px(8.0)).max(0);
-    ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size(), Rect { x: tx, y: r.y, w: tw, h: title.h }, f.def.name, 1, false, 0);
+    ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size() * 0.55, Rect { x: tx, y: r.y, w: tw, h: title.h }, f.def.name, 1, false, 0);
     ui_icon(c, IconKind::Close, Rect::new(cr.x + ui_px(14.0), cr.y + ui_px(14.0), cr.w - ui_px(28.0), cr.h - ui_px(28.0)), 0);
     ui_icon(c, IconKind::Minus, Rect::new(mr.x + ui_px(14.0), mr.y + ui_px(14.0), mr.w - ui_px(28.0), mr.h - ui_px(28.0)), 0);
     // The body, and the grip.
-    let body = Rect { x: r.x + ui_px(14.0), y: title.y + title.h + ui_px(8.0), w: r.w - ui_px(28.0), h: r.h - title.h - ui_px(22.0) };
+    let body = widget_body(&f);
     if body.w > 0 && body.h > 0 {
         match f.def.kind {
-            WidgetKind::StickyNotes => {
-                let line = ui_px(42.0);
-                let mut ly = body.y + line;
-                while ly < body.y + body.h {
-                    canvas_hline(c, body.x, body.x + body.w, ly, ui_px(1.0), 190);
-                    ly += line;
+            WidgetKind::Package => {
+                // The package's own body is its WASM runtime's; until that host is built, the frame
+                // shows what the package is and which version is installed.
+                let mut meta = f.def.name.to_string();
+                if !f.def.version.is_empty() {
+                    meta.push_str(&format!(" v{}", f.def.version));
                 }
-                // TRANSLATORS: a demo widget's body text (Phase 1 has no packages yet).
-                ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y, w: body.w, h: body.h }, tr("Drag the title bar to move me.\nResize me from the corner."), 2, false, 0);
+                if !f.def.author.is_empty() {
+                    meta.push_str(&format!(" · {}", f.def.author));
+                }
+                let meta_h = if meta.is_empty() { 0 } else { ui_small_size() as i32 + ui_px(10.0) };
+                if !meta.is_empty() {
+                    ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y, w: body.w, h: ui_small_size() as i32 + ui_px(6.0) }, &meta, 1, false, 0);
+                }
+                if !f.def.description.is_empty() {
+                    ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y + meta_h, w: body.w, h: (body.h - meta_h).max(0) }, f.def.description, 2, false, 0);
+                }
             }
             WidgetKind::Calculator => {
-                let display = Rect { x: body.x, y: body.y, w: body.w, h: ui_px(64.0).min(body.h) };
+                let display = f.calculator_display(body);
                 ui_frame(c, display, ui_px(8.0), 0, false, ui_px(2.0));
-                font_draw_centered(c, FontFace::Bold, ui_text_size(), display, "0", 0);
-                let labels = ["7", "8", "9", "+", "4", "5", "6", "-", "1", "2", "3", "x", "0", ".", "=", "/"];
-                let top = display.y + display.h + ui_px(10.0);
-                let gh = (body.y + body.h - top).max(0);
-                let kw = (body.w - ui_px(3.0) * 3) / 4;
-                let kh = (gh - ui_px(3.0) * 3) / 4;
-                if kw > 0 && kh > 0 {
-                    for (k, lab) in labels.iter().enumerate() {
-                        let kx = body.x + (k as i32 % 4) * (kw + ui_px(3.0));
-                        let ky = top + (k as i32 / 4) * (kh + ui_px(3.0));
-                        let kr = Rect { x: kx, y: ky, w: kw, h: kh };
-                        ui_frame(c, kr, ui_px(8.0), 255, true, 0);
-                        ui_frame(c, kr, ui_px(8.0), 0, false, ui_px(2.0));
-                        font_draw_centered(c, FontFace::Bold, ui_small_size(), kr, lab, 0);
+                font_draw_centered(c, FontFace::Bold, ui_text_size(), display, f.calc.display(), 0);
+                for k in 0..CALCULATOR_KEYS.len() {
+                    let kr = f.calculator_key(body, k);
+                    if rect_is_empty(kr) {
+                        break;
                     }
+                    ui_frame(c, kr, ui_px(8.0), 255, true, 0);
+                    ui_frame(c, kr, ui_px(8.0), 0, false, ui_px(2.0));
+                    font_draw_centered(c, FontFace::Bold, ui_small_size(), kr, CALCULATOR_KEYS[k], 0);
                 }
             }
         }
@@ -2952,7 +2991,7 @@ fn show(a: &mut App, page_rect: Rect, m: RefreshMode) {
     app_invalidate(a, r, m);
 }
 
-fn compose_all(a: &mut App, m: RefreshMode) {
+pub(crate) fn compose_all(a: &mut App, m: RefreshMode) {
     compose(a, Rect { x: 0, y: 0, w: a.w, h: a.h ,
         },
     );
@@ -7929,6 +7968,12 @@ fn widgets_tap(a: &mut App, x: f32, y: f32) {
                 widgets_spawn(a, def);
             }
         }
+        Some(h) if h.id == P_WIDGET_MANAGE => {
+            close_widgets(a);
+            // The package manager is Settings > Packages > Widgets, over the notebook as Settings is.
+            crate::library::library_settings_from_notebook(a);
+            packages_ui_open(a);
+        }
         _ => close_widgets(a),
     }
 }
@@ -8238,6 +8283,13 @@ fn widget_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                     f.clamp(area);
                     redraw = rect_union(redraw, f.rect());
                     save = true;
+                }
+                WidgetPart::Body if f.def.kind == WidgetKind::Calculator => {
+                    let body = widget_body(f);
+                    if let Some(key) = f.calculator_key_at(body, d.down_x, d.down_y) {
+                        f.calc.press(key);
+                        redraw = rect_union(redraw, body);
+                    }
                 }
                 _ => {}
             }
@@ -10255,6 +10307,9 @@ pub fn editor_enter(a: &mut App) {
     s.widgets_y = s.panel.y;
     let area = Rect { x: 0, y: top, w: aw, h: ah - top };
     if s.open && !s.widgets.loaded {
+        // (a package whose files were removed by hand leaves the index before its frames are restored)
+        crate::widgetpkg::widget_package_repair();
+        crate::widgetpkg::widget_catalog_invalidate();
         s.widgets.load(area);
     } else if turned && s.widgets.reclamp(area) {
         s.widgets.save();
@@ -12503,6 +12558,16 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", ed_ref(a).widgets_open as i32);
         return 0;
     }
+    if key == "calculator.display" || key == "calculator.state" {
+        let s = ed_ref(a);
+        let Some(f) = s.widgets.frames.iter().find(|f| f.def.kind == WidgetKind::Calculator) else { return -1 };
+        if key == "calculator.display" {
+            csnprintf!(out, cap, "%s", f.calc.display());
+        } else {
+            csnprintf!(out, cap, "%s", if f.layout.minimized { "minimized" } else { "normal" });
+        }
+        return 0;
+    }
     if let Some(n) = key.strip_prefix("widget.") {
         let Some((id, what)) = n.rsplit_once('.') else { return -1 };
         let s = ed_ref(a);
@@ -12514,7 +12579,32 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
                 csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
             }
             "state" => { csnprintf!(out, cap, "%s", if f.layout.minimized { "minimized" } else { "normal" }); }
+            "display" => { csnprintf!(out, cap, "%s", f.calc.display()); }
             _ => return -1,
+        }
+        return 0;
+    }
+    // The widget packages: "N id version id version...", packages.open while the page is up, and an
+    // installed package's version (empty for one that is not installed).
+    if key == "packages" {
+        let ui = &a.pkg;
+        let mut text = format!("{}", ui.items.len());
+        for it in &ui.items {
+            text.push_str(&format!(" {} {}", it.id, it.version));
+        }
+        csnprintf!(out, cap, "%s", &text);
+        return 0;
+    }
+    if key == "packages.open" {
+        csnprintf!(out, cap, "%d", a.pkg.open as i32);
+        return 0;
+    }
+    if let Some(id) = key.strip_prefix("package.") {
+        let ui = &a.pkg;
+        if let Some(it) = ui.items.iter().find(|x| x.id == id) {
+            csnprintf!(out, cap, "%s", &it.version);
+        } else {
+            csnprintf!(out, cap, "%s", "");
         }
         return 0;
     }

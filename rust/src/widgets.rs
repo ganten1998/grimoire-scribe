@@ -1,10 +1,9 @@
 //! widgets.c: the editor's widget windows and their layout.
 //!
-//! Phase 1 has built-in demo widgets only. A widget is a small window on the editor canvas: it can
-//! be raised, dragged by its title bar, minimized, resized from its bottom-right grip, and closed.
-//! Its place and size are kept in widgets.ini at the store root, so they come back on the next
-//! launch. The catalog is the seam a package-installed widget replaces later; nothing here knows
-//! about packages, WASM or the network.
+//! Every widget comes from an installed package (widgetpkg.rs). A widget is a small window on the
+//! editor canvas: it can be raised, dragged by its title bar, minimized, resized from its
+//! bottom-right grip, and closed. Its place and size are kept in widgets.ini at the store root, so
+//! they come back on the next launch.
 //!
 //! The module is geometry and state only. editor.rs draws the frames and routes input.
 
@@ -24,12 +23,14 @@ const WIDGET_FLOOR_H: f32 = 80.0;
 /// A frame never takes more than this share of the canvas either way.
 const WIDGET_MAX_SHARE: i32 = 70;
 
-/// What a built-in demo widget draws in its body. Package widgets will carry their own body; this
-/// enum is what Phase 1 can draw without a renderer.
+/// What a package widget draws in its body: a native implementation Grimoire carries, or package
+/// metadata where this build has no WASM host yet.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WidgetKind {
+    /// an installed package: its body is the package's own runtime, which this build has no host for yet
     #[default]
-    StickyNotes,
+    Package,
+    /// a package with `spec.runtime: native`, `spec.entry: calculator`
     Calculator,
 }
 
@@ -47,45 +48,277 @@ pub struct WidgetDef {
     pub max_w: f32,
     pub max_h: f32,
     pub resizable: bool,
+    /// the installed package's version, author and description
+    pub version: &'static str,
+    pub author: &'static str,
+    pub description: &'static str,
 }
 
-/// The built-in demo widgets. A package-installed widget takes an entry's place here later; until
-/// then these two show the frame, popup and persistence working end to end.
-pub const WIDGET_CATALOG: [WidgetDef; 2] = [
-    WidgetDef {
-        id: "demo.sticky-notes",
-        name: "Sticky Notes",
-        icon: IconKind::Notebook,
-        kind: WidgetKind::StickyNotes,
-        default_w: 260.0,
-        default_h: 220.0,
-        min_w: 180.0,
-        min_h: 140.0,
-        max_w: 520.0,
-        max_h: 520.0,
-        resizable: true,
-    },
-    WidgetDef {
-        id: "demo.calculator",
-        name: "Calculator",
-        icon: IconKind::Grid,
-        kind: WidgetKind::Calculator,
-        default_w: 300.0,
-        default_h: 380.0,
-        min_w: 220.0,
-        min_h: 280.0,
-        max_w: 460.0,
-        max_h: 560.0,
-        resizable: true,
-    },
-];
+/// The catalog starts empty: every widget is an installed package (widgetpkg.rs).
+pub const WIDGET_CATALOG: [WidgetDef; 0] = [];
 
-pub fn widget_catalog() -> &'static [WidgetDef] {
-    &WIDGET_CATALOG
+/// A native package widget's keypad, top to bottom and left to right.
+pub const CALCULATOR_KEYS: [&str; 20] = [
+    "AC", "+/-", "%", "/",
+    "7", "8", "9", "x",
+    "4", "5", "6", "-",
+    "1", "2", "3", "+",
+    "0", ".", "<", "=",
+];
+const CALCULATOR_ROWS: i32 = 5;
+const CALCULATOR_COLS: i32 = 4;
+
+/// A native calculator's state. It is `Copy`, as a frame is: a frame's calculator comes back with
+/// its place and size after a restart, and pressing keys changes no layout.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Calculator {
+    buf: [u8; 24],
+    len: u8,
+    acc: f64,
+    /// 0 none, 1 +, 2 −, 3 ×, 4 ÷
+    op: u8,
+    /// the buffer is the number being typed (a digit replaces it when false)
+    typing: bool,
+    /// the buffer is an answer: a digit starts a new sum
+    evaluated: bool,
+    error: bool,
+}
+
+impl Default for Calculator {
+    fn default() -> Self {
+        let mut c = Calculator { buf: [0; 24], len: 1, acc: 0.0, op: 0, typing: false, evaluated: false, error: false };
+        c.buf[0] = b'0';
+        c
+    }
+}
+
+impl Calculator {
+    pub fn display(&self) -> &str {
+        std::str::from_utf8(&self.buf[..self.len as usize]).unwrap_or("0")
+    }
+
+    fn set_text(&mut self, s: &str) {
+        self.len = s.len().min(self.buf.len()) as u8;
+        self.buf[..self.len as usize].copy_from_slice(&s.as_bytes()[..self.len as usize]);
+    }
+
+    fn text(&self) -> String {
+        self.display().to_string()
+    }
+
+    fn current(&self) -> f64 {
+        self.text().parse::<f64>().unwrap_or(0.0)
+    }
+
+    fn number(v: f64) -> String {
+        if !v.is_finite() {
+            return "Error".into();
+        }
+        if v.abs() >= 1_000_000_000_000.0 {
+            return format!("{v:.6e}");
+        }
+        if v.fract() == 0.0 {
+            return format!("{}", v as i64);
+        }
+        let mut s = format!("{v:.8}");
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+        s
+    }
+
+    fn show(&mut self, v: f64) {
+        let s = Self::number(v);
+        self.error = s == "Error";
+        self.set_text(&s);
+    }
+
+    fn reset(&mut self) {
+        *self = Calculator::default();
+    }
+
+    fn digit(&mut self, d: char) {
+        if self.error || self.evaluated {
+            self.reset();
+        }
+        if !self.typing {
+            self.len = 0;
+            self.typing = true;
+        }
+        if self.len == 1 && self.buf[0] == b'0' {
+            self.len = 0;
+        }
+        if (self.len as usize) < 18 {
+            self.buf[self.len as usize] = d as u8;
+            self.len += 1;
+        }
+        if self.len == 0 {
+            self.set_text("0");
+        }
+    }
+
+    fn dot(&mut self) {
+        if self.error || self.evaluated {
+            self.reset();
+        }
+        if !self.typing {
+            self.set_text("0");
+            self.typing = true;
+        }
+        if !self.text().contains('.') && (self.len as usize) < 18 {
+            self.buf[self.len as usize] = b'.';
+            self.len += 1;
+        }
+    }
+
+    fn backspace(&mut self) {
+        if self.error || self.evaluated || !self.typing {
+            return;
+        }
+        self.len = self.len.saturating_sub(1);
+        if self.len == 0 || (self.len == 1 && self.buf[0] == b'-') {
+            self.set_text("0");
+            self.typing = false;
+        }
+    }
+
+    fn sign(&mut self) {
+        if self.error {
+            return;
+        }
+        let current = self.text();
+        if current == "0" {
+            return;
+        }
+        if current.starts_with('-') {
+            self.set_text(&current[1..]);
+        } else {
+            self.set_text(&format!("-{current}"));
+        }
+        self.typing = true;
+        self.evaluated = false;
+    }
+
+    fn percent(&mut self) {
+        if self.error {
+            return;
+        }
+        let v = self.current() / 100.0;
+        self.show(v);
+        self.typing = true;
+        self.evaluated = false;
+    }
+
+    fn apply(acc: f64, rhs: f64, op: u8) -> f64 {
+        match op {
+            1 => acc + rhs,
+            2 => acc - rhs,
+            3 => acc * rhs,
+            4 if rhs != 0.0 => acc / rhs,
+            4 => f64::NAN,
+            _ => rhs,
+        }
+    }
+
+    fn operator(&mut self, op: u8) {
+        if self.error {
+            self.reset();
+            return;
+        }
+        if self.op != 0 && self.typing {
+            self.acc = Self::apply(self.acc, self.current(), self.op);
+        } else if self.op == 0 {
+            self.acc = self.current();
+        }
+        self.op = op;
+        self.typing = false;
+        self.evaluated = false;
+        let acc = self.acc;
+        self.show(acc);
+    }
+
+    fn equals(&mut self) {
+        if self.error || self.op == 0 {
+            return;
+        }
+        let rhs = self.current();
+        let v = Self::apply(self.acc, rhs, self.op);
+        self.acc = v;
+        self.op = 0;
+        self.typing = false;
+        self.evaluated = true;
+        self.show(v);
+    }
+
+    /// One key of `CALCULATOR_KEYS`. A key outside the keypad does nothing.
+    pub fn press(&mut self, key: usize) {
+        match key {
+            0 => self.reset(),
+            1 => self.sign(),
+            2 => self.percent(),
+            3 => self.operator(4),
+            4 => self.digit('7'),
+            5 => self.digit('8'),
+            6 => self.digit('9'),
+            7 => self.operator(3),
+            8 => self.digit('4'),
+            9 => self.digit('5'),
+            10 => self.digit('6'),
+            11 => self.operator(2),
+            12 => self.digit('1'),
+            13 => self.digit('2'),
+            14 => self.digit('3'),
+            15 => self.operator(1),
+            16 => self.digit('0'),
+            17 => self.dot(),
+            18 => self.backspace(),
+            19 => self.equals(),
+            _ => {}
+        }
+    }
+}
+
+impl WidgetFrame {
+    /// The display and keypad's places inside a frame's body, as the editor draws them.
+    pub fn calculator_display(&self, body: Rect) -> Rect {
+        Rect { x: body.x, y: body.y, w: body.w, h: ui_px(78.0).min(body.h / 4) }
+    }
+
+    pub fn calculator_key(&self, body: Rect, key: usize) -> Rect {
+        let display = self.calculator_display(body);
+        let gap = ui_px(4.0);
+        let top = display.y + display.h + ui_px(10.0);
+        // Keep the bottom-right resize grip off the last key.
+        let grid_h = (body.y + body.h - ui_px(54.0) - top).max(0);
+        let kw = (body.w - gap * (CALCULATOR_COLS - 1)).max(0) / CALCULATOR_COLS;
+        let kh = (grid_h - gap * (CALCULATOR_ROWS - 1)).max(0) / CALCULATOR_ROWS;
+        if kw <= 0 || kh <= 0 {
+            return RECT_EMPTY;
+        }
+        let col = key as i32 % CALCULATOR_COLS;
+        let row = key as i32 / CALCULATOR_COLS;
+        Rect { x: body.x + col * (kw + gap), y: top + row * (kh + gap), w: kw, h: kh }
+    }
+
+    /// Which calculator key is under a point in the frame's body.
+    pub fn calculator_key_at(&self, body: Rect, x: i32, y: i32) -> Option<usize> {
+        (0..CALCULATOR_KEYS.len()).find(|&k| rect_contains(self.calculator_key(body, k), x, y))
+    }
+}
+
+/// The installed packages in name order. The package entries are cached by widgetpkg.rs and
+/// refreshed after an install, update or remove.
+pub fn widget_catalog() -> Vec<&'static WidgetDef> {
+    let mut v: Vec<&'static WidgetDef> = WIDGET_CATALOG.iter().collect();
+    v.extend(crate::widgetpkg::widget_package_defs());
+    v
 }
 
 pub fn widget_def(id: &str) -> Option<&'static WidgetDef> {
-    WIDGET_CATALOG.iter().find(|d| d.id == id)
+    WIDGET_CATALOG.iter().find(|d| d.id == id).or_else(|| crate::widgetpkg::widget_package_defs().into_iter().find(|d| d.id == id))
 }
 
 /// A widget window's place on the canvas. x, y, w and h are in screen pixels; w and h are the
@@ -105,6 +338,8 @@ pub struct WidgetLayout {
 pub struct WidgetFrame {
     pub def: &'static WidgetDef,
     pub layout: WidgetLayout,
+    /// a native calculator package's state (unused by other widgets)
+    pub calc: Calculator,
 }
 
 /// Where a contact came down in a frame. The editor routes input by these.
@@ -143,6 +378,7 @@ impl WidgetFrame {
                 minimized: false,
                 z: 0,
             },
+            calc: Calculator::default(),
         }
     }
 
@@ -301,7 +537,7 @@ impl WidgetHost {
         if self.is_open(def.id) || self.frames.len() >= WIDGETS_MAX {
             return;
         }
-        let mut f = WidgetFrame { def, layout };
+        let mut f = WidgetFrame { def, layout, calc: Calculator::default() };
         f.clamp(area);
         self.next_z = self.next_z.max(f.layout.z + 1);
         self.frames.push(f);
@@ -471,11 +707,28 @@ mod tests {
         Rect { x: 1700, y: 220, w: 128, h: 1700 }
     }
 
+    static TEST_WIDGET: WidgetDef = WidgetDef {
+        id: "test.widget",
+        name: "Test",
+        icon: IconKind::Grid,
+        kind: WidgetKind::Calculator,
+        default_w: 300.0,
+        default_h: 420.0,
+        min_w: 240.0,
+        min_h: 360.0,
+        max_w: 460.0,
+        max_h: 620.0,
+        resizable: true,
+        version: "",
+        author: "",
+        description: "",
+    };
+
     #[test]
     fn spawn_stays_on_the_canvas_and_to_the_left_of_the_panel() {
         ui_init(300.0);
         let mut h = WidgetHost::new();
-        let notes = widget_def("demo.sticky-notes").unwrap();
+        let notes = &TEST_WIDGET;
         assert!(h.spawn(notes, area(), panel()));
         let r = h.frames[0].rect();
         assert!(r.x >= 0 && r.y >= 0 && r.x + r.w <= area().w && r.y + r.h <= area().h);
@@ -490,7 +743,7 @@ mod tests {
     #[test]
     fn clamp_and_resize_keep_the_floor_and_the_share() {
         ui_init(300.0);
-        let mut f = WidgetFrame::new(widget_def("demo.calculator").unwrap());
+        let mut f = WidgetFrame::new(&TEST_WIDGET);
         f.resize_to(1, 1, area());
         let (min_w, min_h, _, _) = f.limits(area());
         assert_eq!((f.layout.w, f.layout.h), (min_w, min_h));
@@ -504,7 +757,7 @@ mod tests {
     #[test]
     fn minimized_rect_is_a_square_and_restore_keeps_the_size() {
         ui_init(300.0);
-        let mut f = WidgetFrame::new(widget_def("demo.sticky-notes").unwrap());
+        let mut f = WidgetFrame::new(&TEST_WIDGET);
         let (w, h) = (f.layout.w, f.layout.h);
         f.layout.minimized = true;
         let r = f.rect();
@@ -521,26 +774,43 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         assert_eq!(store_init(root.to_str().unwrap()), 0);
         let entries = vec![WidgetEntry {
-            id: "demo.sticky-notes".to_string(),
+            id: "test.widget".to_string(),
             layout: WidgetLayout { x: 10, y: 20, w: 260, h: 220, minimized: true, z: 3 },
         }];
         assert_eq!(widgets_save(&entries), 0);
         assert_eq!(widgets_load(), entries);
-        let mut host = WidgetHost::new();
-        host.load(area());
-        assert_eq!(host.frames.len(), 1);
-        assert_eq!(host.frames[0].def.id, "demo.sticky-notes");
-        assert!(host.frames[0].layout.minimized);
         // A bad line is skipped, not a reason to lose the good ones.
         std::fs::write(
             root.join("widgets.ini"),
-            "# c\ndemo.sticky-notes=1,2,3,4,0,5,0\nbad=1,2\nother=1,2,3,4,0,6,0\n",
+            "# c\ntest.widget=1,2,3,4,0,5,0\nbad=1,2\nother=1,2,3,4,0,6,0\n",
         )
         .unwrap();
         let got = widgets_load();
         assert_eq!(got.len(), 2);
-        assert_eq!(got[0].id, "demo.sticky-notes");
+        assert_eq!(got[0].id, "test.widget");
         assert_eq!(got[1].layout.z, 6);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_calculator_adds_multiplies_and_recovers_from_divide_by_zero() {
+        let mut c = Calculator::default();
+        assert_eq!(c.display(), "0");
+        for k in [12, 15, 13, 19] {
+            c.press(k);
+        }
+        assert_eq!(c.display(), "3");
+        c.press(7);
+        c.press(12);
+        c.press(13);
+        c.press(19);
+        assert_eq!(c.display(), "36");
+        c.press(0);
+        for k in [12, 3, 16, 19] {
+            c.press(k);
+        }
+        assert_eq!(c.display(), "Error");
+        c.press(12);
+        assert_eq!(c.display(), "1");
     }
 }

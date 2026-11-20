@@ -42,6 +42,9 @@ root/graph-index.ini                    every notebook's pages, names and links,
 root/graph-all.ini                      the Graph of all notebooks' layout (2.0.0-beta.2; a cache: Library index)
 root/graph-omit.ini                     folders left out of the Graph of all notebooks (2.0.0-beta.2; Library index)
 root/widgets.ini                        the open widget windows' places and sizes (2.2, issue #200; Widgets)
+root/packages/index.json                the installed widget packages (2.2, issue #200; Widget packages)
+root/packages/widgets/<id>/package.yaml a widget package's manifest and files (2.2, issue #200; Widget packages)
+root/packages/widgets/<id>.previous/    the version an update replaced, for a rollback (2.2, issue #200; Widget packages)
 root/clipboard.qpg                      the lasso's clipboard: what Copy or Cut took (2.0.0-beta.2; The clipboard)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
@@ -1574,18 +1577,92 @@ critical on purpose.
 
 ## `widgets.ini` (2.2, issue #200)
 
-The editor's open widgets, one line each. Phase 1 has built-in demo widgets only; the format is
-meant to hold the package manager's widgets later. A line is the widget's id, an `=`, and seven
-comma-separated numbers: x, y, width, height, minimized (0 or 1), z-order, and a reserved flag
-(written as 0). Coordinates are screen pixels, as the panel's are. A closed widget has no line.
-Unknown ids and malformed lines are skipped. The file is at most 64 KiB, written atomically.
+The editor's open widgets, one line each: an installed package's id (`com.example.timer`). A line
+is the widget's id, an `=`, and seven comma-separated numbers: x, y, width, height, minimized (0
+or 1), z-order, and a reserved flag (written as 0). Coordinates are screen pixels, as the panel's
+are. A closed widget has no line. Unknown ids and malformed lines are skipped. The file is at most
+64 KiB, written atomically.
 
 ```
 # Grimoire widget layout. One line per open widget:
 # id=x,y,w,h,minimized,z
-demo.sticky-notes=1416,28,260,220,0,0,0
-demo.calculator=1416,270,300,380,0,1,0
+com.example.timer=1416,28,220,160,0,0,0
+com.grimoire.calculator=1416,270,300,420,0,1,0
 ```
+
+## Widget packages (2.2, issue #200)
+
+Settings → Packages → Widgets installs a widget from a GitHub repository (`user/repo`) or an
+HTTPS `.yaml` address; the Widgets popup's **Manage widgets...** row opens the same page. The
+manifest is `package.yaml`; unknown keys are ignored. An install is refused before anything is
+written if the manifest is invalid, the platform does not match, or the artifact does not match its
+size and SHA-256.
+
+```yaml
+name: Timer
+id: com.example.timer          # lowercase letters, digits, dots and hyphens
+version: 1.0.0                 # semantic version (a -prerelease suffix is allowed)
+type: widget
+author: Jane Doe
+description: A small timer widget.
+license: MIT                   # optional; the install page shows it before installing
+license_url: https://example.org/timer/LICENSE
+min_grimoire_version: 2.1.0    # optional
+platforms: [all]               # or kindle-scribe-2022, kindle-scribe-2024
+repository: https://example.org/timer
+capabilities: [editor:overlay, storage:widget-local]
+artifact:
+  path: timer.bin
+  sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+  size: 4
+releases:                      # optional per-version artifacts
+  - version: 1.0.0
+    url: https://example.org/timer/1.0.0/timer.bin
+    sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+spec:
+  runtime: wasm                # or native
+  entry: _start                # native: calculator
+  minimizable: true
+  size:
+    mode: fixed                # or resizable
+    default: [220, 160]
+    min: [160, 120]            # resizable only
+    max: [600, 600]            # resizable only
+```
+
+An omitted `platforms` means every supported device; an explicit empty list is refused. A device's
+platform is `GRIMOIRE_WIDGET_PLATFORM` when set, otherwise the Kindle model in
+`/proc/device-tree/model`. The known values are `all`, `kindle-scribe-2022` and
+`kindle-scribe-2024`. The artifact is at most 32 MiB; at most 64 packages are installed. A manifest
+is at most 256 KiB.
+
+`packages/index.json` lists what is installed, and is written atomically after the package's files
+are complete:
+
+```json
+{
+  "version": 1,
+  "packages": [
+    {"id":"com.example.timer","name":"Timer","version":"1.0.0","author":"Jane Doe",
+     "description":"A small timer widget.","path":"packages/widgets/com.example.timer/timer.bin",
+     "sha":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+     "installed_at":1,"source_url":"https://example.org/timer.yaml"}
+  ]
+}
+```
+
+An update keeps the old directory as `<id>.previous` until the new one is in place, so a failed
+write can be rolled back. Removing a package closes its widget, deletes its files and its
+`widgets.ini` line. A package's own state is kept under `packages/widgets/<id>/state/` when the
+package is replaced or removed (Remove keeps that folder; nothing else of the package stays).
+
+`spec.runtime: native` names a widget implementation Grimoire carries itself. The only native
+entry is `calculator`: a working four-function calculator with percent, sign, backspace and clear,
+whose state belongs to its frame. Its artifact is still size- and SHA-256-checked at install. A
+native entry other than `calculator` is refused; a package cannot ask the host for arbitrary code.
+
+Until a WASM runtime is added, a `spec.runtime: wasm` package's frame shows its name, version,
+author and description; the artifact is stored but not run.
 
 ## `settings.ini`
 

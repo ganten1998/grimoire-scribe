@@ -116,6 +116,7 @@ pub enum SettingId {
     Updates,
     AboutDevice,
     DarkerLines,
+    WidgetPackages,
 }
 
 /// The state a check row shows, or None for a row drawn as text.
@@ -228,8 +229,8 @@ pub const DISPLAY_NO_LIGHT: &str = n_("Display");
 // (language, updates, Wi-Fi), Display's (front light, theme, dark mode, font, rotation, zoom), Sleep &
 // Clock's (sleep screen, timer, clock), the Pen's (tool settings, its button, the eraser, calibration),
 // Controls'
-// (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring, about the device, darker lines in
-// imported PDFs).
+// (shortcuts, pairing, gestures), System's (KOReader, USB PDF mirroring, about the device, darker lines in
+// imported PDFs), and Packages' (Widgets).
 pub static CATEGORIES: &[Category] = &[
     Category::new(n_("General"), IconKind::Gear, &[
         Item::value(IconKind::Language, Label::Language, SettingId::Language),
@@ -276,6 +277,10 @@ pub static CATEGORIES: &[Category] = &[
         // storage used.
         Item::open(IconKind::Castle, n_("About: device and storage"), SettingId::AboutDevice),
         Item::value(IconKind::Pdf, Label::DarkerLines, SettingId::DarkerLines),
+    ]),
+    Category::new(n_("Packages"), IconKind::Grid, &[
+        // TRANSLATORS: Settings' Packages category row: the widget package manager.
+        Item::open(IconKind::Download, n_("Widgets"), SettingId::WidgetPackages),
     ]),
 ];
 
@@ -324,10 +329,10 @@ mod tests {
 
     #[test]
     fn the_schema_keeps_the_settings_page_as_it_is() {
-        assert_eq!(CATEGORIES.len(), 6);
+        assert_eq!(CATEGORIES.len(), 7);
         assert_eq!(
             CATEGORIES.iter().map(|c| c.title).collect::<Vec<_>>(),
-            vec!["General", "Display", "Sleep & Clock", "Pen", "Controls", "System"]
+            vec!["General", "Display", "Sleep & Clock", "Pen", "Controls", "System", "Packages"]
         );
         assert_eq!(ids(0), vec![SettingId::Language, SettingId::Updates, SettingId::Wifi]);
         assert_eq!(ids(1), vec![SettingId::Display, SettingId::Theme, SettingId::DarkMode, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
@@ -335,7 +340,8 @@ mod tests {
         assert_eq!(ids(3), vec![SettingId::PenFeel, SettingId::SideButton, SettingId::EraserMode, SettingId::Calibration]);
         assert_eq!(ids(4), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
         assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror, SettingId::AboutDevice, SettingId::DarkerLines]);
-        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 22);
+        assert_eq!(ids(6), vec![SettingId::WidgetPackages]);
+        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 23);
 
         assert_eq!(text(2, 0), "Sleep settings");
         assert_eq!(text(2, 1), "Clock settings");

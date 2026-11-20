@@ -1,0 +1,24 @@
+name: Calculator
+id: com.grimoire.calculator
+type: widget
+version: 1.0.0
+author: Grimoire
+description: A working four-function calculator with percent, sign and backspace.
+license: MIT
+repository: https://github.com/nebuff/gri-calc
+min_grimoire_version: 2.1.0
+platforms: [all]
+artifact:
+  path: calculator.bin
+  sha256: bc71d7ea6e2b8c021da910845ca332b56cd4aed503f0f20c90b9ce586cabfbfc
+  size: 27
+capabilities: []
+spec:
+  runtime: native
+  entry: calculator
+  minimizable: true
+  size:
+    mode: resizable
+    default: [300, 420]
+    min: [240, 360]
+    max: [460, 620]
