@@ -2,8 +2,8 @@
 // and 4, tests 7 and 8): folded in batches of any size, the preview's answer equals the lift's
 // (lasso_enclosed, lasso_select) for random lassos (loops, figure 8s, back-tracking, points off the page,
 // a lasso past LASSO_MAX that drops every other point) on pages with erased ink, floors and beta.5 ink
-// links; what shows of each stroke it judged (its halo's runs) is what the selection finds on its own; a
-// stroke exactly half inside is decided the same both ways; and the preview's cost on a dense
+// links; judging erased ink by the index of erase strokes gives the rule's own answers, at a bounded cost per
+// batch (issue #187); a stroke exactly half inside is decided the same both ways; and the preview's cost on a dense
 // page (printed: cargo test --release --test test_lasso_live -- --nocapture; the owner's 1,090-stroke page
 // with GRIMOIRE_DENSE_PAGE=/path/to/a/copy/p72.qpg, never the original).
 #![allow(clippy::needless_range_loop)]
@@ -210,44 +210,6 @@ fn preview_equals_lift() {
         }
     }
     check!(bad == 0);
-}
-
-/// What shows of each stroke the preview has judged (its halo's runs, issue #187) is what the selection would
-/// find on its own (lasso.rs stroke_visible_runs), on pages with erased ink and a scoped floor; strokes erased
-/// wholly show nothing (no halo, and no refresh when they flip).
-fn visible_runs_are_the_selections() {
-    let (mut partly, mut wholly, mut bad, mut tracked) = (0, 0, 0, 0);
-    for round in 0..20 {
-        SEED.store(0x7151 + round, Ordering::Relaxed);
-        let (w, h) = (900, 1100);
-        let (p, links) = fixture(w, h, 220);
-        // a lasso round the whole page: every stroke is reached
-        let path: Vec<(f32, f32)> = [(-20.0, -20.0), (w as f32 + 20.0, -20.0), (w as f32 + 20.0, h as f32 + 20.0), (-20.0, h as f32 + 20.0), (-20.0, -10.0)].to_vec();
-        let mut live = LassoLive::new(&p, &links, DPI, path[0]);
-        live.extend(&p, &path, 1);
-        let floors = page_floors(&p);
-        let er = page_erasers(&p);
-        for i in 0..p.strokes.len() {
-            let Some(got) = live.visible_runs(i) else { continue };
-            tracked += 1;
-            let want = stroke_visible_runs(&p, floors.as_deref(), &p.strokes[i], i, DPI, &er);
-            bad += (got != want.as_ref()) as u32;
-            bad += (live.invisible(i) != want.as_ref().is_some_and(|r| r.is_empty())) as u32;
-            match want {
-                Some(r) if r.is_empty() => wholly += 1,
-                Some(_) => partly += 1,
-                None => {}
-            }
-        }
-        // what was taken is gone from the preview (the lift hands it to the selection)
-        if let Some(i) = (0..p.strokes.len()).find(|&i| live.visible_runs(i).is_some()) {
-            check!(live.take_visible(i).is_some());
-            check!(live.visible_runs(i) == Some(None));
-        }
-    }
-    check!(bad == 0);
-    check!(tracked > 1000 && partly > 20 && wholly > 0);
-    eprintln!("  visible runs: {tracked} strokes judged, {partly} partly erased, {wholly} wholly");
 }
 
 /// A page of handwriting-like words (about 1,160 ink strokes), its middle rows erased wholly by zigzag passes
@@ -689,7 +651,6 @@ fn dense_page_preview_cost() {
 #[test]
 fn test_lasso_live() {
     run!(preview_equals_lift);
-    run!(visible_runs_are_the_selections);
     run!(judging_erased_ink_is_indexed);
     run!(removed_edge_subtracts_exactly);
     run!(shown_follows_links_and_flips);

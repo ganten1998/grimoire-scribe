@@ -167,8 +167,9 @@ tap panel select.done
 wait 300
 expect display.dark.420.900.440.100 is 0
 expect editor.live_matches_render is 1
-# the erased word alone selected and moved: what shows of it (nothing) is found once at its new place and kept,
-# not found again at every redraw while the selection lasts (a page of such ink took tens of ms a redraw)
+# the erased word alone selected and moved: what shows of it (nothing) is found once at each place and kept,
+# not found again at every redraw while the selection lasts (a page of such ink took tens of ms a redraw); the
+# preview found it as the lasso took it in, and the lift handed that over
 tap panel tool-picker
 wait 100
 tap panel picker.select
@@ -184,7 +185,7 @@ wait 300
 expect editor.select is selected
 expect editor.selected is 1
 expect editor.preview_reused is 1
-expect editor.halo_found is 0
+expect editor.halo_found is 1
 expect editor.sel_box is 360 895 536 111
 pen down 640 950
 pen move 640 990
@@ -197,14 +198,55 @@ expect editor.select is selected
 expect editor.undo_kind is lasso
 expect editor.sel_box is 360 975 536 111
 expect editor.halo is 0
-expect editor.halo_found is 1
+expect editor.halo_found is 2
 # (the tool picker over it, and gone: the selection drawn again)
 tap panel tool-picker
 wait 300
 tap panel tool-picker
 wait 300
 expect editor.select is selected
-expect editor.halo_found is 1
+expect editor.halo_found is 2
 expect display.dark.420.990.440.80 is 0
 expect editor.live_matches_render is 1
+tap panel select.done
+wait 300
+pentap panel undo
+wait 400
+expect editor.strokes is 7
+expect display.dark.420.900.440.100 is 0
+# the page lassoed whole and made larger by its corner (a resize moves the erase strokes apart, their widths
+# stay): the erased word still shows nothing on the page, and its halo goes as the page shows it
+tap panel tool-picker
+wait 100
+tap panel picker.select
+wait 100
+pen down 100 550
+pen move 1600 550
+pen move 1600 1750
+pen move 100 1750
+pen up 100 570
+wait 300
+expect editor.selected is 4
+expect editor.halo is 3
+expect editor.sel_box is 135 585 1281 1081
+pen down 1416 1666
+pen move 1450 1690
+wait 150
+pen move 1480 1720
+wait 150
+pen up 1480 1720
+wait 600
+expect editor.sel_box is 135 585 1345 1135
+expect editor.select is selected
+expect editor.undo_kind is lasso
+expect editor.live_matches_render is 1
+expect editor.halo is 3
+expect display.dark.460.940.460.90 is 0
+expect display.dark.887.1190.25.35 is 0
+tap panel select.done
+wait 300
+expect display.dark.460.940.460.90 is 0
+pentap panel undo
+wait 400
+expect editor.strokes is 7
 quit
