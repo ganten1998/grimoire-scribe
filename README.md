@@ -131,3 +131,5 @@ updater follows those feeds.
 
 Contributions are welcome: see the [Contributing](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing)
 page, and open an issue first for a larger change so we can agree on its shape.
+
+If you want to know about who has been maintaining and ensuring that Grimoire runs at the fullest, Please see [Authors](https://github.com/ganten1998/grimoire-scribe/blob/main/AUTHORS.md) for complete credits
