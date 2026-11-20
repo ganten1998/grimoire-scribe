@@ -283,7 +283,13 @@ fn the_docs_follow_the_own_folders_move_aside() {
     let run = "let arg = if with(|st| !std::mem::replace(&mut st.afresh_given, true)) { format!(\"{USERFONTS_AFRESH}{arg}\") } else { arg.to_string() };";
     let made = "let base = match own_dir_at(&parent, name, afresh) {";
     let line = "it is moved aside as it was, and the folder is made afresh; every font is checked once more";
-    told_on(&mut fails, DESIGN, "Grimoire never relies on the parent (`/var/local` on the Kindle): when the entry at the own folder's name is not Grimoire's own, the first check of a run moves it aside within the parent", USERFONTS, at_base);
+    // the parent holds the name and nothing more: it is opened by its path and held to nothing, and what it holds at
+    // the name is tested at every open (the words that said Grimoire never relies on it said more than that)
+    let relies = "Grimoire relies on the parent (`/var/local` on the Kindle) only to hold the own folder's name: it tests the folder it opens at every open, and never trusts the parent's owner or mode.";
+    told_on(&mut fails, DESIGN, relies, USERFONTS, "let parent = open_dir(if parent.is_empty() { \"/\" } else { parent }, false).ok_or(NOT_THERE)?;");
+    told_on(&mut fails, DESIGN, relies, USERFONTS, "if own_dir(&fd) {");
+    gone(&mut fails, DESIGN, "Grimoire never relies on the parent");
+    told_on(&mut fails, DESIGN, "When the entry at the own folder's name is not Grimoire's own, the first check of a run moves it aside within the parent", USERFONTS, at_base);
     told_on(&mut fails, TESTING, "Grimoire never relies on /var/local itself: it tests its own folder at every open and moves aside an entry at its name that is not its own", USERFONTS, at_base);
     told_on(&mut fails, KINDLE, "When the entry at `/var/local/grimoire` is not Grimoire's own (a link, a file, or a folder of another user or that others can write), the first check after Grimoire starts moves it aside as it is, never opened", USERFONTS, at_base);
     told_on(&mut fails, DESIGN, "The folders below the own folder are its own, which no one else can write, and are never moved.", USERFONTS, below);
@@ -304,10 +310,18 @@ fn the_docs_follow_the_own_folders_move_aside() {
     told_on(&mut fails, TESTING, "under a /var/local with the setgid bit, as in step 1, the folders show `drwx--S---` and its group, which they take from it and which has no rights in them", USERFONTS, own);
     told_on(&mut fails, DESIGN, "by a rename that never replaces an entry", USERFONTS, "rename_noreplace(parent.as_raw_fd(), &c, parent.as_raw_fd(), &to)");
     told_on(&mut fails, DESIGN, "and is never followed, opened, read, listed or deleted", USERFONTS, "libc::fstatat(parent.as_raw_fd(), c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW)");
-    told_on_code(&mut fails, DESIGN, "The entry is renamed by descriptor as it stands, by a rename that never replaces an entry, and is never followed, opened, read, listed or deleted; its kind, owner and mode are logged.", USERFONTS, "fn base_afresh(", BASE_AFRESH);
-    // the log line the device check and the log's list quote is the one the code writes
+    // (renamed by its name from the parent's descriptor: what was looked at is what the log describes, and an entry
+    // swapped in at that moment is the one moved; the entry is never held by a descriptor of its own)
+    told_on_code(&mut fails, DESIGN, "The entry is renamed by its name, from the parent's descriptor, as it stands, by a rename that never replaces an entry, and is never followed, opened, read, listed or deleted; its kind, owner and mode, as looked at just before the rename, are logged (an entry another writer of the parent puts at the name in between is the one moved, and is left as it is too).", USERFONTS, "fn base_afresh(", BASE_AFRESH);
+    gone(&mut fails, DESIGN, "The entry is renamed by descriptor as it stands");
+    told_on_code(&mut fails, KINDLE, "An entry moved aside is left too: Grimoire never opens or removes it.", USERFONTS, "fn base_afresh(", BASE_AFRESH);
+    // the log line the device check and the log's list quote is the one the code writes, and so are the two lines of
+    // a move that cannot be made or a fresh folder that is not Grimoire's own either
     told_on(&mut fails, TESTING, line, USERFONTS, line);
     told_on(&mut fails, KINDLE, line, USERFONTS, line);
+    told_on(&mut fails, KINDLE, "When the move cannot be made, `... is not its own (...) and cannot be moved aside (<why>)`", USERFONTS, "fonts: the entry at the name of Grimoire's own folder is not its own (%s, owner %u, mode %04o) and cannot be moved aside (%s)");
+    let either = "fonts: the folder made afresh is not Grimoire's own either";
+    told_on(&mut fails, KINDLE, &format!("`{either} (<why>); nothing more is moved aside`"), USERFONTS, &format!("{either} (%s); nothing more is moved aside"));
     // the floors: set from step 1's answers, no longer placeholders
     told_on(&mut fails, TESTING, "The floors stand on these numbers: `STATE_FREE_FLOOR`, 4 MB, and `STATE_FILES_FLOOR`, 512 files", USERFONTS, "const STATE_FREE_FLOOR: u64 = 4 << 20;");
     told_on(&mut fails, TESTING, "The floors stand on these numbers: `STATE_FREE_FLOOR`, 4 MB, and `STATE_FILES_FLOOR`, 512 files", USERFONTS, "const STATE_FILES_FLOOR: u64 = 512;");

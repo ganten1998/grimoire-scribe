@@ -388,8 +388,10 @@ pub fn userfonts_aside_reset() {
 /// The entry at `name` in `parent`, the name of Grimoire's own folder, did not pass `own_dir_at`. When it is not a
 /// folder of this user's that no one else may write (a link, a file, a pipe, a folder of another user or one others
 /// may write), the job moves it aside within the parent (`aside_name`) and makes the folder afresh: only the first
-/// check of a run gets here (USERFONTS_AFRESH), and a process tries at most once. The entry is renamed by descriptor as it stands: never followed, opened, read, listed or deleted; the
-/// rename never replaces an entry. Its kind, owner and mode are logged, never its name or what is in it. The fresh
+/// check of a run gets here (USERFONTS_AFRESH), and a process tries at most once. The entry is renamed by its name,
+/// from the parent's descriptor, as it stands: never followed, opened, read, listed or deleted; the rename never
+/// replaces an entry. Its kind, owner and mode, as looked at just before the rename, are logged (an entry another
+/// writer of the parent puts at the name in between is the one moved), never its name or what is in it. The fresh
 /// folder is made, opened and held to `own_dir` as every folder of Grimoire's own is, and holds no verdict: every
 /// font is checked once more. When the move fails, or the fresh folder is not Grimoire's own either (another entry
 /// came to the name meanwhile), nothing is kept, as for any folder that is not Grimoire's own, and the log says why.
