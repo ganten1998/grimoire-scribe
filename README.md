@@ -78,31 +78,6 @@ no scriptlets, KOReader can open Grimoire instead (see the table).
 Firmware 5.20.1 is the newest as of October 2026. Check that your jailbreak survives it before
 updating; most people keep OTA updates blocked.
 
-## Documentation
-
-The full manual lives in the wiki, in **English**, **日本語** and **Polski**:
-
-- [English wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home)
-- [日本語の wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-ja)
-- [Polska wiki](https://github.com/ganten1998/grimoire-scribe/wiki/Home-pl)
-
-| Page | What it covers |
-|---|---|
-| [Install](https://github.com/ganten1998/grimoire-scribe/wiki/Install) | Requirements, the release zip, KPM, updating and uninstalling |
-| [Using Grimoire](https://github.com/ganten1998/grimoire-scribe/wiki/Using-Grimoire) | The Library, paper, pens, the toolbar, the Index, links, Live view, Wi-Fi, sleep and the passcode |
-| [Fonts and Language](https://github.com/ganten1998/grimoire-scribe/wiki/Fonts-and-Language) | English, Spanish, Japanese and Polish, the Classic fonts, and your own fonts |
-| [Importing](https://github.com/ganten1998/grimoire-scribe/wiki/Importing) | Templates, pictures, PDFs and pages you already have |
-| [Getting Pages Off the Kindle](https://github.com/ganten1998/grimoire-scribe/wiki/Exporting) | Wi-Fi Share, Effects, USB PDFs and SSH |
-| [KOReader](https://github.com/ganten1998/grimoire-scribe/wiki/KOReader) | Opening Grimoire from KOReader, annotating books, and the optional plugin |
-| [Shortcuts](https://github.com/ganten1998/grimoire-scribe/wiki/Shortcuts) | Keyboards and controllers, and `shortcuts.ini` |
-| [Troubleshooting](https://github.com/ganten1998/grimoire-scribe/wiki/Troubleshooting) | Known issues, common fixes, and moving between versions |
-| [Privacy](https://github.com/ganten1998/grimoire-scribe/wiki/Privacy) | What stays on the Kindle, and what Share exposes |
-| [Contributing](https://github.com/ganten1998/grimoire-scribe/wiki/Contributing) | Bugs, feature requests, pull requests, LLM use and the wiki |
-| [Building from Source](https://github.com/ganten1998/grimoire-scribe/wiki/Building-from-Source) | Toolchains, make targets and tests |
-| [Translating](https://github.com/ganten1998/grimoire-scribe/wiki/Translating) | Improving the Spanish, Japanese and Polish translations, and adding a language |
-
-The wiki's source pages live in [`wiki/`](wiki).
-
 ## License and credits
 
 Grimoire is free software: GPL-3.0-or-later (see `LICENSE`), the same license as
