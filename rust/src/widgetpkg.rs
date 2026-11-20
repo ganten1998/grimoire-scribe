@@ -721,6 +721,8 @@ pub struct WidgetInstall {
     pub version: String,
     pub author: String,
     pub description: String,
+    /// the manifest's spec.icon: a name in widgets::widget_icon, empty for a package without one
+    pub icon: String,
     pub path: String,
     pub sha: String,
     pub installed_at: i64,
@@ -778,6 +780,8 @@ pub fn widget_package_index_save(items: &[WidgetInstall]) -> i32 {
         json_escape(&it.author, &mut s);
         s.push_str(",\"description\":");
         json_escape(&it.description, &mut s);
+        s.push_str(",\"icon\":");
+        json_escape(&it.icon, &mut s);
         s.push_str(",\"path\":");
         json_escape(&it.path, &mut s);
         s.push_str(",\"sha\":");
@@ -834,6 +838,7 @@ pub fn widget_package_index_load() -> Vec<WidgetInstall> {
             version: json_get_str(&data, &toks[..n as usize], it, "version"),
             author: json_get_str(&data, &toks[..n as usize], it, "author"),
             description: json_get_str(&data, &toks[..n as usize], it, "description"),
+            icon: json_get_str(&data, &toks[..n as usize], it, "icon"),
             path: json_get_str(&data, &toks[..n as usize], it, "path"),
             sha: json_get_str(&data, &toks[..n as usize], it, "sha"),
             installed_at: {
@@ -849,6 +854,12 @@ pub fn widget_package_index_load() -> Vec<WidgetInstall> {
 
 pub fn widget_package_installed(id: &str) -> Option<WidgetInstall> {
     widget_package_index_load().into_iter().find(|p| p.id == id)
+}
+
+/// An installed package's manifest, re-read from its folder (its author and license are not all in
+/// the index, and an install from before those fields were kept has only in the manifest).
+pub fn widget_package_installed_manifest(id: &str) -> Option<WidgetPackage> {
+    parse_installed(&widget_package_installed(id)?)
 }
 
 fn parse_installed(p: &WidgetInstall) -> Option<WidgetPackage> {
@@ -933,6 +944,7 @@ pub fn widget_package_install(manifest: &str, artifact: &[u8], source_url: &str,
         version: p.version.clone(),
         author: p.author.clone(),
         description: p.description.clone(),
+        icon: p.spec.icon.trim().to_string(),
         path: format!("{}/{}/{}", WIDGET_PKG_DIR, p.id, p.artifact.path),
         sha: got,
         installed_at: now_secs(),
@@ -1243,10 +1255,16 @@ fn package_def(p: &WidgetPackage) -> &'static WidgetDef {
     } else {
         WidgetKind::Package
     };
+    // A package without an icon gets its kind's (the calculator's, or the generic widget grid).
+    let icon = if p.spec.icon.trim().is_empty() {
+        if kind == WidgetKind::Calculator { IconKind::Calculator } else { IconKind::Grid }
+    } else {
+        crate::widgets::widget_icon(&p.spec.icon)
+    };
     let def = WidgetDef {
         id: leak(p.id.clone()),
         name: leak(p.name.clone()),
-        icon: IconKind::Grid,
+        icon,
         kind,
         default_w: size.default.0 as f32,
         default_h: size.default.1 as f32,
@@ -1308,6 +1326,45 @@ pub fn widget_manifest_url(input: &str) -> Result<(String, bool), String> {
         return Err("That GitHub name has a character it cannot have.".into());
     }
     Ok((format!("https://raw.githubusercontent.com/{user}/{repo}/main/package.yaml"), true))
+}
+
+/// A GitHub repository's `user/repo`, from a repository address, a `user/repo` shorthand or a raw
+/// file URL, or None for anything else (another host, a local path).
+pub fn widget_github_repo(source: &str) -> Option<String> {
+    fn name_ok(s: &str) -> bool {
+        !s.is_empty()
+            && s.len() <= 100
+            && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+            && s != "."
+            && s != ".."
+    }
+    let s = source.trim();
+    let rest = if let Some(r) = s
+        .strip_prefix("https://github.com/")
+        .or_else(|| s.strip_prefix("http://github.com/"))
+        .or_else(|| s.strip_prefix("https://raw.githubusercontent.com/"))
+        .or_else(|| s.strip_prefix("http://raw.githubusercontent.com/"))
+    {
+        r
+    } else if s.contains("://") || s.starts_with('/') {
+        return None;
+    } else {
+        s
+    };
+    let parts: Vec<&str> = rest.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let repo = parts[1].strip_suffix(".git").unwrap_or(parts[1]);
+    if !name_ok(parts[0]) || !name_ok(repo) {
+        return None;
+    }
+    Some(format!("{}/{}", parts[0], repo))
+}
+
+/// The repository's GitHub page, for its QR code: only a GitHub repository has one.
+pub fn widget_github_repo_url(source: &str) -> Option<String> {
+    widget_github_repo(source).map(|r| format!("https://github.com/{r}"))
 }
 
 /// The GitHub repository API URL for a shorthand input, or None for a custom URL.
@@ -1433,6 +1490,25 @@ spec:
     }
 
     #[test]
+    fn only_github_addresses_name_a_repository() {
+        for (source, want) in [
+            ("jane/widgets", Some("jane/widgets")),
+            ("https://github.com/jane/widgets", Some("jane/widgets")),
+            ("https://github.com/jane/widgets.git", Some("jane/widgets")),
+            ("https://github.com/jane/widgets/tree/main", Some("jane/widgets")),
+            ("https://raw.githubusercontent.com/jane/widgets/main/package.yaml", Some("jane/widgets")),
+            ("https://example.org/widgets", None),
+            ("https://example.org/w.yaml", None),
+            ("/home/me/widgets", None),
+            ("jane", None),
+        ] {
+            assert_eq!(widget_github_repo(source).as_deref(), want, "{source}");
+        }
+        assert_eq!(widget_github_repo_url("jane/widgets").as_deref(), Some("https://github.com/jane/widgets"));
+        assert!(widget_github_repo_url("https://example.org/widgets").is_none());
+    }
+
+    #[test]
     fn a_package_installs_replaces_and_removes() {
         ui_init(300.0);
         let root = std::env::temp_dir().join(format!("grimoire-widgetpkg-{}", std::process::id()));
@@ -1455,6 +1531,7 @@ spec:
         assert_eq!(it.version, "1.3.0");
         assert_eq!(widget_package_list().len(), 1);
         assert_eq!(widget_def(&it.id).unwrap().kind, WidgetKind::Calculator);
+        assert_eq!(widget_def(&it.id).unwrap().icon, IconKind::Calculator);
         assert_eq!(std::fs::read(format!("{state}/session")).unwrap(), b"keep");
         widget_package_remove(&it.id, true).unwrap();
         assert!(widget_package_list().is_empty());

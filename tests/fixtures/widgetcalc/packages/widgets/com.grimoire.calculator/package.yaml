@@ -16,6 +16,7 @@ capabilities: []
 spec:
   runtime: native
   entry: calculator
+  icon: calculator
   minimizable: true
   size:
     mode: resizable

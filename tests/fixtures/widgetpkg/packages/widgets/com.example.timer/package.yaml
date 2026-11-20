@@ -16,6 +16,7 @@ capabilities: [editor:overlay, storage:widget-local]
 spec:
   runtime: wasm
   entry: _start
+  icon: timer
   minimizable: true
   size:
     mode: fixed

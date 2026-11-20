@@ -68,6 +68,37 @@ pub const CALCULATOR_KEYS: [&str; 20] = [
 const CALCULATOR_ROWS: i32 = 5;
 const CALCULATOR_COLS: i32 = 4;
 
+/// The icon a manifest's `spec.icon` names, as one of Grimoire's own (ui.rs): a package chooses
+/// among the UI's icons, never a picture of its own, so every row and title bar draws the same
+/// glyph the rest of the app does.
+pub fn widget_icon(name: &str) -> IconKind {
+    let name = name.trim().to_ascii_lowercase();
+    let name = name.strip_prefix("md-").unwrap_or(&name);
+    match name {
+        "calculator" => IconKind::Calculator,
+        "package" => IconKind::Package,
+        "clock" => IconKind::Clock,
+        "timer" | "hourglass" => IconKind::Hourglass,
+        "music" => IconKind::Music,
+        "notebook" => IconKind::Notebook,
+        "pdf" => IconKind::Pdf,
+        "image" | "photo" => IconKind::Image,
+        "files" | "folder" => IconKind::Files,
+        "search" => IconKind::Search,
+        "download" => IconKind::Download,
+        "language" => IconKind::Language,
+        "gear" | "settings" => IconKind::Gear,
+        "update" => IconKind::Update,
+        "paper" | "page" => IconKind::Paper,
+        "library" => IconKind::Library,
+        "link" => IconKind::Link,
+        "live" => IconKind::Live,
+        "gamepad" => IconKind::Gamepad,
+        "eye" => IconKind::Eye,
+        _ => IconKind::Grid,
+    }
+}
+
 /// A native calculator's state. It is `Copy`, as a frame is: a frame's calculator comes back with
 /// its place and size after a restart, and pressing keys changes no layout.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -723,6 +754,14 @@ mod tests {
         author: "",
         description: "",
     };
+
+    #[test]
+    fn a_package_icon_names_a_grimoire_icon() {
+        assert_eq!(widget_icon("calculator"), IconKind::Calculator);
+        assert_eq!(widget_icon("package"), IconKind::Package);
+        assert_eq!(widget_icon("md-timer"), IconKind::Hourglass);
+        assert_eq!(widget_icon("not one"), IconKind::Grid);
+    }
 
     #[test]
     fn spawn_stays_on_the_canvas_and_to_the_left_of_the_panel() {

@@ -12305,6 +12305,6 @@ pub fn library_settings_redraw(a:&mut App) {redraw(a,RefreshMode::Ui);}
 pub fn library_settings_back(a:&mut App) {close_modal(a);}
 /// The Packages page draws itself whole (widgetpkgui.rs); its callers redraw through here so it
 /// replaces Settings while it is open and Settings comes back when it closes.
-pub(crate) fn packages_redraw(a:&mut App) {redraw(a,RefreshMode::Full);}
+pub(crate) fn packages_redraw(a:&mut App) {redraw(a,RefreshMode::Ui);}
 /// The Packages page's X: the whole of Settings closes, as every Settings submenu's X does.
-pub(crate) fn packages_closed(a:&mut App) {close_settings(a,RefreshMode::Full);}
+pub(crate) fn packages_closed(a:&mut App) {close_settings(a,RefreshMode::Ui);}

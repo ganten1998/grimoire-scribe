@@ -1605,8 +1605,9 @@ version: 1.0.0                 # semantic version (a -prerelease suffix is allow
 type: widget
 author: Jane Doe
 description: A small timer widget.
-license: MIT                   # optional; the install page shows it before installing
-license_url: https://example.org/timer/LICENSE
+license: MIT                   # optional; the install page asks you to agree to it first
+license_url: https://example.org/timer/LICENSE  # optional; without it, the repository's LICENSE,
+                                                # LICENSE.md, LICENSE.txt, COPYING or COPYING.md is tried
 min_grimoire_version: 2.1.0    # optional
 platforms: [all]               # or kindle-scribe-2022, kindle-scribe-2024
 repository: https://example.org/timer
@@ -1622,6 +1623,8 @@ releases:                      # optional per-version artifacts
 spec:
   runtime: wasm                # or native
   entry: _start                # native: calculator
+  icon: timer                  # a Grimoire icon (calculator, clock, timer, music, notebook, pdf, image, ...);
+                               # unknown or omitted: the widget grid, or the calculator's own for a native calculator
   minimizable: true
   size:
     mode: fixed                # or resizable
@@ -1644,15 +1647,24 @@ are complete:
   "version": 1,
   "packages": [
     {"id":"com.example.timer","name":"Timer","version":"1.0.0","author":"Jane Doe",
-     "description":"A small timer widget.","path":"packages/widgets/com.example.timer/timer.bin",
+     "description":"A small timer widget.","icon":"timer","path":"packages/widgets/com.example.timer/timer.bin",
      "sha":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
      "installed_at":1,"source_url":"https://example.org/timer.yaml"}
   ]
 }
 ```
 
-An update keeps the old directory as `<id>.previous` until the new one is in place, so a failed
-write can be rolled back. Removing a package closes its widget, deletes its files and its
+A package's detail page shows `Author:` and, when the manifest names one, `License:`, with **View
+license** to read its text (from `license_url`, or the repository's license file when the manifest
+only names the license). A GitHub package also has **View QR code**, which shows its repository
+address as a QR code for a phone. A license whose files are all missing does not stop the install
+when only its name was declared; a `license_url` that does not answer does.
+
+**Update all** at the top of the package list checks every installed package that has a
+`source_url`, one after another, and installs the newer ones; an up-to-date package costs its
+manifest's fetch only. The packages were trusted when they were installed, so the batch does not
+ask again for each one. An update keeps the old directory as `<id>.previous` until the new one is in
+place, so a failed write can be rolled back. Removing a package closes its widget, deletes its files and its
 `widgets.ini` line. A package's own state is kept under `packages/widgets/<id>/state/` when the
 package is replaced or removed (Remove keeps that folder; nothing else of the package stays).
 

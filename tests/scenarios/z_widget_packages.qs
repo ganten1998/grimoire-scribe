@@ -8,7 +8,7 @@ wait 300
 # From the Library: Settings → Packages → Widgets, then the X closes Settings back to the Library.
 tap library settings
 wait 400
-tap library settings.cat.6
+tap library settings.cat.5
 wait 300
 tap library settings.packages
 wait 400
@@ -25,7 +25,7 @@ expect screen is editor
 # Settings → Packages → Widgets (not the popup): the category and its Widgets row.
 tap panel settings
 wait 400
-tap panel settings.cat.6
+tap panel settings.cat.5
 wait 300
 shot 00-settings-packages
 tap panel settings.packages
@@ -34,6 +34,12 @@ expect editor.packages.open is 1
 expect editor.packages is 1 com.example.timer 1.0.0
 expect editor.package.com.example.timer is 1.0.0
 shot 01-packages
+# A tap that finds no control (the empty part of the page) draws and refreshes nothing:
+# the page is not redrawn for a contact that changed nothing.
+expect display.presents not -1
+tap 900 1500
+wait 120
+expect display.presents is
 # The installed package is in the popup too, and opens as a frame.
 tap panel packages.close
 wait 300
