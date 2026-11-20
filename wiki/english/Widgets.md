@@ -3,10 +3,10 @@
 Widgets are small windows that sit over a notebook: a calculator, a timer, a clock. From 2.2 a
 widget is a package you install, so the list can grow without updating Grimoire itself.
 
-> **The calculator is the only widget that runs in 2.2.** A WebAssembly widget can be installed and
-> appears in the catalog, but until Grimoire has a WebAssembly runtime its frame shows its name,
-> version, author and description instead of running. The calculator's code is built into
-> Grimoire, but it is still installed as a package.
+A widget's code is part of its package, not part of Grimoire. Each one is a small WebAssembly
+module that draws its own window and remembers its own state; Grimoire only gives it a frame,
+input and the files it may use. That is why any installed package can add a calculator, a timer, a
+sticky note or something else without a new Grimoire release.
 
 The catalog only lists installed packages, so install the ones you want from their repositories.
 
@@ -22,8 +22,22 @@ installed widgets:
 - **×** closes it. Closing a widget does not remove the package.
 
 Up to eight widgets can be open at once. Their places and sizes are remembered per device, so they
-come back after a restart. The calculator's current number belongs to its frame: minimizing and
-restoring it keeps the number.
+come back after a restart. A widget's own saved state comes back too: the calculator keeps its
+current number through a minimize, a close and a restart.
+
+## The calculator's modes
+
+The calculator has three modes, chosen from the bar at the top of its window:
+
+- **Simple** is the four-function keypad with percent, sign and backspace.
+- **Scientific** reads an expression: parentheses, `sin`, `cos` and `tan` in degrees, `ln`, `log`,
+  square root, powers, π and e. Type the whole expression, then tap `=`.
+- **Programming** converts between decimal, hexadecimal, binary and octal, and has bitwise
+  AND/OR/XOR/NOT, shifts, MOD and power. Its **Un** key opens a converter for length, mass, data
+  and temperature.
+
+Each mode keeps its own screen while you switch. A package can turn modes off; the ones that are
+on are the ones the dropdown lists.
 
 ## Installing a widget
 
@@ -53,6 +67,10 @@ widget's own switches and choices, such as which features are on or how it looks
 turn it on or off; tap a choice to move to the next value. Each tap is saved at once, and **Reset
 all to defaults** puts every setting back.
 
+The calculator uses its settings to choose which calculator a new window opens with and which ones
+the mode bar offers. If you turn off the calculator a window is showing, that window falls back to
+the first one still on; turning every calculator off leaves Simple on.
+
 ## Updating
 
 - **Check for updates** on a package's detail page checks that package.
@@ -70,7 +88,10 @@ closed and its files are deleted; your widget layout is kept. The package's own 
 
 ## Safety and privacy
 
-- Installing is a trust decision. There is no review, no signature and no sandbox yet.
+- Installing is a trust decision. There is no review and no signature.
+- A widget runs as WebAssembly with no network, filesystem or process access, and with a fixed
+  instruction budget, so a broken widget cannot freeze Grimoire. It can draw in its frame, read
+  its settings and read and write its own saved state.
 - The size and SHA-256 checks catch a truncated or corrupted download. They are not a signature:
   they come from the same repository as the widget.
 - Packages are fetched over HTTPS with `curl`. Grimoire has no account, cloud or telemetry, and
@@ -88,5 +109,7 @@ headless runner, and publishing. The helper
 copies a built artifact into place and writes its size and SHA-256.
 
 A package chooses a size, an icon and optionally a repository and license. It can declare only the
-`editor:overlay` and `storage:widget-local` capabilities, and it cannot add native code: the only
-native widget entry is the calculator.
+`editor:overlay` and `storage:widget-local` capabilities. Its module exports `widget_draw` and
+`widget_tap` and draws through a small, generic host ABI; the guide lists every import and export.
+Grimoire has no built-in widget implementations, so a package never needs changes to Grimoire's
+source.

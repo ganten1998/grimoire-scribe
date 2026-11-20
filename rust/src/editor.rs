@@ -1645,40 +1645,23 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
                 .map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
         }
     }
-    // The calculator frame's parts without the id (`tap panel calculator.key.12`), for a package id
-    // longer than the runner's 32-byte panel target.
-    if let Some(part) = name.strip_prefix("calculator.") {
-        let f = s.widgets.frames.iter().find(|f| f.def.kind == WidgetKind::Calculator)?;
-        if f.layout.minimized && part != "title" { return None; }
-        if let Some(k) = part.strip_prefix("key.") {
-            let k: usize = k.parse().ok()?;
-            let kr = f.calculator_key(widget_body(f), k);
-            return (!rect_is_empty(kr)).then_some(((kr.x + kr.w / 2) as f32, (kr.y + kr.h / 2) as f32));
-        }
-        let r = match part {
-            "title" => f.title_rect(),
-            "close" => f.close_rect(),
-            "min" | "minimize" => f.minimize_rect(),
-            "resize" => f.resize_rect(),
-            "body" => {
-                let t = f.title_rect();
-                Rect { x: f.rect().x, y: t.y + t.h, w: f.rect().w, h: f.rect().h - t.h }
-            }
-            _ => return None,
-        };
-        return Some(((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32));
-    }
     // A widget frame's parts: `tap panel widget.com.example.widget.close` (title, close, minimize,
     // resize, body), while it is open and not minimized (a minimized frame has only its title).
     if let Some(n)=name.strip_prefix("widget.") {
-        let (id, part) = n.rsplit_once('.')?;
-        let i = s.widgets.index_of(id)?;
+        // A frame may be named by its index (widget.0.hit.12) or by a package id that has dots
+        // (widget.com.example.widget.close).
+        let (id, part) = match n.split_once('.') {
+            Some((num, rest)) if num.parse::<usize>().is_ok() => (num, rest),
+            _ => n.rsplit_once('.')?,
+        };
+        let i = id.parse::<usize>().ok().filter(|&i| i < s.widgets.frames.len()).or_else(|| s.widgets.index_of(id))?;
         let f = s.widgets.frames.get(i)?;
         if f.layout.minimized && part != "title" { return None; }
-        if let Some(k) = part.strip_prefix("key.") {
-            let k: usize = k.parse().ok()?;
-            let kr = f.calculator_key(widget_body(f), k);
-            return (!rect_is_empty(kr)).then_some(((kr.x + kr.w / 2) as f32, (kr.y + kr.h / 2) as f32));
+        if let Some(hit) = part.strip_prefix("hit.") {
+            let hit: i32 = hit.parse().ok()?;
+            let r = f.runtime.as_ref()?.hit(hit)?;
+            let body = widget_body(f);
+            return Some(((body.x + r.x + r.w / 2) as f32, (body.y + r.y + r.h / 2) as f32));
         }
         let r = match part {
             "title" => f.title_rect(),
@@ -2377,7 +2360,7 @@ fn widget_body(f: &WidgetFrame) -> Rect {
 fn draw_widget_frame(a: &mut App, i: usize) {
     let App { screen: c, ed, .. } = a;
     let s = ed.as_deref_mut().unwrap();
-    let Some(f) = s.widgets.frames.get(i).copied() else { return };
+    let Some(f) = s.widgets.frames.get_mut(i) else { return };
     let r = f.rect();
     let title = f.title_rect();
     ui_frame(c, r, ui_px(18.0), 255, true, 0);
@@ -2398,41 +2381,32 @@ fn draw_widget_frame(a: &mut App, i: usize) {
     ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size() * 0.55, Rect { x: tx, y: r.y, w: tw, h: title.h }, f.def.name, 1, false, 0);
     ui_icon(c, IconKind::Close, Rect::new(cr.x + ui_px(14.0), cr.y + ui_px(14.0), cr.w - ui_px(28.0), cr.h - ui_px(28.0)), 0);
     ui_icon(c, IconKind::Minus, Rect::new(mr.x + ui_px(14.0), mr.y + ui_px(14.0), mr.w - ui_px(28.0), mr.h - ui_px(28.0)), 0);
-    // The body, and the grip.
-    let body = widget_body(&f);
+    // The body is the package's own WASM runtime. A package that cannot start shows why.
+    let body = widget_body(f);
     if body.w > 0 && body.h > 0 {
-        match f.def.kind {
-            WidgetKind::Package => {
-                // The package's own body is its WASM runtime's; until that host is built, the frame
-                // shows what the package is and which version is installed.
-                let mut meta = f.def.name.to_string();
-                if !f.def.version.is_empty() {
-                    meta.push_str(&format!(" v{}", f.def.version));
-                }
-                if !f.def.author.is_empty() {
-                    meta.push_str(&format!(" · {}", f.def.author));
-                }
-                let meta_h = if meta.is_empty() { 0 } else { ui_small_size() as i32 + ui_px(10.0) };
-                if !meta.is_empty() {
-                    ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y, w: body.w, h: ui_small_size() as i32 + ui_px(6.0) }, &meta, 1, false, 0);
-                }
-                if !f.def.description.is_empty() {
-                    ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y + meta_h, w: body.w, h: (body.h - meta_h).max(0) }, f.def.description, 2, false, 0);
-                }
+        f.ensure_runtime();
+        if let Some(rt) = f.runtime.as_mut() {
+            rt.draw(c, body);
+        }
+        if let Some(err) = f.error() {
+            let mut text = format!("{}\nv{}", f.def.name, f.def.version);
+            if !f.def.author.is_empty() {
+                text.push_str(&format!(" · {}", f.def.author));
             }
-            WidgetKind::Calculator => {
-                let display = f.calculator_display(body);
-                ui_frame(c, display, ui_px(8.0), 0, false, ui_px(2.0));
-                font_draw_centered(c, FontFace::Bold, ui_text_size(), display, f.calc.display(), 0);
-                for k in 0..CALCULATOR_KEYS.len() {
-                    let kr = f.calculator_key(body, k);
-                    if rect_is_empty(kr) {
-                        break;
-                    }
-                    ui_frame(c, kr, ui_px(8.0), 255, true, 0);
-                    ui_frame(c, kr, ui_px(8.0), 0, false, ui_px(2.0));
-                    font_draw_centered(c, FontFace::Bold, ui_small_size(), kr, CALCULATOR_KEYS[k], 0);
-                }
+            text.push('\n');
+            text.push_str(err);
+            ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), body, &text, 6, false, 0);
+        } else if f.runtime.is_none() {
+            let mut text = f.def.name.to_string();
+            if !f.def.version.is_empty() {
+                text.push_str(&format!(" v{}", f.def.version));
+            }
+            if !f.def.author.is_empty() {
+                text.push_str(&format!(" · {}", f.def.author));
+            }
+            ui_text(c, FontFace::Bold, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y, w: body.w, h: ui_small_size() as i32 + ui_px(6.0) }, &text, 1, false, 0);
+            if !f.def.description.is_empty() {
+                ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: body.x, y: body.y + ui_small_size() as i32 + ui_px(10.0), w: body.w, h: body.h }, f.def.description, 4, false, 0);
             }
         }
     }
@@ -8192,12 +8166,30 @@ fn widget_tick(a: &mut App, now: u32) {
     }
 }
 
+/// editor_tick: an open package that asked for a later draw (a clock, a countdown) has its frame
+/// refreshed then; a package that never asks is only drawn when something else repaints it.
+fn widget_runtime_tick(a: &mut App) {
+    let s = ed_ref(a);
+    if !s.open || a.asleep || s.owner != Owner::None || s.peek.active || sheet_open(s) || crate::library::library_settings_active(a) {
+        return;
+    }
+    let now = std::time::Instant::now();
+    let mut dirty: Option<Rect> = None;
+    for f in &s.widgets.frames {
+        if f.runtime.as_ref().is_some_and(|r| r.redraw_due(now)) {
+            dirty = Some(dirty.map_or(f.rect(), |r| rect_union(r, f.rect())));
+        }
+    }
+    if let Some(r) = dirty {
+        app_invalidate(a, r, RefreshMode::Ui);
+    }
+}
+
 fn widget_down(a: &mut App, index: usize, part: WidgetPart, ev: &InEvent, pen: bool) {
     let s = ed(a);
     s.widgets.raise(index);
     s.widget_drag_view = WidgetDragView::default();
-    let Some(f) = s.widgets.frames.get(index).copied() else { return };
-    let start = f.rect();
+    let Some((start, close_r, min_r)) = s.widgets.frames.get(index).map(|f| (f.rect(), f.close_rect(), f.minimize_rect())) else { return };
     s.widget_drag = Some(WidgetDrag {
         index,
         part,
@@ -8209,7 +8201,7 @@ fn widget_down(a: &mut App, index: usize, part: WidgetPart, ev: &InEvent, pen: b
     s.owner = Owner::Widget;
     s.owner_is_pen = pen;
     if part == WidgetPart::Close || part == WidgetPart::Minimize {
-        let r = if part == WidgetPart::Close { f.close_rect() } else { f.minimize_rect() };
+        let r = if part == WidgetPart::Close { close_r } else { min_r };
         app_press_feedback(a, r);
         ed(a).widgets_pressed = Some(r);
     }
@@ -8284,10 +8276,11 @@ fn widget_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                     redraw = rect_union(redraw, f.rect());
                     save = true;
                 }
-                WidgetPart::Body if f.def.kind == WidgetKind::Calculator => {
+                WidgetPart::Body => {
                     let body = widget_body(f);
-                    if let Some(key) = f.calculator_key_at(body, d.down_x, d.down_y) {
-                        f.calc.press(key);
+                    f.ensure_runtime();
+                    if let Some(rt) = f.runtime.as_mut() {
+                        rt.tap(d.down_x - body.x, d.down_y - body.y);
                         redraw = rect_union(redraw, body);
                     }
                 }
@@ -12209,6 +12202,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
     // A pen held still in Select mode: a paste there (select.rs).
     if ed(a).open {
         sel_tick(a, now);
+        widget_runtime_tick(a);
         if ed_ref(a).owner == Owner::Widget {
             widget_tick(a, now);
         }
@@ -12558,20 +12552,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", ed_ref(a).widgets_open as i32);
         return 0;
     }
-    if key == "calculator.display" || key == "calculator.state" {
-        let s = ed_ref(a);
-        let Some(f) = s.widgets.frames.iter().find(|f| f.def.kind == WidgetKind::Calculator) else { return -1 };
-        if key == "calculator.display" {
-            csnprintf!(out, cap, "%s", f.calc.display());
-        } else {
-            csnprintf!(out, cap, "%s", if f.layout.minimized { "minimized" } else { "normal" });
-        }
-        return 0;
-    }
     if let Some(n) = key.strip_prefix("widget.") {
         let Some((id, what)) = n.rsplit_once('.') else { return -1 };
         let s = ed_ref(a);
-        let Some(i) = s.widgets.index_of(id) else { return -1 };
+        let Some(i) = id.parse::<usize>().ok().filter(|&i| i < s.widgets.frames.len()).or_else(|| s.widgets.index_of(id)) else { return -1 };
         let f = &s.widgets.frames[i];
         match what {
             "rect" => {
@@ -12579,7 +12563,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
                 csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
             }
             "state" => { csnprintf!(out, cap, "%s", if f.layout.minimized { "minimized" } else { "normal" }); }
-            "display" => { csnprintf!(out, cap, "%s", f.calc.display()); }
+            "status" => { csnprintf!(out, cap, "%s", f.runtime.as_ref().map_or("", WidgetRuntime::status)); }
+            "text" => { csnprintf!(out, cap, "%s", f.runtime.as_ref().map_or(String::new(), WidgetRuntime::text).as_str()); }
+            "hits" => { csnprintf!(out, cap, "%d", f.runtime.as_ref().map_or(0, |r| r.hit_count() as i32)); }
+            "error" => { csnprintf!(out, cap, "%s", f.error().unwrap_or("")); }
             _ => return -1,
         }
         return 0;
@@ -12602,6 +12589,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     if let Some(rest) = key.strip_prefix("package.") {
         // package.ID.settings.KEY: a package setting's saved value (the default while there is no file).
         if let Some((id, setting)) = rest.split_once(".settings.") {
+            let id = match id.parse::<usize>() {
+                Ok(i) => match a.pkg.items.get(i) { Some(x) => x.id.as_str(), None => return -1 },
+                Err(_) => id,
+            };
             let Some(m) = crate::widgetpkg::widget_package_installed_manifest(id) else { return -1 };
             let Some(s) = m.settings.iter().find(|s| s.key == setting) else { return -1 };
             let values = crate::widgetpkg::widget_settings_load(id, &m.settings);

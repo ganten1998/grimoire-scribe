@@ -1588,7 +1588,7 @@ are. A closed widget has no line. Unknown ids and malformed lines are skipped. T
 # Grimoire widget layout. One line per open widget:
 # id=x,y,w,h,minimized,z
 com.example.timer=1416,28,220,160,0,0,0
-com.grimoire.calculator=1416,270,300,420,0,1,0
+com.grimoire.calculator=1416,270,340,560,0,1,0
 ```
 
 ## Widget packages (2.2, issue #200)
@@ -1634,10 +1634,10 @@ releases:                      # optional per-version artifacts
     url: https://example.org/timer/1.0.0/timer.bin
     sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
 spec:
-  runtime: wasm                # or native
-  entry: _start                # native: calculator
+  runtime: wasm                # the only runtime; widget code is a WebAssembly module
+  entry: _start                # ignored by the host; `widget_draw` and `widget_tap` are the exports it calls
   icon: timer                  # a Grimoire icon (calculator, clock, timer, music, notebook, pdf, image, ...);
-                               # unknown or omitted: the widget grid, or the calculator's own for a native calculator
+                               # unknown or omitted: the widget grid
   minimizable: true
   size:
     mode: fixed                # or resizable
@@ -1687,13 +1687,36 @@ place, so a failed write can be rolled back. Removing a package closes its widge
 package is replaced or removed (Remove keeps that folder; nothing else of the package stays). The
 host's `settings.json` in that folder is kept too; a package should use another file for its own data.
 
-`spec.runtime: native` names a widget implementation Grimoire carries itself. The only native
-entry is `calculator`: a working four-function calculator with percent, sign, backspace and clear,
-whose state belongs to its frame. Its artifact is still size- and SHA-256-checked at install. A
-native entry other than `calculator` is refused; a package cannot ask the host for arbitrary code.
+`spec.runtime` must be `wasm`: a package ships behavior as a WebAssembly module, and Grimoire carries
+no widget implementations of its own. A native runtime or entry is refused. The artifact is size-
+and SHA-256-checked at install, then instantiated in the frame when it first draws.
 
-Until a WASM runtime is added, a `spec.runtime: wasm` package's frame shows its name, version,
-author and description; the artifact is stored but not run.
+A module exports `memory`, `widget_draw(width, height, scale_milli)` and
+`widget_tap(hit_id)`, and imports from the `grimoire` module:
+
+```text
+rect(x, y, w, h, style)
+text(x, y, w, h, ptr, len, px, center)
+button(id, x, y, w, h, ptr, len, style)
+hit(id, x, y, w, h)
+status(ptr, len)
+request_redraw(after_ms)
+setting(key_ptr, key_len, out_ptr, out_cap) -> i32
+state_get(ptr, cap) -> i32
+state_set(ptr, len)
+now() -> i64
+```
+
+Coordinates are screen pixels inside the frame body. `style` is `0` normal, `1` selected or `2`
+disabled. Strings are UTF-8 in the module's memory. `request_redraw` names the delay before the
+host draws the widget again (16 ms to 24 hours), for a clock or a countdown. `setting` returns the bytes written for one of
+the package's saved settings (empty when it is missing); `state_get`/`state_set` read and write the
+widget's saved state in `packages/widgets/<id>/state/runtime.bin`, capped at 64 KiB. `status` sets
+the text read back by the editor's `editor.widget.N.status` probe. Each call has a fixed instruction
+budget and linear memory is capped at 32 MiB, so a looping or greedy widget stops with an error
+instead of freezing the device.
+
+[WIDGETS.md](WIDGETS.md#the-wasm-abi) is the guide to writing one.
 
 ## `settings.ini`
 

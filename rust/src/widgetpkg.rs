@@ -759,13 +759,8 @@ pub fn widget_package_validate(p: &WidgetPackage, canvas_w: i32, canvas_h: i32) 
             return Err(format!("Unknown capability '{c}'."));
         }
     }
-    match p.spec.runtime.as_str() {
-        "wasm" => {}
-        // Native widgets are implementations built into Grimoire; a package may only name one
-        // the host knows, never an arbitrary entry point.
-        "native" if p.spec.entry == "calculator" => {}
-        "native" => return Err(format!("Unknown native widget entry `{}`", p.spec.entry)),
-        _ => return Err("`spec.runtime` must be `wasm` or `native`".into()),
+    if p.spec.runtime != "wasm" {
+        return Err("`spec.runtime` must be `wasm`; Grimoire does not run native widget code".into());
     }
     if !path_ok(&p.artifact.path)
         || p.artifact.path == "package.yaml"
@@ -1483,14 +1478,9 @@ fn package_def(p: &WidgetPackage) -> &'static WidgetDef {
         let h = size.default.1 as f32;
         (w, h, w, h)
     };
-    let kind = if p.spec.runtime == "native" && p.spec.entry == "calculator" {
-        WidgetKind::Calculator
-    } else {
-        WidgetKind::Package
-    };
-    // A package without an icon gets its kind's (the calculator's, or the generic widget grid).
+    // A package without an icon gets the generic widget grid.
     let icon = if p.spec.icon.trim().is_empty() {
-        if kind == WidgetKind::Calculator { IconKind::Calculator } else { IconKind::Grid }
+        IconKind::Grid
     } else {
         crate::widgets::widget_icon(&p.spec.icon)
     };
@@ -1498,7 +1488,6 @@ fn package_def(p: &WidgetPackage) -> &'static WidgetDef {
         id: leak(p.id.clone()),
         name: leak(p.name.clone()),
         icon,
-        kind,
         default_w: size.default.0 as f32,
         default_h: size.default.1 as f32,
         min_w,
@@ -1694,11 +1683,6 @@ spec:
         assert_eq!(p.spec.size.default, (220, 160));
         assert_eq!(p.spec.size.mode, WidgetSizeMode::Resizable);
         widget_package_validate(&p, 1860, 2480).unwrap();
-        let native = manifest("com.example.test")
-            .replace("runtime: wasm", "runtime: native")
-            .replace("entry: _start", "entry: calculator");
-        let p = widget_package_parse(&native).unwrap();
-        widget_package_validate(&p, 1860, 2480).unwrap();
     }
 
     #[test]
@@ -1712,7 +1696,7 @@ spec:
             (good.replace("capabilities: [editor:overlay, storage:widget-local]", "capabilities: [net]"), "Unknown capability"),
             (good.replace("path: dist/widget.bin", "path: package.yaml"), "safe relative path"),
             (good.replace("path: dist/widget.bin", "path: state/widget.bin"), "safe relative path"),
-            (good.replace("runtime: wasm", "runtime: native"), "Unknown native widget entry"),
+            (good.replace("runtime: wasm", "runtime: native"), "must be `wasm`"),
         ] {
             let p = widget_package_parse(&bad).unwrap();
             let e = widget_package_validate(&p, 1860, 2480).unwrap_err();
@@ -1837,14 +1821,11 @@ spec:
         let state = format!("{}/state", widget_package_dir(&it.id));
         std::fs::create_dir_all(&state).unwrap();
         std::fs::write(format!("{state}/session"), b"keep").unwrap();
-        let m2 = m.replace("version: 1.2.0", "version: 1.3.0")
-            .replace("runtime: wasm", "runtime: native")
-            .replace("entry: _start", "entry: calculator");
+        let m2 = m.replace("version: 1.2.0", "version: 1.3.0");
         let it = widget_package_install(&m2, b"test", "https://example.org/p.yaml", 1860, 2480).unwrap();
         assert_eq!(it.version, "1.3.0");
         assert_eq!(widget_package_list().len(), 1);
-        assert_eq!(widget_def(&it.id).unwrap().kind, WidgetKind::Calculator);
-        assert_eq!(widget_def(&it.id).unwrap().icon, IconKind::Calculator);
+        assert_eq!(widget_def(&it.id).unwrap().icon, IconKind::Grid);
         assert_eq!(std::fs::read(format!("{state}/session")).unwrap(), b"keep");
         widget_package_remove(&it.id, true).unwrap();
         assert!(widget_package_list().is_empty());

@@ -176,15 +176,19 @@ The editor panel's buttons, by the names `tap panel` and `editor.panel_at.X.Y` u
 is pinned), `tool:NAME` (a pinned pen, NAME as `editor.tool` has it), `eraser`, `undo`, `redo`, `clear`,
 `previous`, `pages` (the page chip), `next`, `links` (the Links button), `widgets`, `paper`, `display`, `pen-feel` and `library`. The
 Widgets popup's rows are `widgets.ID` (`widgets.com.example.timer`), and an open frame's parts are
-`widget.ID.title`, `.close`, `.min` (or `.minimize`), `.resize` and `.body`. The calculator's parts
-can be named without its long package id (`calculator.key.N`, `.title`, `.close`, `.min`, `.resize`,
-`.body`), N being the index in `widgets::CALCULATOR_KEYS`. The Packages page is Settings → Packages
+`widget.ID.title`, `.close`, `.min` (or `.minimize`), `.resize` and `.body`. A frame can also be
+named by its index in the open list, which is how a scenario reaches the controls a package draws:
+`widget.0.hit.N` is the hit region with id N in the first frame's last draw, and
+`widget.0.hit.N` stays a valid name only while that region exists. A package's own status text is
+read with `editor.widget.0.status`. The Packages page is Settings → Packages
 → Widgets: `settings.cat.5` picks the Packages category and `settings.packages` opens the Widgets
 page. Its controls are `packages.close` (the X, which closes Settings), `packages.back` (to
-Settings), `packages.row.ID`, `packages.update-all`, `packages.install`, `packages.remove`, `packages.remove-yes`,
-`packages.update`, `packages.trust`, `packages.license-yes`, `packages.license-view`,
-`packages.license-prev`, `packages.license-next` and `packages.qr`; the repository address is typed
-on the regular keyboard (its Done installs, as Done answers every other keyboard). A disabled button
+Settings), `packages.row.ID` (or its index, `packages.row.0`), `packages.update-all`,
+`packages.install`, `packages.remove`, `packages.remove-yes`, `packages.update`, `packages.trust`,
+`packages.license-yes`, `packages.license-view`, `packages.license-prev`, `packages.license-next` and
+`packages.qr`; a settings row is `packages.setting.KEY` (or `packages.setting.N`); the repository
+address is typed on the regular keyboard (its Done installs, as Done answers every other keyboard).
+A disabled button
 (Undo with nothing to undo, Clear on an empty page, Previous on page 1) has no hit and no name. A scenario
 that wants a panel button taps it by name, so that it does not break when the panel gains a button;
 `editor.panel_at.1768.594 is undo` upright with no pins (and the other coordinates of tests/scenarios/
@@ -611,9 +615,10 @@ shows what the app holds.
 | `editor.widgets` | the open widget frames: their count, then their ids (`0`, or `1 com.example.timer`) |
 | `editor.widgets.open` | `1` while the Widgets popup is up, else `0` |
 | `editor.packages`, `editor.packages.open` | the installed widget packages: their count, then their ids and versions (`0`, or `1 com.example.timer 1.0.0`), and `1` while the Packages page is up, else `0` |
-| `editor.calculator.display`, `editor.calculator.state` | the open calculator's display (`0`, `3`, `Error`), and `normal` or `minimized` |
+| `editor.widget.N.status`, `editor.widget.N.text` | the text the frame's package last passed to its `status` import, and the text it drew, joined by `\|`; empty until its first draw |
+| `editor.widget.N.hits`, `editor.widget.N.error` | how many hit regions its last draw registered, and the runtime error that stopped it, empty while it runs |
 | `editor.package.ID` | an installed package's version (`1.0.0`), or empty for an id that is not installed |
-| `editor.widget.ID.rect`, `editor.widget.ID.state` | an open frame's screen rect (`x y w h`, the minimized square while minimized) and `normal` or `minimized`; empty for an id that is not open |
+| `editor.widget.ID.rect`, `editor.widget.ID.state` | an open frame's screen rect (`x y w h`, the minimized square while minimized) and `normal` or `minimized`; ID is its package id or its index in the open list; empty for a frame that is not open |
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |

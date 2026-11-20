@@ -213,8 +213,8 @@ fn labeled(name: &str, version: &str) -> String {
     }
 }
 
-/// A package's own icon: the manifest's name, else its widget definition's (a calculator package
-/// installed before icons were written into the index still shows the calculator), else the grid.
+/// A package's own icon: the manifest's name, else its widget definition's (an installed package
+/// whose index entry was written before icons still shows the definition's icon), else the grid.
 fn install_icon(it: &WidgetInstall) -> IconKind {
     if !it.icon.trim().is_empty() {
         return widget_icon(&it.icon);
@@ -878,21 +878,23 @@ fn do_tap(a: &mut App, h: Hit) {
                 v.1 = next;
             }
             if let Some(id) = ui.selected.clone() {
-                ui.status = if widget_settings_save(&id, &ui.setting_values) == 0 {
-                    String::new()
+                if widget_settings_save(&id, &ui.setting_values) == 0 {
+                    ui.status.clear();
+                    if let Some(s) = a.ed.as_mut() { s.widgets.reload_settings(&id); }
                 } else {
-                    tr("Could not save the widget's settings.").to_string()
-                };
+                    ui.status = tr("Could not save the widget's settings.").to_string();
+                }
             }
         }
         H_SETTINGS_RESET => {
             ui.setting_values = widget_settings_defaults(&ui.setting_schema);
             if let Some(id) = ui.selected.clone() {
-                ui.status = if widget_settings_clear(&id) == 0 {
-                    tr("Settings reset to defaults.").to_string()
+                if widget_settings_clear(&id) == 0 {
+                    ui.status = tr("Settings reset to defaults.").to_string();
+                    if let Some(s) = a.ed.as_mut() { s.widgets.reload_settings(&id); }
                 } else {
-                    tr("Could not save the widget's settings.").to_string()
-                };
+                    ui.status = tr("Could not save the widget's settings.").to_string();
+                }
             }
         }
         H_REMOVE => ui.view = PkgView::Remove,
@@ -1359,11 +1361,15 @@ pub fn packages_ui_control_point(ui: &WidgetPkgUi, name: &str) -> Option<(f32, f
         "back" => H_BACK,
         _ => {
             if let Some(key) = name.strip_prefix("setting.") {
-                let at = ui.setting_schema.iter().position(|s| s.key == key)? as i32;
+                let at = key.parse::<usize>().ok()
+                    .or_else(|| ui.setting_schema.iter().position(|s| s.key == key))? as i32;
+                if at as usize >= ui.setting_schema.len() { return None; }
                 return ui.hits.h.iter().find(|h| h.id == H_SETTING && h.arg == at).map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
             }
             let id = name.strip_prefix("row.")?;
-            let i = ui.items.iter().position(|x| x.id == id)? as i32;
+            let i = id.parse::<usize>().ok()
+                .or_else(|| ui.items.iter().position(|x| x.id == id))? as i32;
+            if i as usize >= ui.items.len() { return None; }
             return ui.hits.h.iter().find(|h| h.id == H_ROW && h.arg == i).map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32));
         }
     };

@@ -102,7 +102,7 @@ pub enum IconKind {
     Sort = 68,
     FolderOpen = 69,
     Home = 70,
-    /// The calculator widget's title bar and package row (2.2, Rust only)
+    /// A calculator icon a widget package may name (2.2, Rust only)
     Calculator = 71,
     /// A widget package, and Settings' Packages category (2.2, Rust only)
     Package = 72,

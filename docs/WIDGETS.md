@@ -9,17 +9,10 @@ This page is the developer's guide: the repository, the manifest, the artifact, 
 publishing. The exact field rules and the installed layout are in
 [FORMAT.md](FORMAT.md#widget-packages-22-issue-200); this page explains the workflow around them.
 
-> **In 2.2 the package manager installs widgets, but a WASM widget does not run yet.** The
-> manifest, size and SHA-256 checks, install, update, remove, the frame and a package's Settings page
-> are in place. There is no WASM host in this build: a `spec.runtime: wasm` package is installed,
-> gets a frame, and the body
-> of that frame shows the package's name, version, author and description instead of running its
-> artifact. The only widget implementation that runs is the native `calculator`, whose code Grimoire
-> carries itself; it reaches the catalog through a package like any other widget. A package cannot
-> add native code.
->
-> A package can be written and published now, but say in its README that it needs a Grimoire with
-> the WASM runtime. Do not ship one as working until the host is there.
+A widget's behavior lives entirely in its package: Grimoire has no widget implementations in its
+source tree. The host draws the frame, routes input and saves state; the package supplies a
+WebAssembly module that draws its body and answers taps. This page covers that module's ABI as
+well as the repository, the manifest, testing and publishing.
 
 ## The repository
 
@@ -124,15 +117,15 @@ spec:
 | `min_grimoire_version` | optional; the same `MAJOR.MINOR.PATCH` form, with an optional `-beta.N` or `-rc.N` suffix. The install is refused on an older Grimoire |
 | `platforms` | optional; `all` (the default when the key is omitted), `kindle-scribe-2022`, `kindle-scribe-2024`, or a list of them. An explicit empty list is refused. `all` matches every device |
 | `repository` | optional; the human-facing project address. A GitHub address also gets **View QR code** in the detail page |
-| `capabilities` | optional; only `editor:overlay` and `storage:widget-local` are accepted. Declare only what the widget needs. The host does not enforce them yet because it is not there |
+| `capabilities` | optional; only `editor:overlay` and `storage:widget-local` are accepted. Declare only what the widget needs. The ABI itself has no network, filesystem or process access; a module can reach only the frame, its settings and its own state |
 | `settings` | optional; up to 32 settings the package declares for its own Settings page. Each has a `key`, a `label`, a `type` (`toggle` or `choice`), and a `default`; a choice also has 2 to 16 `choices`. An optional `icon` names one of the icons above |
 | `artifact.path` | required; a safe relative path, at most 240 bytes: no leading `/`, no backslash, no empty, `.` or `..` component, and neither `package.yaml` nor anything under `state/` |
 | `artifact.sha256` | required; 64 hexadecimal characters, over the artifact's bytes |
 | `artifact.size` | required; the artifact's size in bytes, at least 1 and at most 32 MiB. It is used even when `releases` supplies the URL and digest |
 | `releases` | optional; `version`, `url` (use HTTPS) and `sha256` per entry. Only the entry whose `version` equals the manifest's is used |
-| `spec.runtime` | required; `wasm` or `native` |
-| `spec.entry` | for `native`, must be `calculator`; any other native entry is refused. For `wasm`, kept for the runtime; this build does not call it |
-| `spec.icon` | optional; one of Grimoire's icons: `calculator`, `package`, `clock`, `timer`/`hourglass`, `music`, `notebook`, `pdf`, `image`/`photo`, `files`/`folder`, `search`, `download`, `language`, `gear`/`settings`, `update`, `paper`/`page`, `library`, `link`, `live`, `gamepad`, `eye`. A `md-` prefix is accepted. An unknown or omitted icon is the widget grid, or the calculator's icon for the native calculator |
+| `spec.runtime` | required; `wasm`. Any other value is refused |
+| `spec.entry` | optional; accepted and ignored. The host calls the exports `widget_draw` and `widget_tap`, not this name |
+| `spec.icon` | optional; one of Grimoire's icons: `calculator`, `package`, `clock`, `timer`/`hourglass`, `music`, `notebook`, `pdf`, `image`/`photo`, `files`/`folder`, `search`, `download`, `language`, `gear`/`settings`, `update`, `paper`/`page`, `library`, `link`, `live`, `gamepad`, `eye`. A `md-` prefix is accepted. An unknown or omitted icon is the widget grid |
 | `spec.minimizable` | optional, default `true`. Accepted for forward compatibility; this build always draws the frame's minimize button |
 | `spec.size.mode` | `fixed` (default) or `resizable` |
 | `spec.size.default` | optional; `[width, height]` at 300 dpi, default `[220, 160]` |
@@ -194,29 +187,102 @@ an update or a remove that keeps state carries them along. The file holds string
 setting's `key`; a missing or invalid value reads as its default. That path is reserved for the
 host: a widget should keep its other data in another file under `state/`.
 
-The file is the contract for the package's runtime: a future WASM host reads it as the widget's
-settings map. This build has no WASM host, so a WASM package cannot read it yet; the page and the
-saved values are ready for the host. A native widget can read the same file, but the calculator
-does not declare settings yet.
+The module reads these values through the ABI's `setting(key_ptr, key_len, out_ptr, out_cap)`
+import. It returns the number of bytes written, or `0` when the key is missing; the host caps the
+copy at `out_cap`. Values are the same strings the Settings page shows (`true`, `false`, or one of
+a choice's values).
+
+A package can use settings however it likes. The test calculator package, for example, chooses the
+calculator a new frame opens with and which ones its mode dropdown offers:
+
+```yaml
+settings:
+  - key: default_calculator
+    label: Default calculator
+    type: choice
+    default: Simple
+    choices: [Simple, Scientific, Programming]
+  - key: enable_simple
+    label: Simple calculator
+    type: toggle
+    default: true
+  - key: enable_scientific
+    label: Scientific calculator
+    type: toggle
+    default: true
+  - key: enable_programming
+    label: Programming calculator
+    type: toggle
+    default: true
+```
+
+The package above is ordinary widget code in its own repository, not part of Grimoire. An open
+frame reads its settings again after the Settings page saves them; a package decides what a change
+means. A new frame reads the saved values on its first draw.
+
+## The WASM ABI
+
+The artifact is one WebAssembly module. It exports `memory`, `widget_draw(width, height,
+scale_milli)` and `widget_tap(hit_id)`, and may import these functions from the module named
+`grimoire`:
+
+```text
+rect(x, y, w, h, style)
+text(x, y, w, h, ptr, len, px, center)
+button(id, x, y, w, h, ptr, len, style)
+hit(id, x, y, w, h)
+status(ptr, len)
+request_redraw(after_ms)
+setting(key_ptr, key_len, out_ptr, out_cap) -> i32
+state_get(ptr, cap) -> i32
+state_set(ptr, len)
+now() -> i64
+```
+
+`widget_draw` is called for each frame. `width` and `height` are the body's size in screen pixels;
+`scale_milli` is the UI scale times 1000 (300 dpi is 1000), so a package can keep dimensions at
+300 dpi by multiplying with `scale_milli / 1000.0`. Drawing coordinates are relative to the body's
+top-left.
+
+| import | |
+|---|---|
+| `rect` | a rectangle in the frame; `style` is `0` normal, `1` selected or `2` disabled |
+| `text` | UTF-8 text at `ptr`, `len` in the module's memory, `px` high, centered when `center` is nonzero |
+| `button` | a button with its own label; it is also a hit region with `id` |
+| `hit` | a hit region with `id`, without drawing anything |
+| `status` | the text the editor's `editor.widget.N.status` probe reads, for tests and debugging |
+| `request_redraw` | asks for `widget_draw` again after `after_ms` (16 to 86,400,000); a clock calls it once per draw, and a package that never calls it is only drawn when something else repaints |
+| `setting` | copies one saved setting's value into `out_ptr` and returns its byte length, or `0`; `out_cap` caps the copy |
+| `state_get` | copies the saved state into `ptr` and returns its byte length, or `0`; `cap` caps the copy |
+| `state_set` | replaces the saved state with the bytes at `ptr`; at most 64 KiB is kept |
+| `now` | Unix time in seconds, when a widget needs a clock |
+
+`widget_tap` is called with the `id` of the hit region under the tap, or `-1` for a tap elsewhere
+in the body. It should update the package's state; the next `widget_draw` shows the result. A
+module may call `state_set` during a tap or a draw; the host writes the state file after the call,
+at `packages/widgets/<id>/state/runtime.bin`. For a timer or a sticky note, that is the whole
+persistence model.
+
+Each call runs with a fixed instruction budget, and a module's linear memory may grow to at most
+32 MiB. A module that loops past the budget is stopped and its frame shows the error instead of
+freezing Grimoire. Imports outside the `grimoire` module fail to link, and the module has no
+filesystem, network or process access.
+
+A module must be self-contained: the same bytes run on every supported Scribe, so there is nothing
+to cross-compile for armv7. A Rust `cdylib` built for `wasm32-unknown-unknown` with `extern "C"`
+imports and `#[no_mangle] pub extern "C"` exports is one working toolchain; any language that
+produces a plain WebAssembly module works.
 
 ## The artifact
 
-The artifact is an opaque file to this build: there is no signature and no inspection beyond the
-size and SHA-256 check. The installer downloads it (at most 32 MiB, with a 45-second timeout),
-checks the length and digest, and only then writes anything. A mismatch refuses the install with
-nothing changed.
+The installer downloads the artifact (at most 32 MiB, with a 45-second timeout), checks its length
+and SHA-256 against the manifest, and only then writes anything. A mismatch refuses the install
+with nothing changed. There is no signature and no inspection beyond that check; the module is
+first instantiated when its frame opens.
 
-For a WASM widget the same bytes are meant to work on every supported Scribe; there is no
-Kindle-specific build and nothing to cross-compile for armhf. Build a self-contained WebAssembly
-module with whatever toolchain you like and name it at `artifact.path`. Keep it to one file. A
-module that imports nothing is the safest shape: there is no host ABI to import from yet.
-
-Because the host is not in this build, an artifact cannot be exercised on the Kindle yet. Do not
-work around that by pointing `spec.runtime` at `native`: the only accepted native entry is the
-calculator, and a package cannot ship executable code for the host.
-
-`calculator.bin` in the fixture is 27 bytes and is not executable; it exists to exercise the
-package path. The installer never executes or parses an artifact.
+`tests/fixtures/widgetcalc/` holds a compiled calculator package used by the scenarios;
+`tests/fixtures/widgetpkg/` holds a small package used for the install-path checks. Neither is
+built by Grimoire's build, and neither adds code to Grimoire itself.
 
 ## Packaging
 
@@ -270,11 +336,14 @@ There is no interactive Rust window. The Rust build is exercised by the headless
 take PNG screenshots of what it drew. The C simulator (`make sim`) predates widgets and does not
 have them. The fixtures and scenarios under `tests/` are the working examples:
 
-- `tests/fixtures/widgetcalc/` is an installed native calculator package (`packages/index.json` plus
-  `packages/widgets/com.grimoire.calculator/`).
-- `tests/fixtures/widgetpkg/` is a minimal WASM package, used for the install-path checks.
-- `tests/scenarios/z_widgets.qs` opens the catalog, opens the calculator, minimizes, restores,
-  drags and closes it.
+- `tests/fixtures/widgetcalc/` is an installed calculator package whose artifact is a WASM module
+  (`packages/index.json` plus `packages/widgets/com.grimoire.calculator/`).
+- `tests/fixtures/widgetpkg/` is a small package, used for the install-path checks.
+- `tests/scenarios/z_widgets.qs` opens the catalog, opens the calculator, calculates in all three
+  modes, opens the unit converter, minimizes, restores, drags and closes it. Its taps name the
+  package's hit regions (`widget.0.hit.N`), not controls built into Grimoire.
+- `tests/scenarios/z_calculator_settings.qs` changes the calculator's default and enabled modes,
+  then checks the open frame and a newly opened one.
 - `tests/scenarios/z_widget_packages.qs` drives install, update, license and remove through the
   package manager.
 
@@ -317,7 +386,9 @@ comes from `/proc/device-tree/model`; the environment variable is the simulator'
 to stand in for it.
 
 The scenario scripts cannot name a row longer than 32 bytes, so `packages.row.com.grimoire.calculator`
-is not a valid panel name. Tap its coordinates instead, as `z_widget_packages.qs` does.
+is not a valid panel name. The package controls also accept a row's index (`packages.row.0`) and a
+setting's index (`packages.setting.0`), or tap the coordinates instead, as `z_widget_packages.qs`
+does.
 
 ## Publishing
 
@@ -337,10 +408,10 @@ the old directory as `<id>.previous` until the new one is in place; a failed wri
 
 ## State
 
-A package that needs to remember something across launches writes it under
-`packages/widgets/<id>/state/` (the WASM capability for this is `storage:widget-local`). That folder
-is not part of the artifact and is never overwritten by an update. Removing the package keeps it,
-so reinstalling restores the widget's data. Nothing else of the package remains after a removal.
+A package that needs to remember something across launches writes it through `state_set`; the host
+keeps the bytes in `packages/widgets/<id>/state/runtime.bin`. That folder is not part of the
+artifact and is never overwritten by an update. Removing the package keeps it, so reinstalling
+restores the widget's data. Nothing else of the package remains after a removal.
 
 Keep state small and treat it as the reader's data: it is not backed up, not uploaded, and not
 shared between packages. There is no state migration helper; a widget that changes its format must
@@ -358,9 +429,10 @@ The manifest and artifact are fetched over HTTPS. The SHA-256 protects against a
 corrupted download; it is not a signature, and it comes from the same repository as the artifact.
 There is no package signing and no revocation list.
 
-A widget is meant to be confined to its frame and its state folder. Until the WASM host is built
-there is no runtime to confine, which is the main reason not to treat a current WASM package as a
-working widget.
+A widget is confined to its frame, its settings and its own state file. The module has no network,
+filesystem or process access; the only files the host touches for it are the artifact it was
+installed from and `state/runtime.bin`. It still runs with the reader's full screen and can draw
+misleading content, so the trust decision remains yours.
 
 ## Checklist
 
@@ -369,9 +441,9 @@ working widget.
 - [ ] an artifact at `artifact.path`, one file, at most 32 MiB
 - [ ] `artifact.size` and `artifact.sha256` match it (`tools/widget-pack.sh`)
 - [ ] `license` and a license file or `license_url`
-- [ ] `spec.runtime` and `spec.entry` are ones this build accepts
+- [ ] `spec.runtime: wasm`, and the module exports `memory`, `widget_draw` and `widget_tap`
 - [ ] `spec.size` within 120x80 and 70% of the canvas
 - [ ] `platforms` correct, `min_grimoire_version` honest
 - [ ] any `settings` keys, labels, defaults and choices are final; changing a key loses its saved value
 - [ ] tested from a clean data root: install, open, move, close, update, remove; open Settings and toggle each row
-- [ ] README says a WASM widget needs a Grimoire with the runtime
+- [ ] README says which Grimoire version runs the widget, and what it does

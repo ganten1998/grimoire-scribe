@@ -5,7 +5,8 @@
 //! bottom-right grip, and closed. Its place and size are kept in widgets.ini at the store root, so
 //! they come back on the next launch.
 //!
-//! The module is geometry and state only. editor.rs draws the frames and routes input.
+//! The module is geometry, frame state and the runtime handle. editor.rs draws the frames and
+//! routes input; widgetwasm.rs runs the package's WebAssembly.
 
 use crate::prelude::*;
 
@@ -23,24 +24,12 @@ const WIDGET_FLOOR_H: f32 = 80.0;
 /// A frame never takes more than this share of the canvas either way.
 const WIDGET_MAX_SHARE: i32 = 70;
 
-/// What a package widget draws in its body: a native implementation Grimoire carries, or package
-/// metadata where this build has no WASM host yet.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum WidgetKind {
-    /// an installed package: its body is the package's own runtime, which this build has no host for yet
-    #[default]
-    Package,
-    /// a package with `spec.runtime: native`, `spec.entry: calculator`
-    Calculator,
-}
-
 /// One entry in the widget catalog. Sizes are at 300 dpi, as the rest of the UI's constants.
 #[derive(Clone, Copy, Debug)]
 pub struct WidgetDef {
     pub id: &'static str,
     pub name: &'static str,
     pub icon: IconKind,
-    pub kind: WidgetKind,
     pub default_w: f32,
     pub default_h: f32,
     pub min_w: f32,
@@ -57,20 +46,7 @@ pub struct WidgetDef {
 /// The catalog starts empty: every widget is an installed package (widgetpkg.rs).
 pub const WIDGET_CATALOG: [WidgetDef; 0] = [];
 
-/// A native package widget's keypad, top to bottom and left to right.
-pub const CALCULATOR_KEYS: [&str; 20] = [
-    "AC", "+/-", "%", "/",
-    "7", "8", "9", "x",
-    "4", "5", "6", "-",
-    "1", "2", "3", "+",
-    "0", ".", "<", "=",
-];
-const CALCULATOR_ROWS: i32 = 5;
-const CALCULATOR_COLS: i32 = 4;
-
-/// The icon a manifest's `spec.icon` names, as one of Grimoire's own (ui.rs): a package chooses
-/// among the UI's icons, never a picture of its own, so every row and title bar draws the same
-/// glyph the rest of the app does.
+/// The icon a package names in its manifest. Unknown names get the generic grid.
 pub fn widget_icon(name: &str) -> IconKind {
     let name = name.trim().to_ascii_lowercase();
     let name = name.strip_prefix("md-").unwrap_or(&name);
@@ -99,247 +75,6 @@ pub fn widget_icon(name: &str) -> IconKind {
     }
 }
 
-/// A native calculator's state. It is `Copy`, as a frame is: a frame's calculator comes back with
-/// its place and size after a restart, and pressing keys changes no layout.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Calculator {
-    buf: [u8; 24],
-    len: u8,
-    acc: f64,
-    /// 0 none, 1 +, 2 −, 3 ×, 4 ÷
-    op: u8,
-    /// the buffer is the number being typed (a digit replaces it when false)
-    typing: bool,
-    /// the buffer is an answer: a digit starts a new sum
-    evaluated: bool,
-    error: bool,
-}
-
-impl Default for Calculator {
-    fn default() -> Self {
-        let mut c = Calculator { buf: [0; 24], len: 1, acc: 0.0, op: 0, typing: false, evaluated: false, error: false };
-        c.buf[0] = b'0';
-        c
-    }
-}
-
-impl Calculator {
-    pub fn display(&self) -> &str {
-        std::str::from_utf8(&self.buf[..self.len as usize]).unwrap_or("0")
-    }
-
-    fn set_text(&mut self, s: &str) {
-        self.len = s.len().min(self.buf.len()) as u8;
-        self.buf[..self.len as usize].copy_from_slice(&s.as_bytes()[..self.len as usize]);
-    }
-
-    fn text(&self) -> String {
-        self.display().to_string()
-    }
-
-    fn current(&self) -> f64 {
-        self.text().parse::<f64>().unwrap_or(0.0)
-    }
-
-    fn number(v: f64) -> String {
-        if !v.is_finite() {
-            return "Error".into();
-        }
-        if v.abs() >= 1_000_000_000_000.0 {
-            return format!("{v:.6e}");
-        }
-        if v.fract() == 0.0 {
-            return format!("{}", v as i64);
-        }
-        let mut s = format!("{v:.8}");
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
-        s
-    }
-
-    fn show(&mut self, v: f64) {
-        let s = Self::number(v);
-        self.error = s == "Error";
-        self.set_text(&s);
-    }
-
-    fn reset(&mut self) {
-        *self = Calculator::default();
-    }
-
-    fn digit(&mut self, d: char) {
-        if self.error || self.evaluated {
-            self.reset();
-        }
-        if !self.typing {
-            self.len = 0;
-            self.typing = true;
-        }
-        if self.len == 1 && self.buf[0] == b'0' {
-            self.len = 0;
-        }
-        if (self.len as usize) < 18 {
-            self.buf[self.len as usize] = d as u8;
-            self.len += 1;
-        }
-        if self.len == 0 {
-            self.set_text("0");
-        }
-    }
-
-    fn dot(&mut self) {
-        if self.error || self.evaluated {
-            self.reset();
-        }
-        if !self.typing {
-            self.set_text("0");
-            self.typing = true;
-        }
-        if !self.text().contains('.') && (self.len as usize) < 18 {
-            self.buf[self.len as usize] = b'.';
-            self.len += 1;
-        }
-    }
-
-    fn backspace(&mut self) {
-        if self.error || self.evaluated || !self.typing {
-            return;
-        }
-        self.len = self.len.saturating_sub(1);
-        if self.len == 0 || (self.len == 1 && self.buf[0] == b'-') {
-            self.set_text("0");
-            self.typing = false;
-        }
-    }
-
-    fn sign(&mut self) {
-        if self.error {
-            return;
-        }
-        let current = self.text();
-        if current == "0" {
-            return;
-        }
-        if current.starts_with('-') {
-            self.set_text(&current[1..]);
-        } else {
-            self.set_text(&format!("-{current}"));
-        }
-        self.typing = true;
-        self.evaluated = false;
-    }
-
-    fn percent(&mut self) {
-        if self.error {
-            return;
-        }
-        let v = self.current() / 100.0;
-        self.show(v);
-        self.typing = true;
-        self.evaluated = false;
-    }
-
-    fn apply(acc: f64, rhs: f64, op: u8) -> f64 {
-        match op {
-            1 => acc + rhs,
-            2 => acc - rhs,
-            3 => acc * rhs,
-            4 if rhs != 0.0 => acc / rhs,
-            4 => f64::NAN,
-            _ => rhs,
-        }
-    }
-
-    fn operator(&mut self, op: u8) {
-        if self.error {
-            self.reset();
-            return;
-        }
-        if self.op != 0 && self.typing {
-            self.acc = Self::apply(self.acc, self.current(), self.op);
-        } else if self.op == 0 {
-            self.acc = self.current();
-        }
-        self.op = op;
-        self.typing = false;
-        self.evaluated = false;
-        let acc = self.acc;
-        self.show(acc);
-    }
-
-    fn equals(&mut self) {
-        if self.error || self.op == 0 {
-            return;
-        }
-        let rhs = self.current();
-        let v = Self::apply(self.acc, rhs, self.op);
-        self.acc = v;
-        self.op = 0;
-        self.typing = false;
-        self.evaluated = true;
-        self.show(v);
-    }
-
-    /// One key of `CALCULATOR_KEYS`. A key outside the keypad does nothing.
-    pub fn press(&mut self, key: usize) {
-        match key {
-            0 => self.reset(),
-            1 => self.sign(),
-            2 => self.percent(),
-            3 => self.operator(4),
-            4 => self.digit('7'),
-            5 => self.digit('8'),
-            6 => self.digit('9'),
-            7 => self.operator(3),
-            8 => self.digit('4'),
-            9 => self.digit('5'),
-            10 => self.digit('6'),
-            11 => self.operator(2),
-            12 => self.digit('1'),
-            13 => self.digit('2'),
-            14 => self.digit('3'),
-            15 => self.operator(1),
-            16 => self.digit('0'),
-            17 => self.dot(),
-            18 => self.backspace(),
-            19 => self.equals(),
-            _ => {}
-        }
-    }
-}
-
-impl WidgetFrame {
-    /// The display and keypad's places inside a frame's body, as the editor draws them.
-    pub fn calculator_display(&self, body: Rect) -> Rect {
-        Rect { x: body.x, y: body.y, w: body.w, h: ui_px(78.0).min(body.h / 4) }
-    }
-
-    pub fn calculator_key(&self, body: Rect, key: usize) -> Rect {
-        let display = self.calculator_display(body);
-        let gap = ui_px(4.0);
-        let top = display.y + display.h + ui_px(10.0);
-        // Keep the bottom-right resize grip off the last key.
-        let grid_h = (body.y + body.h - ui_px(54.0) - top).max(0);
-        let kw = (body.w - gap * (CALCULATOR_COLS - 1)).max(0) / CALCULATOR_COLS;
-        let kh = (grid_h - gap * (CALCULATOR_ROWS - 1)).max(0) / CALCULATOR_ROWS;
-        if kw <= 0 || kh <= 0 {
-            return RECT_EMPTY;
-        }
-        let col = key as i32 % CALCULATOR_COLS;
-        let row = key as i32 / CALCULATOR_COLS;
-        Rect { x: body.x + col * (kw + gap), y: top + row * (kh + gap), w: kw, h: kh }
-    }
-
-    /// Which calculator key is under a point in the frame's body.
-    pub fn calculator_key_at(&self, body: Rect, x: i32, y: i32) -> Option<usize> {
-        (0..CALCULATOR_KEYS.len()).find(|&k| rect_contains(self.calculator_key(body, k), x, y))
-    }
-}
-
 /// The installed packages in name order. The package entries are cached by widgetpkg.rs and
 /// refreshed after an install, update or remove.
 pub fn widget_catalog() -> Vec<&'static WidgetDef> {
@@ -364,13 +99,13 @@ pub struct WidgetLayout {
     pub z: i32,
 }
 
-/// An open widget window.
-#[derive(Clone, Copy, Debug)]
+/// An open widget window and the generic runtime its package supplies.
+#[derive(Debug)]
 pub struct WidgetFrame {
     pub def: &'static WidgetDef,
     pub layout: WidgetLayout,
-    /// a native calculator package's state (unused by other widgets)
-    pub calc: Calculator,
+    pub runtime: Option<WidgetRuntime>,
+    pub runtime_error: Option<String>,
 }
 
 /// Where a contact came down in a frame. The editor routes input by these.
@@ -409,8 +144,25 @@ impl WidgetFrame {
                 minimized: false,
                 z: 0,
             },
-            calc: Calculator::default(),
+            runtime: None,
+            runtime_error: None,
         }
+    }
+
+    /// Loads the package's WASM instance on the first draw, or keeps the error for the body.
+    pub fn ensure_runtime(&mut self) {
+        if self.runtime.is_some() || self.runtime_error.is_some() {
+            return;
+        }
+        match WidgetRuntime::new(self.def.id) {
+            Ok(r) => self.runtime = Some(r),
+            Err(e) => self.runtime_error = Some(e),
+        }
+    }
+
+    /// The last runtime error, if its package or module could not start.
+    pub fn error(&self) -> Option<&str> {
+        self.runtime_error.as_deref().or_else(|| self.runtime.as_ref().and_then(WidgetRuntime::error))
     }
 
     /// The frame as drawn and hit: a minimized widget is a small square at its corner.
@@ -495,7 +247,7 @@ impl WidgetFrame {
 }
 
 /// The editor's open widgets. Draw order is z order; the topmost wins a hit.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct WidgetHost {
     pub frames: Vec<WidgetFrame>,
     next_z: i32,
@@ -520,6 +272,15 @@ impl WidgetHost {
 
     pub fn index_of(&self, id: &str) -> Option<usize> {
         self.frames.iter().position(|f| f.def.id == id)
+    }
+
+    /// Lets an open frame of this package read the settings that were just saved.
+    pub fn reload_settings(&mut self, id: &str) {
+        if let Some(i) = self.index_of(id) {
+            if let Some(rt) = self.frames[i].runtime.as_mut() {
+                rt.reload_settings(id);
+            }
+        }
     }
 
     /// Raises a frame to the top, returning whether its z changed.
@@ -568,7 +329,8 @@ impl WidgetHost {
         if self.is_open(def.id) || self.frames.len() >= WIDGETS_MAX {
             return;
         }
-        let mut f = WidgetFrame { def, layout, calc: Calculator::default() };
+        let mut f = WidgetFrame::new(def);
+        f.layout = layout;
         f.clamp(area);
         self.next_z = self.next_z.max(f.layout.z + 1);
         self.frames.push(f);
@@ -742,7 +504,6 @@ mod tests {
         id: "test.widget",
         name: "Test",
         icon: IconKind::Grid,
-        kind: WidgetKind::Calculator,
         default_w: 300.0,
         default_h: 420.0,
         min_w: 240.0,
@@ -831,25 +592,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn the_calculator_adds_multiplies_and_recovers_from_divide_by_zero() {
-        let mut c = Calculator::default();
-        assert_eq!(c.display(), "0");
-        for k in [12, 15, 13, 19] {
-            c.press(k);
-        }
-        assert_eq!(c.display(), "3");
-        c.press(7);
-        c.press(12);
-        c.press(13);
-        c.press(19);
-        assert_eq!(c.display(), "36");
-        c.press(0);
-        for k in [12, 3, 16, 19] {
-            c.press(k);
-        }
-        assert_eq!(c.display(), "Error");
-        c.press(12);
-        assert_eq!(c.display(), "1");
-    }
 }
