@@ -28,6 +28,8 @@ struct Track {
     chunks: Vec<(f32, f32, f32, f32)>,
     /// the length of the samples whose winding is not 0
     inside: u64,
+    /// what shows of it under its erasing (lasso.rs stroke_visible_runs): its halo's runs
+    visible: Option<VisibleRuns>,
 }
 
 /// The ink of a 2.0.0-beta.5 link with no area (its seed): all or nothing, by length (lasso_select_from).
@@ -202,6 +204,23 @@ impl LassoLive {
         out
     }
 
+    /// What shows of stroke i under its erasing (lasso.rs stroke_visible_runs), once a batch has reached it: None
+    /// when it is not tracked, Some(None) when nothing of it is erased, Some(Some(runs)) the runs that show
+    /// (empty: none). Its halo is drawn along these (issue #187).
+    pub fn visible_runs(&self, i: usize) -> Option<Option<&VisibleRuns>> {
+        self.tracks.get(i)?.as_ref().map(|t| t.visible.as_ref())
+    }
+
+    /// Whether stroke i, once tracked, shows nothing at all (every sample erased): no halo to draw.
+    pub fn invisible(&self, i: usize) -> bool {
+        matches!(self.visible_runs(i), Some(Some(r)) if r.is_empty())
+    }
+
+    /// Takes what shows of stroke i (visible_runs), for the selection the lift makes from this preview.
+    pub fn take_visible(&mut self, i: usize) -> Option<Option<VisibleRuns>> {
+        self.tracks.get_mut(i)?.as_mut().map(|t| t.visible.take())
+    }
+
     /// Whether p is still the page it was made on (no stroke added, taken off or replaced since).
     pub fn holds(&self, p: &Page) -> bool {
         p.strokes.len() == self.ids.len() && p.strokes.iter().zip(&self.ids).all(|(s, &id)| stroke_id(s) == id)
@@ -241,8 +260,9 @@ impl LassoLive {
         if self.tracks[i].is_some() {
             return;
         }
-        let Some(j) = judged_samples(p, self.floors.as_deref(), i, self.dpi, &self.erasers) else {
-            self.tracks[i] = Some(Box::new(Track { j: Judged { samples: Vec::new(), total: 1, long: false }, w: Vec::new(), chunks: Vec::new(), inside: 0 }));
+        let (j, visible) = judged_and_visible(p, self.floors.as_deref(), i, self.dpi, &self.erasers);
+        let Some(j) = j else {
+            self.tracks[i] = Some(Box::new(Track { j: Judged { samples: Vec::new(), total: 1, long: false }, w: Vec::new(), chunks: Vec::new(), inside: 0, visible }));
             return;
         };
         let chunks = j
@@ -251,7 +271,7 @@ impl LassoLive {
             .map(|c| c.iter().fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |b, q| (b.0.min(q.0), b.1.min(q.1), b.2.max(q.0), b.3.max(q.1))))
             .collect();
         let w = vec![0; j.samples.len()];
-        self.tracks[i] = Some(Box::new(Track { j, w, chunks, inside: 0 }));
+        self.tracks[i] = Some(Box::new(Track { j, w, chunks, inside: 0, visible }));
         self.made += 1;
     }
 

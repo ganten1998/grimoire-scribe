@@ -2,7 +2,8 @@
 // clipboard.rs, history.rs ActKind::Lasso, nav.rs nav_target_across; docs/beta2/LASSO-DESIGN.md 10).
 //
 // The polygon against an exact test; enclosure on handwriting-like strokes (dots and crossbars come,
-// an underline through the lasso does not, a stroke whose tail is erased is judged by what shows); link
+// an underline through the lasso does not, a stroke whose tail is erased is judged by what shows); the
+// selection's halo along what shows of a stroke (issue #187); link
 // selection; which erase strokes go with the ink; seeds; targets across notebooks; where a paste goes;
 // layers (a history's too, and the refusal at 255); placing equals drawing the page whole, plain and
 // scoped; the move oracle; the clipboard file; lasso undo and redo; and the time a move and a paste take
@@ -189,6 +190,60 @@ fn enclosure_on_handwriting() {
     page_add(&mut gone, ink(&[(100.0, 100.0), (200.0, 100.0)], 1));
     page_add(&mut gone, eraser(&[(90.0, 100.0), (210.0, 100.0)], 4.0));
     check!(!stroke_visible(&gone, 0, DPI));
+}
+
+/// The selection's halo goes along what shows of a stroke under its erasing (issue #187): a stroke with a gap
+/// erased gives the runs either side of it, one erased wholly none, one no erasing reaches (an eraser before
+/// it, or scoped to a floor after it) no runs at all (drawn whole, as before); an exact-area piece standing at
+/// its stroke's place is covered by the same erasing. What the runs leave out is paper on the page drawn, and
+/// ink shows at each run's end.
+fn halo_follows_what_shows() {
+    let mut p = page_new(800, 600, PAPER_BLANK);
+    page_add(&mut p, eraser(&[(100.0, 400.0), (300.0, 400.0)], 3.0)); // 0: before the ink it lies on
+    page_add(&mut p, ink(&[(100.0, 100.0), (300.0, 100.0)], 1)); // 1: a gap erased in its middle
+    page_add(&mut p, ink(&[(100.0, 200.0), (300.0, 200.0)], 2)); // 2: erased wholly
+    page_add(&mut p, ink(&[(100.0, 400.0), (300.0, 400.0)], 3)); // 3: only the eraser before it
+    page_add(&mut p, ink(&[(100.0, 500.0), (300.0, 500.0)], 4)); // 4: an eraser scoped to a floor after it
+    page_add(&mut p, eraser(&[(200.0, 70.0), (200.0, 130.0)], 3.0)); // 5: the gap in 1
+    page_add(&mut p, eraser(&[(80.0, 200.0), (320.0, 200.0)], 4.0)); // 6: all of 2
+    page_add(&mut p, floor_marker_new(7)); // 7
+    let mut e = eraser(&[(200.0, 470.0), (200.0, 530.0)], 3.0);
+    e.ext[1] = 7;
+    page_add(&mut p, e); // 8: scoped to the floor at 7: it never touched 4
+    let floors = page_floors(&p);
+    let f = floors.as_deref();
+    let er = page_erasers(&p);
+    let vis = |s: &Stroke, i: usize| stroke_visible_runs(&p, f, s, i, DPI, &er);
+    let c = render(&p);
+    let paper = paper_of(&p);
+    let px = |x: f32, y: f32| c.px[(y.round() as i32 * c.stride + x.round() as i32) as usize];
+    let pp = |x: f32, y: f32| paper[(y.round() as i32 * p.w + x.round() as i32) as usize];
+    // a gap: two runs, from either end, and the page shows paper between them, ink at their ends
+    let Some(r1) = vis(&p.strokes[1], 1) else {
+        check!(false);
+        return;
+    };
+    check!(r1.len() == 2);
+    check!(r1[0][0].0 == 100.0 && r1[1].last().unwrap().0 == 300.0);
+    let (a, b) = (r1[0].last().unwrap().0, r1[1][0].0);
+    check!(a < 200.0 && b > 200.0);
+    check!(((a.ceil() as i32 + 1)..(b.floor() as i32)).all(|x| px(x as f32, 100.0) == pp(x as f32, 100.0)));
+    // (a run stops within half a millimetre and the ink's radius of where the ink stops: the estimate counts a
+    // sample erased only when the whole width of the ink there is)
+    let near = (mm_to_px(0.5, DPI) + 4.0).ceil() as i32;
+    let inked = |x0: f32| (-near..=near).any(|d| px(x0 + d as f32, 100.0) < pp(x0 + d as f32, 100.0));
+    check!(inked(a) && inked(b));
+    // erased wholly: nothing shows, and the page shows paper all along it
+    check!(vis(&p.strokes[2], 2) == Some(Vec::new()));
+    check!((100..=300).all(|x| px(x as f32, 200.0) == pp(x as f32, 200.0)));
+    // an eraser before it, or one scoped to a floor after it, covers none of it: drawn whole
+    check!(vis(&p.strokes[3], 3).is_none() && vis(&p.strokes[4], 4).is_none());
+    // an exact-area piece standing at stroke 1's place (its left part, to the gap's middle): one run, its end cut
+    let piece = ink(&[(100.0, 100.0), (200.0, 100.0)], 1);
+    let rp = vis(&piece, 1);
+    check!(rp.as_ref().is_some_and(|r| r.len() == 1 && r[0][0].0 == 100.0 && r[0].last().unwrap().0 == a));
+    // standing at the end of the page, no erasing comes after it
+    check!(vis(&piece, p.strokes.len()).is_none());
 }
 
 // ---- 3. links ----
@@ -736,6 +791,7 @@ fn dense_page_timing() {
 fn test_lasso() {
     run!(polygon_matches_exact_test);
     run!(enclosure_on_handwriting);
+    run!(halo_follows_what_shows);
     run!(links_come_along);
     run!(erase_strokes_go_with_their_ink);
     run!(seeds_kept_when_free);

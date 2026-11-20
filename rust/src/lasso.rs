@@ -239,12 +239,23 @@ pub fn page_erasers(p: &Page) -> Vec<usize> {
     (0..p.strokes.len()).filter(|&j| stroke_is_erase(&p.strokes[j]) && !is_floor_marker(&p.strokes[j])).collect()
 }
 
-/// Ink stroke i of p as the lasso judges it (Judged); None when it has no spine.
-pub fn judged_samples(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, erasers: &[usize]) -> Option<Judged> {
-    let s = &p.strokes[i];
+/// What shows of an ink stroke under its erasing, as runs of its spine in order, each sample (x, y, the
+/// ink's radius there), page px: what the selection's halo is drawn along (issue #187). Empty when nothing
+/// of it shows.
+pub type VisibleRuns = Vec<Vec<(f32, f32, f32)>>;
+
+/// Ink stroke s, standing at index i of p (the stroke there, or an exact-area piece of it), as the lasso
+/// sees it: its spine, and which of its samples a later erase stroke in scope hides (hides), None when
+/// none reaches it.
+struct Seen {
+    all: Vec<Sample>,
+    hidden: Option<Vec<bool>>,
+}
+
+fn seen(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize, dpi: f32, erasers: &[usize]) -> Seen {
     let all = spine(s, dpi);
     if all.is_empty() {
-        return None;
+        return Seen { all, hidden: None };
     }
     // the erase strokes after it that reach it (and whose floor is before it)
     let near: Vec<&Stroke> = erasers
@@ -252,17 +263,71 @@ pub fn judged_samples(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, eras
         .filter(|&&j| j > i && rect_overlaps(p.strokes[j].bbox, s.bbox) && floor_index(p, f, j) < i as i64)
         .map(|&j| &*p.strokes[j])
         .collect();
-    let vis: Vec<Sample> = if near.is_empty() { all.clone() } else { all.iter().copied().filter(|q| !near.iter().any(|e| hides(e, q, dpi))).collect() };
-    let judged = if vis.is_empty() { &all } else { &vis };
-    let fx = |len: f32| (len * LEN_ONE).round() as u32;
-    let total: u64 = judged.iter().map(|q| fx(q.len) as u64).sum();
-    if total >= (mm_to_px(LASSO_SHORT_MM, dpi) * LEN_ONE).ceil() as u64 {
-        let samples = judged.iter().filter(|q| fx(q.len) > 0).map(|q| (q.x, q.y, fx(q.len))).collect();
-        return Some(Judged { samples, total, long: true });
+    let hidden = (!near.is_empty()).then(|| all.iter().map(|q| near.iter().any(|e| hides(e, q, dpi))).collect());
+    Seen { all, hidden }
+}
+
+impl Seen {
+    /// Judged: what shows of it, or its whole spine when nothing shows. None with no spine.
+    fn judged(&self, dpi: f32) -> Option<Judged> {
+        let all = &self.all;
+        if all.is_empty() {
+            return None;
+        }
+        let vis: Vec<Sample> = match &self.hidden {
+            None => all.clone(),
+            Some(h) => all.iter().zip(h).filter(|(_, &hid)| !hid).map(|(q, _)| *q).collect(),
+        };
+        let judged = if vis.is_empty() { all } else { &vis };
+        let fx = |len: f32| (len * LEN_ONE).round() as u32;
+        let total: u64 = judged.iter().map(|q| fx(q.len) as u64).sum();
+        if total >= (mm_to_px(LASSO_SHORT_MM, dpi) * LEN_ONE).ceil() as u64 {
+            let samples = judged.iter().filter(|q| fx(q.len) > 0).map(|q| (q.x, q.y, fx(q.len))).collect();
+            return Some(Judged { samples, total, long: true });
+        }
+        let n = judged.len() as f32;
+        let (cx, cy) = judged.iter().fold((0.0f32, 0.0f32), |a, q| (a.0 + q.x / n, a.1 + q.y / n));
+        Some(Judged { samples: vec![(cx, cy, 1)], total: 1, long: false })
     }
-    let n = judged.len() as f32;
-    let (cx, cy) = judged.iter().fold((0.0f32, 0.0f32), |a, q| (a.0 + q.x / n, a.1 + q.y / n));
-    Some(Judged { samples: vec![(cx, cy, 1)], total: 1, long: false })
+
+    /// None when no sample is hidden (the stroke shows whole), else the runs of samples that show.
+    fn visible(&self) -> Option<VisibleRuns> {
+        let h = self.hidden.as_ref().filter(|h| h.iter().any(|&x| x))?;
+        let mut runs: VisibleRuns = Vec::new();
+        let mut cur = Vec::new();
+        for (q, &hid) in self.all.iter().zip(h) {
+            if hid {
+                if !cur.is_empty() {
+                    runs.push(std::mem::take(&mut cur));
+                }
+            } else {
+                cur.push((q.x, q.y, q.r));
+            }
+        }
+        if !cur.is_empty() {
+            runs.push(cur);
+        }
+        Some(runs)
+    }
+}
+
+/// Ink stroke i of p as the lasso judges it (Judged); None when it has no spine.
+pub fn judged_samples(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, erasers: &[usize]) -> Option<Judged> {
+    seen(p, f, &p.strokes[i], i, dpi, erasers).judged(dpi)
+}
+
+/// What shows of ink stroke s standing at index i of p (the stroke there, or an exact-area piece of it)
+/// under the erase strokes after it in scope, by the estimate the lasso judges by: None when none of them
+/// hides any of its spine, else the runs that show (empty: nothing shows). The selection's halo is drawn
+/// along these, so erased ink never shows through it (issue #187).
+pub fn stroke_visible_runs(p: &Page, f: Option<&FloorTable>, s: &Stroke, i: usize, dpi: f32, erasers: &[usize]) -> Option<VisibleRuns> {
+    seen(p, f, s, i, dpi, erasers).visible()
+}
+
+/// judged_samples and stroke_visible_runs of ink stroke i of p together, its spine walked once (the live preview).
+pub fn judged_and_visible(p: &Page, f: Option<&FloorTable>, i: usize, dpi: f32, erasers: &[usize]) -> (Option<Judged>, Option<VisibleRuns>) {
+    let v = seen(p, f, &p.strokes[i], i, dpi, erasers);
+    (v.judged(dpi), v.visible())
 }
 
 /// Whether the lasso encloses ink stroke i of p: at least half its judged spine inside; a short one (under
