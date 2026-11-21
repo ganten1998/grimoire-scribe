@@ -20,7 +20,7 @@ rotate 1
 wait 300
 expect library.sheet is templates
 shot 02-unusable-gothic-sideways
-tap 300 1694
+tap 570 1696
 wait 100
 tap 570 1700
 wait 100
@@ -44,7 +44,7 @@ shot 03-unusable-classic
 rotate 1
 wait 300
 shot 04-unusable-classic-sideways
-tap 300 1694
+tap 570 1696
 wait 100
 tap 570 1700
 wait 100

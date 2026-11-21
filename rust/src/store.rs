@@ -4188,6 +4188,16 @@ pub fn store_page_slow(nb: &NotebookInfo, pid: u32) -> bool {
 pub fn store_page_file_bytes(nb: &NotebookInfo, pid: u32) -> Option<u64> {
     page_render_files(nb, pid).and_then(|(source, _, _)| std::fs::metadata(source).ok()).map(|m| m.len())
 }
+
+/// The key of page `index` of notebook `nb` made into a template picture for a pw x ph page (2.2, issue
+/// #195), or None when the page has no file. It is the page's file as it is now (its notebook, id, size and
+/// time): the same page gives the same picture, and one written on since gives another.
+pub fn store_page_template_key(nb: &NotebookInfo, index: i32, pw: i32, ph: i32) -> Option<u64> {
+    let pid = *nb.page_ids.get(usize::try_from(index).ok()?)?;
+    let st = std::fs::metadata(page_path(nb, pid)).ok()?;
+    let seed = format!("{}:{}:{}:{}:{}", nb.id.as_str(), pid, st.len(), st.mtime(), st.mtime_nsec());
+    Some(bgimage_source_key(seed.as_bytes(), pw, ph))
+}
 // Whether page pid has a kept drawing of its file as it is now, at the notebook's page size, by this
 // renderer, layered or not (that is told only by reading the page): the previews job's guess that the page
 // is quick to make, before it reads the page (store_load_page_render still checks it all). A drawing kept

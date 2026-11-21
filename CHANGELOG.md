@@ -37,6 +37,10 @@
   Files, a picture's card offers Use as template and Use as photo. A copy that would leave less than 100 MB free is
   refused: "Couldn't copy file. Is the storage full?". A picture over 16 MB, which Grimoire could not use as a
   template or a photo, is not copied: "Too big (over 16 MB).".
+- **Templates from a notebook** (#195). Beside From a file..., the Templates sheet has a From a notebook... tile:
+  pick a notebook and one of its pages, and that page as it looks now becomes the open page's template, drawn in
+  the background while a notice says so. Over New notebook the notebook it creates opens on that page. The
+  Templates and Photos sheets also open in the Paper sheet's rows now: six columns, three rows, the same tiles.
 - **Fonts from a file.** In the Library, Settings > Font ends with Add a font...: pick a `.ttf` or `.otf` file
   anywhere on the Kindle, the Kindle's own fonts folder first (Kindle fonts), and it is copied into
   `grimoire/fonts`, where it is checked as a font copied over USB is: its row says "Checking..." until it can be

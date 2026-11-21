@@ -16,7 +16,7 @@ tap library paper.more
 wait 200
 expect library.sheet is templates
 expect templates.ready is 0
-tap 300 2123
+tap 300 2250
 wait 100
 expect library.sheet is new
 tap 300 2250

@@ -323,6 +323,7 @@ z_tpl_8_card_after_the_job 11.2
 z_tpl_9_white_caches 28.0
 z_tpl_a_restore_first_close 1.8
 z_tpl_b_previews_leave_cards 4.1
+z_tpl_h_from_notebook 9.0
 z_undo_patches 11.7
 z_widgets 8.0
 z_wifi 1.5

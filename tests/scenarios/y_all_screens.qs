@@ -609,7 +609,7 @@ wait 100
 expect library.sheet is templates
 expect templates.count is 0
 shot 20-templates-empty-new
-tap 300 2123
+tap 300 2250
 wait 50
 expect library.sheet is new
 # From a file...: the picker's root (upright and sideways), its Import place, Back to the sheet, Cancel at its root.
@@ -869,7 +869,7 @@ wait 100
 expect editor.modal is templates
 expect templates.count is 0
 shot 25-templates-empty
-tap 300 2123
+tap 300 1835
 wait 100
 expect editor.modal is paper
 # photos: the Photos sheet with no photos yet, then Back to the Paper sheet
@@ -878,7 +878,7 @@ wait 100
 expect editor.modal is templates
 expect templates.count is 0
 shot 25-photos-empty
-tap 300 2123
+tap 300 1835
 wait 100
 expect editor.modal is paper
 tap 1562 2125
@@ -1270,7 +1270,7 @@ tap library paper.more
 wait 100
 expect library.sheet is templates
 shot 46-templates-empty-new-landscape
-tap 300 1694
+tap 570 1696
 wait 50
 expect library.sheet is new
 tap 570 1700
@@ -1328,7 +1328,7 @@ tap panel paper.more
 wait 100
 expect editor.modal is templates
 shot 48-templates-empty-landscape
-tap 300 1694
+tap 300 1734
 wait 100
 expect editor.modal is paper
 # photos, sideways
@@ -1337,7 +1337,7 @@ wait 100
 expect editor.modal is templates
 expect templates.count is 0
 shot 48-photos-empty-landscape
-tap 300 1694
+tap 300 1734
 wait 100
 expect editor.modal is paper
 tap 2182 1696
