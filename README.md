@@ -53,7 +53,7 @@ Kindle's screen in a computer's browser as you write.
 
 ## Support Grimoire
 
-Grimoire is free, open source and made by one person, with a lot of care. If it has earned a place
+Grimoire is free, open source and made by 2 people, with a lot of care. If it has earned a place
 in your notebook, you can support its development on Ko-fi:
 
 <a href="https://ko-fi.com/B0B7EF4TJ"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support Grimoire on Ko-fi" height="36"></a>
