@@ -4,7 +4,7 @@
 # tap often reached the Kindle as two, which selected and opened at once); a second pen tap within 450 ms of
 # the one that selected is the stylus bouncing.
 wait 300
-tap 326 608
+tap library card.1
 tap panel pages
 tap panel pages.graph
 expect editor.map is graph

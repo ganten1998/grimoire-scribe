@@ -9,7 +9,8 @@
 # view's composing without the panel, and the lift is as with it off.
 clock 1700000000
 wait 300
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 tap share live
@@ -19,7 +20,7 @@ tap share done
 wait 300
 expect screen is library
 expect live.on is 1
-tap 326 608
+tap library card.1
 wait 2000
 expect screen is editor
 expect editor.strokes is 12

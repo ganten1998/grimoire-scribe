@@ -128,7 +128,7 @@ wait 300
 tap library files.back
 wait 300
 expect files.open is 0
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50

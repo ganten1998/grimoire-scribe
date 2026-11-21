@@ -11,7 +11,7 @@ waitbg
 wait 300
 expect notice is
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 700
 shot 01-page-1
 expect screen is editor

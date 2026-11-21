@@ -9,7 +9,7 @@
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
 wait 3700
-tap 200 400
+tap library card.1
 wait 300
 expect editor.page is 1
 expect editor.links is 3 3

@@ -10,7 +10,8 @@ wait 300
 expect display.ink is 0
 expect display.pen_mode is 0
 # A new notebook (medium rule)
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 expect library.sheet is new
 tap 510 460
@@ -57,7 +58,7 @@ expect editor.modal is none
 pentap panel library
 wait 500
 expect screen is library
-tap 1535 95
+tap library settings
 wait 200
 expect library.sheet is settings
 tap library settings.cat.3
@@ -86,8 +87,6 @@ tap 125 95
 wait 300
 expect screen is library
 # Calibration: the check box's stroke is live ink, without the pen mode (plain DU, as before)
-tap 1535 95
-wait 200
 tap library settings.cat.3
 wait 100
 tap library calibrate

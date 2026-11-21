@@ -14,7 +14,7 @@ expect screen is library
 expect library.items is 1
 expect library.card.1 is picture
 expect library.card.1.luma is 245
-tap 326 608
+tap library card.1
 wait 600
 shot 02-page
 expect screen is editor

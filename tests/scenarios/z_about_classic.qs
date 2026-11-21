@@ -12,7 +12,8 @@
 # rust-only
 wait 200
 expect screen is library
-tap library about
+tap library apps
+tap library app.whats-new
 wait 100
 tap library about.more
 wait 100

@@ -7,7 +7,7 @@
 # rust-only
 wait 500
 expect screen is library
-tap 326 608
+tap library card.1
 wait 600
 expect screen is editor
 expect editor.paper is 1

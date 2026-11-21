@@ -11,7 +11,8 @@
 # which made the last count 1 on a slow CI runner.
 # rust-only
 wait 300
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300

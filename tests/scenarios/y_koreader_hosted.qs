@@ -18,7 +18,8 @@ shot 02-library-sideways
 rotate 0
 wait 300
 # A notebook with one stroke; Settings' Sleep settings over it, the sleep screen tapped round to the Kindle's own.
-tap library new
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254
@@ -73,5 +74,6 @@ wait 300
 shot 05-library-classic-sideways
 rotate 0
 wait 300
-tap library exit
+tap library settings
+tap library settings.exit
 expect running is 0

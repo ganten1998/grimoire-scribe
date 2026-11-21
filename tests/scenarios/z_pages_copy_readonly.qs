@@ -5,7 +5,7 @@
 # says the copy was made (the owner's toast pass), and taking down a toast left up from before must not take
 # that notice with it.
 wait 300
-tap 322 620
+tap library card.1
 wait 1000
 expect screen is editor
 expect editor.page is 1

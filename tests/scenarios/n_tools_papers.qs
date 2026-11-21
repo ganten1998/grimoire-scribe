@@ -2,7 +2,8 @@
 # Tool picker + new pens, sheet music notebook
 # rust-only
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 shot 01-new-sheet-papers
 expect library.sheet is new

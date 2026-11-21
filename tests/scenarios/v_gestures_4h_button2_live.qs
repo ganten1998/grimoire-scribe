@@ -5,7 +5,7 @@
 # env: GRIMOIRE_SIM_PEN_BUTTON2=1
 wait 200
 expect pen.gesture is
-tap 1535 95
+tap library settings
 wait 100
 expect library.ui_at.329.830 is settings.cat.4
 tap 329 830
@@ -44,7 +44,8 @@ expect library.ui_at.1735.95 is done
 tap 1735 95
 wait 100
 expect library.sheet is none
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap 510 460

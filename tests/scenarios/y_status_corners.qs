@@ -16,7 +16,8 @@ clock 1700000000
 battery 87
 wait 100
 expect settings.status_corner is 0
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254
@@ -127,7 +128,8 @@ wait 300
 key 46 0
 wait 300
 expect settings.status_corner is 2
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

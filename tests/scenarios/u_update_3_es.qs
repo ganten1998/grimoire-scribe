@@ -5,7 +5,7 @@
 # Settings > Updates in Spanish (the longer language), upright and sideways, every text checked for
 # fit: the version, a newer one with its Update row, releases only and the newest.
 wait 150
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.0
 wait 100

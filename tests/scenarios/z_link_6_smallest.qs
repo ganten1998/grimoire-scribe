@@ -3,7 +3,7 @@
 # Smallest wins (PHASE2 3.5): a big link drawn around the root's link to page 3 (300 1000 to 900 1200) and made
 # after it, to page 5 (Arena). A tap inside the small one follows the small one; elsewhere in the big one, the big.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.links is 3 3
 key 38 0

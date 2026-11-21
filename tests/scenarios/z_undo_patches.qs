@@ -9,7 +9,8 @@
 # stroke eraser, a circle that snapped while the pen held still, a new stroke after undos (no redo
 # left), and steps undone back to an empty page.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.0
 wait 100

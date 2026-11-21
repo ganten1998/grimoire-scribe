@@ -7,7 +7,7 @@
 # the catalog's own strings (the About page's line, the sheets' Done), the address and its host are shown as
 # stored. Page 2's address takes two lines. Upright, then sideways.
 wait 300
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.page is 2

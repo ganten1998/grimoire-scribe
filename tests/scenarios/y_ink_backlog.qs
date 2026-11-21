@@ -2,7 +2,8 @@
 # A queued burst must appear on screen before pen-up, retaining every sample. The old
 # unbounded main loop processed all 258 events before a single display refresh.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap 510 460
 wait 100

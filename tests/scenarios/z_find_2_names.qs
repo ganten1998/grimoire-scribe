@@ -5,7 +5,7 @@
 # no name that matches is a line that is not a button.
 # root: z_bar_0_make
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 key 34 0
 wait 300

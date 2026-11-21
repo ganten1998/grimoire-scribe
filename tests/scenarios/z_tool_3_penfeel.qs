@@ -8,7 +8,7 @@
 # settings: white=1
 # rust-only (it opens Pen feel by its Settings row's name: the rows moved in 2.0.0-beta.2)
 wait 300
-tap 1535 95
+tap library settings
 wait 200
 expect library.sheet is settings
 tap library settings.cat.3

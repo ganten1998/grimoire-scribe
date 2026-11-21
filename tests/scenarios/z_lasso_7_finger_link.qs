@@ -8,7 +8,7 @@
 # with an empty clipboard and lifted where it was, a finger does nothing at all (the ring it showed goes,
 # no toast, no undo step).
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect screen is editor
 expect editor.page is 1

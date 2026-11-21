@@ -13,7 +13,7 @@ expect library.items is 0
 expect library.hint is 1
 shot 01-library-empty
 # Phase 3: every Gestures group, with the record card in both orientations.
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.4
 wait 50
@@ -146,7 +146,7 @@ wait 50
 expect library.sheet is none
 # Settings: every row. The style row twice (the other style's sheet in between), the mirror,
 # turning and pinching rows twice, the pen button row through its four texts.
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 shot 02-settings
@@ -310,7 +310,7 @@ wait 50
 tap library settings.close
 wait 50
 expect library.sheet is none
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.4
 wait 50
@@ -323,7 +323,7 @@ wait 50
 shot 02-pair
 tap library settings.close
 wait 50
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.4
 wait 50
@@ -334,7 +334,7 @@ wait 50
 expect settings.shortcuts_enabled is 0
 tap library settings.close
 wait 50
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.4
 wait 50
@@ -345,7 +345,7 @@ shot 02-pair-shortcuts-off
 tap library settings.close
 wait 50
 expect library.sheet is none
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.0
 wait 50
@@ -356,7 +356,7 @@ shot 02-updates-no-kpm
 tap library settings.close
 wait 50
 expect library.sheet is none
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.6
@@ -368,7 +368,7 @@ shot 02-koreader-controls
 tap library settings.close
 wait 50
 expect library.sheet is none
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.1
@@ -537,8 +537,6 @@ wait 100
 expect screen is library
 # Calibration: taps that make no sense (all in one place), then the corners with the center far
 # off, then right; touch skipped with the pen; the check, then Cancel (keep the old calibration).
-tap 1535 95
-wait 50
 tap library calibrate
 wait 100
 expect screen is calib
@@ -578,7 +576,8 @@ expect library.sheet is settings
 tap library done
 wait 50
 # Share (a made-up address under make l10n-check), then its Live view card and Stop.
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 shot 18-share
@@ -593,7 +592,8 @@ expect live.on is 0
 # New notebook, Custom music and its Cancel, More papers (the Templates sheet with no templates
 # yet: how to add some) and its Back, the name's keyboard with its accents page and its Cancel,
 # then Create.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 50
 expect library.sheet is new
 shot 19-new
@@ -1090,7 +1090,7 @@ expect screen is library
 # holds a notebook, inside it and back; an empty folder ("B"): inside it, its menu, its Rename
 # keyboard and Cancel, then Remove folder.
 shot 33-library-card
-tap 548 1052
+tap library card-menu.1
 wait 50
 expect library.sheet is more
 shot 34-more
@@ -1098,7 +1098,7 @@ tap library more.pdf
 wait 50
 expect library.sheet is none
 shot 35-saving-pdf
-tap 548 1052
+tap library card-menu.1
 wait 50
 tap library more.delete
 wait 50
@@ -1108,7 +1108,8 @@ tap 930 1050
 wait 50
 expect library.sheet is none
 expect library.items is 1
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 50
 expect library.sheet is keyboard
 tap 175 2205
@@ -1117,7 +1118,7 @@ tap 1643 2365
 wait 100
 expect library.sheet is none
 expect library.items is 2
-tap 1151 1052
+tap library card-menu.2
 wait 50
 expect library.sheet is more
 tap library more.move
@@ -1128,37 +1129,38 @@ tap 930 945
 wait 100
 expect library.sheet is none
 expect library.items is 1
-tap 548 1052
+tap library card-menu.1
 wait 50
 expect library.sheet is folder-more
 shot 39-folder-more-holding
 tap library done
 wait 50
 expect library.sheet is none
-tap 326 608
+tap library card.1
 wait 100
 expect library.folder is A
 expect library.items is 1
 shot 40-in-folder
-tap 125 95
+tap library back
 wait 100
 expect library.folder is
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 50
 tap 175 2205
 tap 1101 2205
 tap 1643 2365
 wait 100
 expect library.items is 2
-tap 929 608
+tap library card.2
 wait 100
 expect library.folder is B
 expect library.items is 0
 expect library.hint is 1
 shot 41-empty-folder
-tap 125 95
+tap library back
 wait 100
-tap 1151 1052
+tap library card-menu.2
 wait 50
 expect library.sheet is folder-more
 shot 42-folder-more-empty
@@ -1169,7 +1171,7 @@ shot 43-rename-folder
 tap 217 2365
 wait 50
 expect library.sheet is none
-tap 1151 1052
+tap library card-menu.2
 wait 50
 tap library fmore.remove
 wait 100
@@ -1182,7 +1184,7 @@ rotate 1
 wait 200
 expect rotation is 1
 shot 44-library-landscape
-tap 2155 95
+tap library settings
 wait 100
 expect library.sheet is settings
 shot 45-settings-landscape
@@ -1235,7 +1237,7 @@ expect settings.shortcuts_enabled is 0
 tap library settings.close
 wait 50
 expect library.sheet is none
-tap 2155 95
+tap library settings
 wait 100
 expect library.sheet is settings
 tap library settings.cat.3
@@ -1262,7 +1264,8 @@ expect settings.side_button is 2
 tap library done
 wait 100
 expect library.sheet is none
-tap 1585 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 shot 46-new-landscape
@@ -1276,11 +1279,11 @@ expect library.sheet is new
 tap 570 1700
 wait 50
 expect library.sheet is none
-tap 267 530
+tap library card.1
 wait 100
 expect library.folder is A
 shot 47-in-folder-landscape
-tap 267 530
+tap library card.1
 wait 200
 expect screen is editor
 shot 48-editor-landscape
@@ -1415,7 +1418,7 @@ expect screen is library
 # calligraphy pen drawn with), calibration (each step, then Cancel), Share, and New notebook's
 # keyboard (both pages) and Custom music.
 expect library.folder is A
-tap 431 896
+tap library card-menu.1
 wait 50
 expect library.sheet is more
 shot 50-more-landscape
@@ -1427,7 +1430,7 @@ tap 1240 845
 wait 50
 expect library.sheet is none
 expect library.items is 1
-tap 431 896
+tap library card-menu.1
 wait 50
 tap library more.move
 wait 50
@@ -1436,21 +1439,21 @@ shot 52-move-landscape
 tap 1240 1055
 wait 50
 expect library.sheet is none
-tap 125 95
+tap library back
 wait 100
 expect library.folder is
-tap 431 896
+tap library card-menu.1
 wait 50
 expect library.sheet is folder-more
 shot 53-folder-more-landscape
-expect library.ui_at.1240.690 is fmore.move
-expect library.ui_at.1240.850 is fmore.graph
-expect library.ui_at.1240.1010 is fmore.home
-expect library.ui_at.1240.1330 is done
+expect library.ui_has.fmore.move is 1
+expect library.ui_has.fmore.graph is 1
+expect library.ui_has.fmore.home is 1
+expect library.ui_has.done is 1
 tap library done
 wait 50
 expect library.sheet is none
-tap 2155 95
+tap library settings
 wait 100
 expect library.sheet is settings
 tap library settings.cat.1
@@ -1512,8 +1515,6 @@ shot 56-penfeel-eraser-landscape
 tap 125 95
 wait 100
 expect screen is library
-tap 2155 95
-wait 50
 tap library calibrate
 wait 100
 expect screen is calib
@@ -1550,7 +1551,8 @@ expect settings.pen.valid is 0
 expect library.sheet is settings
 tap library done
 wait 50
-tap 1965 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 shot 62-share-landscape
@@ -1562,7 +1564,8 @@ tap share stop
 wait 100
 expect screen is library
 expect live.on is 0
-tap 1585 95
+tap library add
+tap library add.new-notebook
 wait 50
 expect library.sheet is new
 tap 1950 1424
@@ -1597,10 +1600,10 @@ expect rotation is 0
 # is named, so the bar's chips show a number and a name; a peek, the eye with its tip, and Go to (Find) with a
 # number, a page there is not, names that match nothing and names that do. It checks only what does not depend
 # on the language: the rows, not their words.
-tap 326 608
+tap library card.1
 wait 100
 expect library.folder is A
-tap 326 608
+tap library card.1
 wait 300
 expect screen is editor
 expect editor.pages is 3
@@ -1868,7 +1871,8 @@ tap library back
 wait 100
 expect library.folder is
 expect library.folders is A
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 tap 221 2045
 expect library.text is a
@@ -1905,7 +1909,8 @@ wait 100
 # level: a folder's bar has its name where the bat is).
 tap library back
 wait 100
-tap library about
+tap library apps
+tap library app.whats-new
 wait 100
 expect library.sheet is about
 shot 78-whatsnew-card

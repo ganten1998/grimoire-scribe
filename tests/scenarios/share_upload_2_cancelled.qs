@@ -12,7 +12,8 @@
 # (shortened to 1 s here; share_upload_4_twice holds the 5 s), so each next send waits past it.
 # rust-only
 wait 300
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 upload send send/2027 Planner.pdf
@@ -37,7 +38,8 @@ waitfor upload.reply.2 is 200 declined on the Kindle
 wait 300
 expect screen is library
 expect storage.exists.grimoire/.cache/share-upload.part is 0
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 expect share.ask is

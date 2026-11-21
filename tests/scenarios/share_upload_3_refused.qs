@@ -13,7 +13,8 @@ wait 300
 expect screen is library
 upload send send/2027 Planner.pdf
 waitfor upload.reply.1 has error
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 upload notoken send/2027 Planner.pdf

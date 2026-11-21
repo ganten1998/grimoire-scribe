@@ -2,7 +2,8 @@
 # The power button held 4 s while Grimoire was too busy to see the 4 s mark: its release, held 4 s
 # or more, leaves Grimoire just as the hold would have (the runner never sends the hold here).
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

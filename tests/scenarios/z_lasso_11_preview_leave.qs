@@ -9,7 +9,8 @@
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

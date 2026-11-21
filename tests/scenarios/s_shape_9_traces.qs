@@ -5,7 +5,8 @@
 # SYNTHETIC ONLY: owner J/K and older device drags were not supplied.
 # Python ports of fingershape_synth palm drift stand in; no owner acceptance is claimed.
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

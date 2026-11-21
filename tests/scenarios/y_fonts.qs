@@ -16,7 +16,7 @@ wait 100
 clock 1700000000
 expect settings.font is terminess
 expect font is terminess
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.1
@@ -98,7 +98,7 @@ expect display.presents is fast 1660 20 150 150, ui 0 0 1860 2480
 expect font is atkinson
 expect settings.font is atkinson
 # Settings again, in Atkinson, its Font row naming it
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50
@@ -118,7 +118,7 @@ expect library.sheet is none
 expect font is atkinson
 expect settings.font is atkinson
 # Gothic has no Font row, and keeps its own faces; the font stays picked for Classic
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50

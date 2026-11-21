@@ -176,7 +176,7 @@ expect editor.page is 1
 # It stays through closing and opening the notebook
 pentap panel library
 waitbg
-tap 200 400
+tap library card.1
 expect editor.page is 1
 expect editor.links is 1 1
 tap 600 1450

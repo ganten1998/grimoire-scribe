@@ -3,7 +3,7 @@
 # settings: mirror_pdf=0
 # copy: tests/fixtures/gestures/tap-undo .
 wait 200
-tap 1535 95
+tap library settings
 wait 100
 tap library settings.cat.4
 wait 100

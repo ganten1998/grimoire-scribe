@@ -6,7 +6,8 @@
 # first. Then the same sideways, and all of it still there once the notebook opens again.
 # rust-only
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.1
 tap 1564 2254
@@ -159,7 +160,7 @@ wait 300
 pentap panel library
 wait 300
 expect screen is library
-tap 200 400
+tap library card.1
 wait 300
 expect screen is editor
 expect editor.pages is 8

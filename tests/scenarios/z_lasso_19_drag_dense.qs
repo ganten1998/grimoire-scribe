@@ -14,7 +14,7 @@
 # undo step, one grayscale refresh; the page drawn live equals a fresh drawing, and undo puts it back exactly.
 clock 1700000000
 wait 300
-tap 326 608
+tap library card.1
 wait 2000
 expect screen is editor
 expect editor.strokes is 12

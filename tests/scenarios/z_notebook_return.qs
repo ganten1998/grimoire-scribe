@@ -40,7 +40,7 @@ expect editor.strokes is 1
 # A manual open remembers the linked destination, even without subsequent editing.
 tap panel library
 waitbg
-tap 125 95
+tap library back
 expect library.folder is
 tap library folder.Other
 tap library notebook.C

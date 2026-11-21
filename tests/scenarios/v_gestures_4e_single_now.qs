@@ -4,7 +4,8 @@
 # copy: tests/fixtures/penbutton/single-now .
 wait 200
 expect gestures.undo is pen.Button.tap
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap 510 460

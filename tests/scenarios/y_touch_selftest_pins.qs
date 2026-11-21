@@ -6,7 +6,8 @@
 # settings: mirror_pdf=0
 # settings: panel_tools=highlighter,fineliner,marker,charcoal
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

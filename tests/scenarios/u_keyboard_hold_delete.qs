@@ -18,7 +18,8 @@
 clock 1700000000
 wait 3600
 # The Library's keyboard (New folder), 1234567890 typed
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 133 1725
@@ -126,7 +127,8 @@ expect library.sheet is none
 # The Find sheet (Ctrl+F): 12 typed, then delete held: 1 at the touch-down (its row Go to page 1), the field
 # empty at 400 ms (no row), each step the text line, then the rows' card 20 1312 1820 156, then (at the
 # touch-down) the key
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

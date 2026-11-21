@@ -11,7 +11,7 @@
 # with its corners where they were drawn. A quad whose corners are all within 15 degrees of square
 # is still a rectangle.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 pen leave
 wait 1100

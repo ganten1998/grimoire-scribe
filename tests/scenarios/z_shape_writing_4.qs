@@ -7,7 +7,7 @@
 # SHAPE_BURST_MS of the last one's last sample, so none is in a writing burst and a stroke's hold does
 # not depend on the strokes before it (each part starts from the same page and settings).
 wait 300
-tap 200 400
+tap library card.1
 expect settings.shapes is 1
 expect editor.shape_snaps is 0
 pen strokes assets/eraser-sample.qpg 10 700 22

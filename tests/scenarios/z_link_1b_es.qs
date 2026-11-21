@@ -8,7 +8,7 @@
 # taps are the English scenarios' (z_link_1_make, z_link_3_find_pick, z_link_5_card, z_bar_10_card): the
 # layout does not depend on the language.
 wait 3700
-tap 200 400
+tap library card.1
 wait 300
 expect screen is editor
 expect editor.page is 1

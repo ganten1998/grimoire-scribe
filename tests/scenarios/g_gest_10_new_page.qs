@@ -7,7 +7,8 @@
 # gesture never adds one; the owner asked for the reverse). settings.ini gesture_new_page, a row of the Display
 # sheet under Sideways and the gesture-new-page action turn it off: then the swipe only says it is the last page.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

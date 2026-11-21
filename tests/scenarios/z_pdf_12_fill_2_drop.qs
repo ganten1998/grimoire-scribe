@@ -15,7 +15,7 @@ shot 01-filled
 waitbg
 wait 300
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 700
 shot 02-page-1
 expect screen is editor

@@ -4,7 +4,7 @@
 # root: z_bar_0_make
 # env: GRIMOIRE_LANG=es GRIMOIRE_CHECK_FIT=1
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect screen is editor
 swipe 2 930 1300 0 -400

@@ -13,18 +13,18 @@ shot 01-library-landscape
 expect rotation is 1
 expect size is 2480x1860
 # Settings and its X with a finger, the School folder and back with the pen
-tap 2155 95
+tap library settings
 wait 300
 shot 02-settings-landscape
 expect library.sheet is settings
 tap 2355 95
 wait 300
 expect library.sheet is none
-pentap 267 530
+pentap library folder.School
 wait 300
 shot 03-folder-landscape
 expect library.folder is School
-pentap 125 95
+pentap library back
 wait 300
 expect library.folder is
 # Turned the other way: the folder with a finger, Settings with the pen
@@ -33,13 +33,13 @@ wait 500
 shot 04-library-other-way
 expect rotation is 3
 expect size is 2480x1860
-tap 267 530
+tap library folder.School
 wait 300
 expect library.folder is School
-tap 125 95
+tap library back
 wait 300
 expect library.folder is
-pentap 2155 95
+pentap library settings
 wait 300
 shot 05-settings-other-way
 expect library.sheet is settings

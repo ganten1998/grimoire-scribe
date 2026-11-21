@@ -16,7 +16,7 @@
 waitbg
 wait 300
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 600
 expect screen is editor
 pentap panel next

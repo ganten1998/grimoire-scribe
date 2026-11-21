@@ -17,7 +17,8 @@
 clock 1700000000
 wait 3600
 wait 300
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 tap share live
 wait 300
@@ -25,7 +26,8 @@ expect live.on is 1
 tap share done
 wait 300
 expect screen is library
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

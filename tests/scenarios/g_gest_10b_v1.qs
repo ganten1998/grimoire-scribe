@@ -2,7 +2,8 @@
 # env: GRIMOIRE_TOUCH_TUNE=v1
 # settings: mirror_pdf=0
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

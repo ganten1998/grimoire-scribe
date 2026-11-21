@@ -15,7 +15,8 @@
 # rust-only
 wait 300
 expect screen is library
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 expect share.upload is none

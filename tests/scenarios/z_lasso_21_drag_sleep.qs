@@ -9,7 +9,7 @@
 # deleted the selection.) A drag after the wake moves it as any other.
 clock 1700000000
 wait 300
-tap 326 608
+tap library card.1
 wait 2000
 expect screen is editor
 expect editor.strokes is 12

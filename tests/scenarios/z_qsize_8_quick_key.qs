@@ -9,7 +9,8 @@
 # the card up is a pick: the card closes, the pen takes the next chip and the toast says the size, with no history
 # step. With Select mode on (the lasso has no size) neither key does anything.
 wait 3600
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.1
 tap 1564 2254

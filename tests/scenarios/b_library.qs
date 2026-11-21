@@ -2,7 +2,8 @@
 # Two notebooks with ink, a folder typed on the keyboard, move into it, settings, pen feel, calibration
 # rust-only
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap library paper.2
@@ -17,7 +18,8 @@ pentap panel library
 wait 400
 expect screen is library
 expect library.items is 1
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap library paper.3
@@ -42,7 +44,8 @@ expect screen is library
 expect library.items is 2
 expect library.folder is
 # New folder "School"
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 expect library.text is
@@ -62,7 +65,7 @@ shot 03-folder-created
 expect library.sheet is none
 expect library.items is 3
 # Move the newest notebook (card 1) into School
-tap 1151 1052
+tap library card-menu.3
 wait 200
 shot 04-more-menu
 expect library.sheet is more
@@ -75,17 +78,17 @@ wait 300
 shot 06-moved
 expect library.sheet is none
 expect library.items is 2
-tap 326 608
+tap library folder.School
 wait 300
 shot 07-inside-folder
 expect library.folder is School
 expect library.items is 1
-tap 125 95
+tap library back
 wait 300
 expect library.folder is
 expect library.items is 2
 # Settings sheet
-tap 1535 95
+tap library settings
 wait 200
 shot 08-settings
 expect library.sheet is settings
@@ -115,7 +118,7 @@ tap library done
 wait 300
 expect library.sheet is none
 # Calibration
-tap 1535 95
+tap library settings
 wait 200
 expect library.sheet is settings
 tap library settings.cat.3

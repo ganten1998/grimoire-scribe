@@ -4,7 +4,7 @@
 # settings: landscape_fit=1
 # Full-page landscape uses the outside margin and retains the chosen toolbar side.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.panel_rect is 1704 220 128 1842
 rotate 1

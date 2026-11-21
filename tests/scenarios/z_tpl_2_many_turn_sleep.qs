@@ -7,7 +7,8 @@
 # copy: tests/fixtures/tpl-many templates
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 400
@@ -83,7 +84,8 @@ expect editor.modal is none
 pentap panel library
 wait 600
 expect screen is library
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.more
 wait 200

@@ -3,7 +3,8 @@
 # right hand leaning the pen toward the bottom right; (-40, 46) a left hand; (0, 0) upright.
 # rust-only
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.1
 wait 50

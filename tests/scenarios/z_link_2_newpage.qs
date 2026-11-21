@@ -4,7 +4,7 @@
 # link goes to it; the editor stays on its page. Cancel and a tap outside come back to Link to...; docked at the
 # top with the card, Done adds an unnamed page.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.page is 1
 expect editor.pages is 5

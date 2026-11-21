@@ -2,7 +2,7 @@
 # env: GRIMOIRE_LANG=es GRIMOIRE_CHECK_FIT=1
 wait 100
 expect settings.theme is gothic
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.4
 wait 50
@@ -67,7 +67,7 @@ wait 100
 expect settings.theme is classic
 tap library done
 wait 50
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.4
 wait 50

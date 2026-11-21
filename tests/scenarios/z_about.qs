@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # What's new: the bat (or the name beside it) opens the card, with Read all and Dismiss and no box
 # (the owner's rule of 2026-11-05). The card shows this version's notes and ends at the last of them
-# that fits whole above the signature and the Library's pager (2.1.0's notes: all 12 upright, the first 9 sideways and the rest Read all's;
+# that fits whole above the signature and the Library's pager (2.1.0's notes: all 12 upright, the first 8 sideways and the rest Read all's;
 # 2.1.0-beta.2's: all 11 upright, the first 10 sideways;
 # 2.0.0's 11 showed all upright and the first 9 sideways, the rest Read all's; 2.1.0: sideways
 # the first 10 reached over the pager's left button and the P of its Page 1 of 1). Read all opens the list of every version's notes (2.1.0; z_about_list.qs),
@@ -16,9 +16,9 @@
 wait 200
 expect screen is library
 expect library.sheet is none
-expect library.ui_at.120.95 is about
-expect library.ui_at.400.95 is about
-tap 120 95
+expect library.ui_at.1654.153 is apps
+tap library apps
+tap library app.whats-new
 wait 100
 expect library.sheet is about
 expect library.about.full is 0
@@ -30,7 +30,7 @@ rotate 1
 wait 200
 expect library.sheet is about
 expect library.about.full is 0
-expect library.about.card_blocks is 9
+expect library.about.card_blocks is 8
 expect library.about.card_cut is 0
 shot 02-card-sideways
 rotate 0
@@ -69,7 +69,8 @@ wait 200
 tap library about.close
 wait 100
 expect library.sheet is none
-tap 400 95
+tap library apps
+tap library app.whats-new
 wait 100
 expect library.sheet is about
 expect library.about.full is 0

@@ -9,7 +9,7 @@
 # two pages), a tap on the notebook's card opens it, as it is. The pages are made meanwhile and wait; back in the
 # Library they go in (the book's notice, then the toast), and the card opens the notebook, filled.
 waitfor notice is Importing: page 1 of 2
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.pages is 2
@@ -23,7 +23,7 @@ waitfor toast is Added 2 book pages.
 waitbg
 wait 300
 expect screen is library
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.pages is 4

@@ -2,7 +2,7 @@
 # root: z_bar_0_make
 # copy: tests/fixtures/shapes .
 wait 300
-tap 200 400
+tap library card.1
 expect settings.shapes is 1
 expect editor.shape_preview is 0
 pen down 1150 1100 0.6

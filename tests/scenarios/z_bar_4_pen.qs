@@ -4,7 +4,7 @@
 # stroke the pen began is swallowed: nothing is drawn, no ink is marked live.
 # root: z_bar_0_make
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 swipe 2 930 1300 0 -400
 wait 300

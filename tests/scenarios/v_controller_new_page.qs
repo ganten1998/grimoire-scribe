@@ -5,7 +5,7 @@
 # forget and relearn it sideways, then use the saved button to control actual two-finger page turns.
 # This scenario also runs with GRIMOIRE_CHECK_FIT=1 in English/Spanish and Gothic/Classic.
 wait 150
-tap 1535 95
+tap library settings
 wait 100
 tap library settings.cat.4
 wait 100
@@ -69,7 +69,8 @@ wait 100
 expect library.sheet is none
 rotate 0
 wait 100
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

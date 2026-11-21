@@ -13,14 +13,14 @@
 wait 300
 expect screen is library
 expect annotate.book is running
-expect library.ui_at.950.60 is new
-touch down 950 60
+expect library.ui_at.1738.2358 is add
+touch down 1738 2358
 waitfor screen is editor
 expect annotate.book is done
 expect editor.pages is 4
 expect editor.page is 3
 wait 300
-touch up 950 60
+touch up 1738 2358
 wait 400
 shot 01-page-3
 expect screen is editor

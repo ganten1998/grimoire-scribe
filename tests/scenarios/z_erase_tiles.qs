@@ -8,7 +8,8 @@
 # fresh drawing of its strokes (live_matches_render), and editor.erase_tiles shows the tiles drawn
 # again against the tiles of the boxes (all it drew before 2.0.0-rc.12).
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.0
 wait 100

@@ -6,7 +6,7 @@
 # Language-neutral gallery: validated in EN/ES and Gothic/Classic.
 # The wait state plus a nonempty line asserts a refusal without depending on its translation.
 wait 200
-tap 1535 95
+tap library settings
 wait 100
 expect library.ui_at.329.830 is settings.cat.4
 pentap 329 830

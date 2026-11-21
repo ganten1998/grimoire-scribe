@@ -8,7 +8,7 @@
 # Page 2 deleted in the Pages view: its two web links go from what the editor shows, but weblinks.ini keeps their
 # lines until its next write; reopened, the notebook drops them again (the links of a page no longer in it).
 wait 300
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect settings.invert is 1
@@ -60,7 +60,7 @@ wait 400
 pentap panel library
 wait 600
 expect screen is library
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.pages is 2

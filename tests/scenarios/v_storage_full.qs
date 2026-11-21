@@ -5,7 +5,8 @@
 # make: awake, the first hold stays and says why; once there is room the page saves; and full
 # again, a second hold within the minute leaves without the page.
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

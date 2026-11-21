@@ -3,7 +3,7 @@
 # Settings > Updates when the check (as the page opens) cannot reach the feed (update.sh's status 5: no
 # network): it says so, and its button asks again rather than updating; X closes Settings.
 wait 150
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.0
 wait 100

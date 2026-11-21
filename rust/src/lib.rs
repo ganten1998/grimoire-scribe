@@ -131,6 +131,7 @@ pub mod pensettings;
 pub mod settingsmenu; // Settings' categories and rows as data (Rust only)
 pub mod share;
 pub mod status; // not a port: the clock and battery corner, Rust only (2.0.0-beta.5)
+pub mod globalui; // the global themed UI elements (2.3, issue #209)
 pub mod ui;
 pub mod upload; // Send a PDF from the Share page: the request's rules, the name shown, the temporary file (2.2, #175)
 pub mod widgets; // the editor's widget windows and widgets.ini (2.2, issue #200)

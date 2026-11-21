@@ -27,7 +27,7 @@ expect library.sheet is none
 expect toast is
 expect library.folders is School, School 2, School 2/Deep
 expect library.mirror is . 0, School 1, School 2 2, School 2_Deep 1
-tap 125 95
+tap library back
 wait 300
 expect library.items is 2
 shot 02-kept-both

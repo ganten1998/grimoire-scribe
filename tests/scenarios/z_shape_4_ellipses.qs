@@ -11,7 +11,7 @@
 # long ones (a quarter to a third as thick as long) were refused before: their errors were held to
 # the minor semi-axis alone. One 0.8 across stays an ellipse; one 0.95 across is a circle.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 pen leave
 wait 1100

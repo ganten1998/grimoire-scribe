@@ -11,7 +11,8 @@
 # share_upload_5_es_fit_gothic does in Gothic.
 # rust-only
 wait 300
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 upload send send/2027 Planner.pdf

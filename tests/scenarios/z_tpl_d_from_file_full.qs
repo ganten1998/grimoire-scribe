@@ -7,7 +7,8 @@
 # grimoire/templates (the copy's temporary file is gone).
 # rust-only
 wait 300
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.more
 wait 200

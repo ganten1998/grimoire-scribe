@@ -7,7 +7,7 @@
 # fixture puts one there again after that session's exit, so only the start (app_init) can have deleted it.
 wait 300
 expect editor.clipboard is 0
-tap 200 400
+tap library card.1
 wait 400
 expect screen is editor
 expect editor.strokes is 1

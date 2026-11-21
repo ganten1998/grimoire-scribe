@@ -2,7 +2,7 @@
 # generate: tests/map_fixture.py 2000
 # env: GRIMOIRE_BG_DELAY_MS=1500
 wait 300
-tap 326 608
+tap library card.1
 expect editor.pages is 2000
 tap panel pages
 tap panel pages.graph

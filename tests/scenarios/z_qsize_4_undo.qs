@@ -6,7 +6,8 @@
 # Undo after a pick takes back the page's last stroke, never the size; old strokes keep their width, the next one
 # has the new.
 wait 3600
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.1
 tap 1564 2254

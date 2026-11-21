@@ -8,7 +8,8 @@
 # they were). (Keyboard, upright: del 1679 2205, q 133 1885, w 310 1885, Done 1685 2365.)
 # rust-only
 wait 300
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.rename
 wait 200
@@ -49,7 +50,8 @@ waitbg
 wait 300
 expect library.items is 1
 expect library.card.1.name is qw
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300
@@ -65,7 +67,8 @@ shot 01-two
 expect library.items is 2
 expect library.card.1.name is Daily
 expect library.card.2.name is qw
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300
@@ -83,10 +86,11 @@ wait 300
 waitbg
 wait 300
 expect library.items is 3
-expect library.card.1.name is Scans
+expect library.card.3.name is Scans
 expect storage.names.documents/Scans is notes.txt|page-1.png|page-10.png|page-2.jpg
 expect storage.names.documents is Books|Planner.pdf|Scans|notes.txt
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300
@@ -105,7 +109,8 @@ waitbg
 wait 300
 expect library.items is 3
 expect storage.names.documents is Books|Planner.pdf|Scans|notes.txt
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300

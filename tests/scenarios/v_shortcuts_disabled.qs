@@ -3,7 +3,8 @@
 # env: GRIMOIRE_SLEEP_MINUTE_MS=4000
 wait 100
 expect settings.shortcuts_enabled is 0
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

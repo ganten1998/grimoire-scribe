@@ -8,7 +8,8 @@
 # a tap outside it does): the sheet stays open, and the new template's tile comes once the finger is up.
 # rust-only
 wait 300
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.more
 wait 300

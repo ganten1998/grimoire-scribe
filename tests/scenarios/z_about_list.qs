@@ -16,7 +16,8 @@
 # rust-only
 wait 200
 expect screen is library
-tap library about
+tap library apps
+tap library app.whats-new
 wait 100
 expect library.about.view is card
 expect library.about.note is 2.1.0
@@ -48,7 +49,7 @@ expect library.about.body_px is 0
 expect library.about.lead is 0
 # (Read all refreshed where the card was and where the list is, never the whole screen: the card's
 # corner and width, the list's right edge, whatever their heights)
-expect display.presents has ui 50 130 1740
+expect display.presents has ui 70 40 1750
 expect library.ui_has.about.close is 1
 expect library.ui_has.about.back is 0
 expect library.ui_has.about.next is 0
@@ -68,13 +69,13 @@ expect library.ui_has.about.back is 1
 expect library.ui_has.about.close is 1
 # (the list's and the letter's place, the letter's the taller: the Library around it stays; the letter's
 # sheet would end over the Library's pager, so it reaches down to the margin, 40 px above the edge)
-expect display.presents has ui 70 214 1720 2226
+expect display.presents has ui 70 40 1720
 shot 02-letter
 expect display.presents not -1
 tap library about.back
 wait 100
 expect library.about.view is list
-expect display.presents has ui 70 214 1720 2226
+expect display.presents has ui 70 40 1720
 expect library.about.rows is 6
 expect library.about.marked is 2
 # Sideways: the list, and the letter whole on one page too, signed: in Jersey 10's next size down (from
@@ -116,7 +117,8 @@ expect library.about.view is
 rotate 0
 wait 200
 # The keyboard: Enter opens, Esc goes back one layer; Right and Left do nothing on notes that fit.
-tap library about
+tap library apps
+tap library app.whats-new
 wait 100
 expect library.about.view is card
 key 28 0
@@ -146,18 +148,20 @@ expect library.about.view is card
 expect library.about.note is 2.1.0
 expect library.about.rows is 0
 expect library.sheet is about
-expect display.presents has ui 50 130 1740
+expect display.presents has ui 70 40 1750
 key 1 0
 wait 100
 expect library.sheet is none
-tap library about
+tap library apps
+tap library app.whats-new
 wait 100
 key 1 0
 wait 100
 expect library.sheet is none
 # Upright, this version's notes at the size Read all has always had (they are short); then Dismiss from
 # the list.
-tap library about
+tap library apps
+tap library app.whats-new
 wait 100
 tap library about.more
 wait 100

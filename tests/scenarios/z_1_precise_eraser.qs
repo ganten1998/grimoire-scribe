@@ -12,7 +12,8 @@
 # settings: mirror_pdf=0
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.1
 tap 1564 2254
@@ -159,7 +160,7 @@ wait 2000
 expect bg.busy is 0
 # Opened again: the page file holds two strokes fewer (the line and the pass over it), and the
 # page shows just as it did when it closed
-tap 326 608
+tap library card.1
 wait 500
 expect screen is editor
 expect editor.page is 1

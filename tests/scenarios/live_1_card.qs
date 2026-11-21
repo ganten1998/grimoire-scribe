@@ -6,7 +6,8 @@
 # env: GRIMOIRE_SIM_ADDRS=en0=192.168.0.20
 wait 300
 expect screen is library
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 expect live.on is 0
@@ -26,7 +27,8 @@ expect live.on is 1
 expect live.pairing is 0
 expect live.chip is 1814 4 42 42
 shot 03-library-chip
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 expect live.pairing is 1

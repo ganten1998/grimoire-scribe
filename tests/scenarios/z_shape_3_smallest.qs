@@ -6,7 +6,7 @@
 # Smallest shape (rc.9, 2.0.0-rc.12 makes it count): at 30 mm, a held circle 17 mm across stays as drawn and one
 # 51 mm across snaps.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 pen leave
 wait 1100

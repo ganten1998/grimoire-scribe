@@ -6,7 +6,7 @@
 # rust-only
 waitbg
 expect bg.busy is 0
-tap 326 608
+tap library card.1
 wait 500
 expect screen is editor
 expect editor.strokes is 1

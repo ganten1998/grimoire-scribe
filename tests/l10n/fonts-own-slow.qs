@@ -3,7 +3,7 @@
 # hook (GRIMOIRE_FONT_TEST_HANG, with a short GRIMOIRE_FONT_WATCHDOG_MS): every font of the folder takes longer
 # than a font may, and its row says "Took too long to read.", upright and sideways. (2.1.0-beta.2, Rust only)
 wait 100
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50

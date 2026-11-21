@@ -6,7 +6,7 @@
 # keys and a controller's buttons, as the notebook's page does (2.0.0-rc.12: its arrows left the bottom
 # row). A slow drag, or one mostly up and down, turns nothing.
 wait 200
-tap 200 400
+tap library card.1
 wait 200
 expect editor.pages is 120
 pentap panel pages

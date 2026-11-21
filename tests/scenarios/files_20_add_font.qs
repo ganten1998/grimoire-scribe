@@ -22,7 +22,7 @@
 # rust-only
 wait 100
 expect font is terminess
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50
@@ -194,7 +194,8 @@ tap library font.done
 wait 100
 expect library.sheet is none
 # over a notebook's page the sheet has no Add a font... row
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

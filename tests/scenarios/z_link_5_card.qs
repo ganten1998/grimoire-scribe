@@ -9,7 +9,7 @@
 # an unnamed target's Rename row adds the page to the Index; the pen on its rows works as a finger; a pen stroke
 # outside closes it and draws nothing.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.strokes is 0
 expect display.presents not -1

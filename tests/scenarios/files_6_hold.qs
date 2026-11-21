@@ -7,25 +7,25 @@
 # rust-only
 wait 300
 expect library.items is 4
-expect library.card.2.name is Beta
-# the second card (Beta, a notebook): the middle of its page, upright (by its place: the card's name is no control
+expect library.card.3.name is Beta
+# the third card (Beta, a notebook): the middle of its page, upright (by its place: the card's name is no control
 # once its menu covers it, and the lift must land where the press did)
-touch down 929 632
+touch down 1155 1020
 wait 800
 expect library.sheet is more
 shot 01-held
-touch up 929 632
+touch up 1155 1020
 wait 300
 expect library.sheet is more
 expect screen is library
 tap library done
 wait 300
 expect library.sheet is none
-# the fourth (the Files card), first of the second row
-touch down 326 1569
+# the fourth (the Files card), the top row's last card
+touch down 1607 1020
 wait 800
 expect library.sheet is files-more
-touch up 326 1569
+touch up 1607 1020
 wait 300
 expect library.sheet is files-more
 expect files.open is 0

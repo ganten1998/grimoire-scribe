@@ -16,7 +16,7 @@ expect settings.pen.panel is 1860x2480
 expect settings.touch.panel is 1860x2480
 expect library.items is 3
 # The notebook made on the 1986x2648 screen (the newest, after the School folder), with the pen
-pentap 929 608
+pentap library card.3
 wait 500
 shot 02-fitted
 expect screen is editor
@@ -79,10 +79,10 @@ expect editor.page_size is 1986x2648
 pentap panel library
 wait 500
 expect screen is library
-tap 326 608
+tap library card.1
 wait 300
 expect library.folder is School
-pentap 326 608
+pentap library card.1
 wait 500
 shot 06-own-size
 expect screen is editor

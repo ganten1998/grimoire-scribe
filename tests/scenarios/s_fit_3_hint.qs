@@ -13,7 +13,8 @@ expect library.sheet is about
 tap library about.close
 wait 100
 expect library.sheet is none
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

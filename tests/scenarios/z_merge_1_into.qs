@@ -27,15 +27,15 @@ expect library.sheet is none
 expect toast is
 expect library.folders is School, School/Deep
 expect library.mirror is . 0, School 3, School_Deep 1
-tap 125 95
+tap library back
 wait 300
 expect library.folder is
 tap library folder.School
 wait 300
 expect library.items is 4
 expect library.card.1.name is Deep
-expect library.card.2.name is Plan
+expect library.card.2.name is Notes
 expect library.card.3.name is Notes 2
-expect library.card.4.name is Notes
+expect library.card.4.name is Plan
 shot 02-merged
 quit

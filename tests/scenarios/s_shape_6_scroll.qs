@@ -3,7 +3,7 @@
 # settings: mirror_pdf=0
 # settings: landscape_fit=0
 wait 200
-tap 1535 95
+tap library settings
 wait 100
 tap library settings.cat.4
 wait 100
@@ -32,7 +32,8 @@ wait 100
 expect library.sheet is settings
 tap library done
 wait 100
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

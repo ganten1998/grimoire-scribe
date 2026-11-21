@@ -3,7 +3,8 @@
 # landscape, one server the whole visit (tests/share_check.sh downloads across the turns and
 # checks it never restarts), stopped by Done and started again by the next visit.
 wait 300
-tap 1345 95
+tap library add
+tap library add.share
 wait 700
 expect screen is share
 expect watching is 1
@@ -43,7 +44,8 @@ shot 06-library
 wait 1500
 # Share again, opened in portrait and turned while it is open: this visit starts the server
 # again and the turn keeps it (tests/share_check.sh counts one start per visit).
-tap 1345 95
+tap library add
+tap library add.share
 wait 700
 expect screen is share
 rotate 1

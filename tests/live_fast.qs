@@ -1,6 +1,7 @@
 # Continues live_check's script after both authenticated streams are attached.
 # Make a new notebook, then capture a complete pressure ramp before any rendering catches up.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 100

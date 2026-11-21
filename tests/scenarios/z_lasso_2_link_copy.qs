@@ -7,7 +7,7 @@
 # (the target rewritten n:<source>:p3, so a tap there still goes to the first notebook's page 3). Undo and
 # redo take the link with the ink; a move on its own page moves the area with it, one step.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.page is 1
 expect editor.links is 3 3
@@ -99,7 +99,8 @@ tap panel select.done
 pentap panel library
 wait 500
 expect screen is library
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

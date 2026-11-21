@@ -17,7 +17,8 @@ shot 01-waits
 expect screen is library
 expect annotate.book is running
 expect toast is Another import is still going. This one starts after it.
-tap library new
+tap library add
+tap library add.new-notebook
 wait 300
 expect library.sheet is new
 tap library done

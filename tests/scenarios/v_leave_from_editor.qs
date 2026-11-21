@@ -7,7 +7,8 @@
 # second one queues behind it.)
 # rust-only
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300
@@ -17,7 +18,8 @@ pentap panel library
 wait 400
 expect screen is library
 expect library.items is 1
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

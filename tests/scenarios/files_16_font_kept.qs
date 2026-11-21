@@ -15,7 +15,7 @@ waitbg
 waitfor font is file:GrimoireTest-Regular2.ttf
 expect font.own.drawn is 1
 shot 01-library
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50

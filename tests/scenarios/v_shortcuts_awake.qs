@@ -14,7 +14,8 @@ key 106 0
 wait 60
 expect asleep is 0
 expect power.pokes is 1
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

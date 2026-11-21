@@ -9,7 +9,7 @@
 # rust-only
 wait 300
 expect library.items is 4
-expect library.card.3.name is Alpha
+expect library.card.2.name is Alpha
 tap library notebook-menu.20261101-000000-0001
 wait 200
 expect library.sheet is more
@@ -53,8 +53,8 @@ tap library files.back
 wait 300
 expect files.open is 0
 expect library.items is 5
-expect library.card.2.name is Beta 2
+expect library.card.2.name is Alpha
 expect library.card.3.name is Beta
-expect library.card.4.name is Alpha
+expect library.card.4.name is Beta 2
 shot 03-library
 quit

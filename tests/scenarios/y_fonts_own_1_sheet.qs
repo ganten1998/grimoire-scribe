@@ -21,7 +21,7 @@
 wait 100
 expect font is terminess
 expect font.own.bytes is 0
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.1
@@ -125,7 +125,7 @@ expect font is file:GrimoireTestVariable.ttf
 expect settings.font is file:GrimoireTestVariable.ttf
 shot 09-library-variable
 # Gothic holds no custom font, and Classic has it back
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50

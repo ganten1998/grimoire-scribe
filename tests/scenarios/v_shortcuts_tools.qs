@@ -17,7 +17,8 @@
 # on the panel, next and previous tool go through the picker's nine.
 # rust-only
 wait 150
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

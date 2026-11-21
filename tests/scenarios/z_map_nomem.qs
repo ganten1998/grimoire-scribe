@@ -2,7 +2,7 @@
 # root: z_bar_0_make
 # env: GRIMOIRE_SIM_MAP_NOMEM=1
 wait 300
-tap 200 400
+tap library card.1
 tap panel pages
 tap panel pages.graph
 expect editor.map is 0

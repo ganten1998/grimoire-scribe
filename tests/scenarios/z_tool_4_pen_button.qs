@@ -4,7 +4,7 @@
 # highlights, draws white), through all four and round again, upright and sideways, the row saying each
 # as a whole sentence (01-draws-white).
 wait 300
-tap 1535 95
+tap library settings
 wait 200
 expect library.sheet is settings
 tap library settings.cat.3

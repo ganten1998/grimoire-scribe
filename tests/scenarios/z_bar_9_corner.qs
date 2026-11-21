@@ -7,7 +7,7 @@
 # panel's link-plus button commits the preview and starts a link on the visible page.
 # root: z_bar_0_make
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.page is 1
 key 38 0

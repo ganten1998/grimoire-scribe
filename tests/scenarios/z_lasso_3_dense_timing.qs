@@ -4,7 +4,7 @@
 # ("lasso: move n=... src_ms=... dst_ms=..." and "lasso: paste ..."), and the page drawn live equals a
 # fresh drawing after each, undo and redo included.
 wait 300
-tap 326 608
+tap library card.1
 wait 2000
 expect screen is editor
 expect editor.strokes is 1000

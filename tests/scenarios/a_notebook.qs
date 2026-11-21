@@ -5,7 +5,8 @@ wait 300
 shot 01-library-empty
 expect screen is library
 expect library.items is 0
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 shot 02-new-sheet
 expect library.sheet is new

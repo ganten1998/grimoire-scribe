@@ -9,7 +9,7 @@
 # square is a rectangle in Uneven allowed and Rectangles, a square in Squares only; a slanted
 # parallelogram stays one in Uneven allowed only.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 pen leave
 wait 1100

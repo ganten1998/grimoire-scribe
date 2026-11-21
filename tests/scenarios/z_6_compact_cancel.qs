@@ -8,7 +8,8 @@
 # settings: mirror_pdf=0
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254
@@ -28,7 +29,7 @@ wait 300
 expect screen is library
 expect bg.busy is 1
 # Opened while the compaction waits: it is stopped, and the page is whole
-tap 326 608
+tap library card.1
 wait 500
 expect screen is editor
 expect bg.busy is 0
@@ -43,7 +44,7 @@ wait 300
 expect bg.busy is 1
 wait 4500
 expect bg.busy is 0
-tap 326 608
+tap library card.1
 wait 500
 expect screen is editor
 expect editor.strokes is 2

@@ -30,5 +30,6 @@ shot 02-library
 expect screen is library
 expect library.items is 1
 expect library.card.1 is thumb
-tap 1750 95
+tap library settings
+tap library settings.exit
 expect running is 0

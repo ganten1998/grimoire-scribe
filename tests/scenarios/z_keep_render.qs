@@ -7,7 +7,8 @@
 # turning or closing writes the page alone), read back at the next open,
 # exactly what drawing it again gives (live_matches_render), and drawn again once its file changes.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.0
 wait 100
@@ -26,7 +27,7 @@ expect editor.live_matches_render is 1
 pentap panel library
 wait 1500
 expect screen is library
-tap 326 608
+tap library card.1
 wait 600
 expect screen is editor
 expect editor.page_kept is 1
@@ -37,7 +38,7 @@ pen line 400 1400 1200 1450 50 0.8 0.8
 wait 2500
 pentap panel library
 wait 1500
-tap 326 608
+tap library card.1
 wait 600
 expect editor.page_kept is 1
 expect editor.strokes is 4

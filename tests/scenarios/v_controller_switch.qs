@@ -15,7 +15,8 @@ expect pads.previous-tool is L1,Up
 expect pads.next-tool is R1,Down
 expect library.buttons.undo is South
 # The D-pad in the editor: Right on the last page adds one, Left goes back, Down and Up step the tools
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300
@@ -47,7 +48,7 @@ expect library.buttons.white is L
 expect library.buttons.previous-tool is ZL, Up
 expect library.buttons.next-page is RS, Right
 expect library.buttons.clear-page is none
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.4
 wait 100

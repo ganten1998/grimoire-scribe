@@ -20,7 +20,8 @@ expect toast is Last update failed. See grimoire.log.
 expect toast.rect is 476 2250 907 110
 # Live view off: no layer
 expect live.toast is
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 tap share live
 wait 300
@@ -36,7 +37,8 @@ expect live.pairing is 0
 expect live.toast is 476 2250 907 110
 expect live.toast.stale is 0
 # above the New sheet's buttons, and back
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 expect toast.rect is 476 2050 907 110
@@ -90,7 +92,8 @@ expect asleep is 0
 expect toast is
 expect live.toast is
 # a toast raised over the card is not in the frame, nor after it once it went
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 expect live.pairing is 1

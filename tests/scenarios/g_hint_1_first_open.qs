@@ -12,7 +12,8 @@ tap library about.close
 wait 100
 expect library.sheet is none
 expect settings.hints is 0
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300
@@ -28,7 +29,7 @@ wait 500
 expect screen is library
 wait 3000
 expect toast is
-tap 200 400
+tap library card.1
 wait 400
 expect screen is editor
 expect toast is

@@ -4,7 +4,8 @@
 # (one finger left turns the page by default since rc.9: unbound here)
 # copy: tests/fixtures/gestures/unbound-left .
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

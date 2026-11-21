@@ -3,7 +3,7 @@
 # The number grid, and the Find sheet's Go to page, must not load any pages except the one explicitly opened.
 # rust-only
 wait 200
-tap 200 400
+tap library card.1
 wait 200
 expect screen is editor
 expect editor.pages is 120

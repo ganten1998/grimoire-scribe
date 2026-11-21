@@ -14,7 +14,7 @@ expect annotate.result is failed
 expect annotate.leftover is 0
 expect library.items is 1
 expect toast is Couldn't add page from KOReader. Is the storage full?
-tap 326 608
+tap library card.1
 wait 600
 expect screen is editor
 expect editor.pages is 1

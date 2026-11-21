@@ -16,7 +16,7 @@ wait 100
 expect font is terminess
 expect settings.font is file:Gone.ttf
 expect settings.font_bold is Gone-Bold.ttf
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 100
@@ -58,7 +58,7 @@ expect library.sheet is none
 expect settings.font is file:Gone.ttf
 expect settings.font_bold is Gone-Bold.ttf
 # Another setting saved: the lines stay
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.6
 wait 100

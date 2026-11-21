@@ -6,7 +6,7 @@
 # pastes on page 2 where it was; on a read-only page Select and Copy work and Cut, Delete, a drag and Paste
 # are refused with nothing changed; a group wider than another notebook's page is scaled to fit there.
 wait 300
-tap 322 620
+tap library card.1
 wait 1000
 expect screen is editor
 expect editor.strokes is 2
@@ -159,7 +159,7 @@ tap panel select.done
 pentap panel library
 wait 500
 expect screen is library
-tap 930 620
+tap library card.2
 wait 1000
 expect screen is editor
 expect editor.strokes is 0

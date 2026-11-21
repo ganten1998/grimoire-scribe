@@ -5,7 +5,7 @@
 # page on show) and the go-back key says there is nowhere to go (it used to do nothing, silently).
 # root: z_bar_0_make
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 tap 600 1100
 wait 300

@@ -12,7 +12,7 @@
 # job back so the pick opens while the check runs.
 # rust-only
 wait 100
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50

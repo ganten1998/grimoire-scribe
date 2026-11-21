@@ -6,7 +6,8 @@
 # screen's left edge; it goes while a menu, sheet, bar or the Pages view is in front (they draw over the panel);
 # the other screens (Share, Library) keep it in the top right corner.
 wait 300
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 tap share live
 wait 300
@@ -15,7 +16,8 @@ tap share done
 wait 300
 expect screen is library
 expect live.chip is 1814 4 42 42
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254
@@ -73,7 +75,8 @@ tap panel library
 wait 600
 expect screen is library
 expect live.chip is 1814 4 42 42
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 expect live.pairing is 1

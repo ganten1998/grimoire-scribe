@@ -8,7 +8,7 @@
 # device listed while it is not connected.
 # rust-only
 wait 150
-tap 1535 95
+tap library settings
 wait 100
 expect library.sheet is settings
 tap library settings.cat.1
@@ -98,7 +98,8 @@ tap library settings.close
 wait 100
 expect library.sheet is none
 # In a notebook: the Pro 2's East undoes, the Arcade Stick's East and a key from no device pick the eraser.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200
@@ -130,7 +131,7 @@ expect editor.tool is pencil
 # Its own shortcuts off: the default for it too, the file kept.
 pentap panel library
 wait 300
-tap 1535 95
+tap library settings
 wait 100
 tap library settings.cat.4
 wait 100

@@ -7,7 +7,8 @@
 # file is in import/done and the place shows that folder as Imported, after Look again.
 # rust-only
 waitfor notice has Importing: page
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300

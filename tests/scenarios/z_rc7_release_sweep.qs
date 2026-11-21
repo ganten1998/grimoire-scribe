@@ -4,7 +4,8 @@
 # settings: shape_quads=0
 # env: GRIMOIRE_CHECK_FIT=1
 wait 200
-tap library new
+tap library add
+tap library add.new-notebook
 expect library.paper is 5
 tap library create
 expect editor.paper is 5
@@ -321,7 +322,7 @@ expect editor.links is 4 4
 expect editor.screen_composed is 1
 pentap panel library
 waitbg
-tap 200 400
+tap library card.1
 expect editor.links is 4 4
 expect editor.paper is 10
 tap 430 580

@@ -16,7 +16,7 @@ expect font is file:GrimoireTest-Regular.ttf
 expect font.own.drawn is 1
 expect font.guard is
 shot 01-library-own
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.1
@@ -33,7 +33,8 @@ expect font is file:GrimoireTest-Regular.ttf
 tap library done
 wait 50
 # New notebook's sheet and the keyboard in it
-tap 960 95
+tap library add
+tap library add.new-notebook
 wait 50
 shot 03-new-own
 quit

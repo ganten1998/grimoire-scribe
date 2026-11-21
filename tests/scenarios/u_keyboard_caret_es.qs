@@ -6,7 +6,8 @@
 clock 1700000000
 wait 3600
 expect language is es
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 # "nio", back two, ñ (the letters page's last key in the middle row in Spanish, 1726 2045), delete the n

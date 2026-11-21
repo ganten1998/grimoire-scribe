@@ -3,7 +3,7 @@
 # settings: mirror_pdf=0
 # Legacy Index links remain usable through the page-status menu after the destination chooser retired them.
 wait 300
-tap 200 400
+tap library card.1
 wait 1700
 expect editor.link.1 is index
 swipe 2 930 1300 0 -400

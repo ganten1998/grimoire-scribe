@@ -7,7 +7,7 @@
 wait 300
 expect settings.landscape_fit is 0
 expect screen is library
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.1
 wait 100
@@ -27,7 +27,7 @@ expect library.sheet is settings
 tap library done
 wait 300
 expect library.sheet is none
-tap 200 400
+tap library card.1
 wait 400
 expect screen is editor
 rotate 1
@@ -39,7 +39,7 @@ wait 500
 expect screen is library
 rotate 0
 wait 800
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.1
 wait 100
@@ -52,7 +52,7 @@ tap library display.back
 wait 300
 tap library done
 wait 300
-tap 200 400
+tap library card.1
 wait 400
 expect screen is editor
 expect editor.scale is 1.00

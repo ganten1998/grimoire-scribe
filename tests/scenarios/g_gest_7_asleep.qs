@@ -3,7 +3,8 @@
 # Asleep, a gesture is dropped (the screen is the Kindle's); awake again, the editor is as it was.
 # settings: mirror_pdf=0
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

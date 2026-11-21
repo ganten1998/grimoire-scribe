@@ -5,7 +5,7 @@
 # is made on (the bar stays on it first). Opening the bar while the strip is up disarms it, silently.
 # root: z_bar_0_make
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 swipe 2 930 1300 0 -400
 wait 300

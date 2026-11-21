@@ -9,7 +9,8 @@
 # copy: tests/fixtures/tpl-many templates
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 shot 01-new-gothic
@@ -33,7 +34,8 @@ wait 100
 expect library.sheet is none
 rotate 1
 wait 300
-tap 1585 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap library paper.more
@@ -52,7 +54,7 @@ expect library.sheet is none
 rotate 0
 wait 300
 # Classic (Settings, its style row, Done), the same again.
-tap 1535 95
+tap library settings
 wait 100
 expect library.sheet is settings
 tap library settings.cat.1
@@ -63,7 +65,8 @@ expect settings.theme is classic
 tap library done
 wait 100
 expect library.sheet is none
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 shot 06-new-classic
@@ -82,7 +85,8 @@ wait 100
 expect library.sheet is none
 rotate 1
 wait 300
-tap 1585 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.more
 wait 200
@@ -98,7 +102,8 @@ wait 100
 rotate 0
 wait 300
 # Over the editor's page, from its Paper sheet, upright and sideways.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 400

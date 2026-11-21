@@ -6,7 +6,8 @@
 # settings: mirror_pdf=0
 # rust-only
 wait 100
-tap 965 95
+tap library add
+tap library add.new-notebook
 tap 510 460
 tap 1564 2254
 expect editor.tool is ballpoint

@@ -6,10 +6,12 @@ wait 300
 expect screen is library
 # The Library: a finger tap while the pen hovers far away opens New folder's keyboard.
 pen hover 900 2300
-finger 1 down 1155 95
+finger 1 down 1738 2358
 frame 40
-finger 1 up 1155 95
+finger 1 up 1738 2358
 frame
+wait 50
+tap library add.new-folder
 wait 50
 expect library.sheet is keyboard
 tap 217 2365
@@ -17,10 +19,12 @@ wait 50
 # A pen hover after it left, 600 ms on: still a finger off the ink.
 pen leave
 wait 600
-finger 1 down 1155 95
+finger 1 down 1738 2358
 frame 40
-finger 1 up 1155 95
+finger 1 up 1738 2358
 frame
+wait 50
+tap library add.new-folder
 wait 50
 expect library.sheet is keyboard
 tap 217 2365
@@ -28,7 +32,8 @@ wait 50
 expect library.sheet is none
 # The keyboard: two fingers overlapping as they type (the second lands before the first lifts) type
 # both keys, in order.
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 50
 expect library.sheet is keyboard
 finger 1 down 221 2045
@@ -44,7 +49,7 @@ expect library.text is as
 tap 217 2365
 wait 50
 # Pen feel: a slider a second finger takes over (a palm, landing late) keeps the value it reached.
-tap 1535 95
+tap library settings
 tap library settings.cat.3
 tap library pen-feel
 expect screen is penset
@@ -65,7 +70,8 @@ tap 1735 95
 wait 300
 expect screen is library
 # A notebook: on its panel a finger is a finger with the pen hovering beside it (20 mm away).
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

@@ -14,7 +14,8 @@ power
 wait 3300
 expect asleep is 1
 expect input.yielded is 1
-tap 965 95
+tap 1738 2358
+tap 930 2240
 wait 100
 expect screen is library
 power
@@ -28,7 +29,8 @@ expect input.yielded is 0
 expect screen is library
 shot native-pin-resumed
 # Sleep in the middle of a stroke: the native keypad will consume its lift.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

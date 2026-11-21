@@ -35,7 +35,8 @@ tap library map.back
 expect library.map is 0
 expect main.longest_unpumped_ms is ok
 # the panel's names: a stroke makes Undo a button, found by name and at a point
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

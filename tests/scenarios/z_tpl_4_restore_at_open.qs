@@ -11,7 +11,7 @@ expect screen is library
 expect library.items is 1
 expect library.card.1 is thumb
 expect library.card.1.luma is 255
-tap 326 608
+tap library card.1
 wait 600
 expect screen is editor
 expect editor.pages is 2
@@ -24,7 +24,7 @@ expect screen is library
 expect library.card.1 is thumb
 expect library.card.1.luma is 252
 shot 01-card-drawn-again
-tap 326 608
+tap library card.1
 wait 600
 pentap panel previous
 wait 400

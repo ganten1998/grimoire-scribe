@@ -11,7 +11,7 @@
 # few degrees, not 90), drawn live exactly as a fresh drawing of the page draws them. Back at 0
 # (Sharp, a tap at the slider's left end) the corners are sharp again. A circle is no polygon.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 pen leave
 wait 1100

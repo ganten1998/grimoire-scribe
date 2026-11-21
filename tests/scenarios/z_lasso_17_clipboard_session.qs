@@ -6,7 +6,8 @@
 # is still there when the session ends (z_lasso_18_clipboard_restart starts from this root and finds it gone).
 wait 300
 expect editor.clipboard is 0
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 400
@@ -61,7 +62,8 @@ expect editor.clipboard is 1
 pentap panel library
 wait 500
 expect screen is library
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 400

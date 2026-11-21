@@ -2,7 +2,8 @@
 # Pages view: previews, tick pages 2 and 4, delete (a held page's card); open a page from its preview; select all + delete
 # rust-only
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

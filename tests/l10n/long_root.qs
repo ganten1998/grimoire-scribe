@@ -5,7 +5,7 @@
 # shows no Data line: Settings from the long root is fit-checked all the same.)
 wait 100
 expect screen is library
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 rotate 1

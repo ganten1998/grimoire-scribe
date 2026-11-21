@@ -7,7 +7,8 @@
 # editor.widget.0.status. The title's minimize button shrinks it and a tap on the title restores it;
 # the title bar drags; the close button removes it.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

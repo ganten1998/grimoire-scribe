@@ -12,7 +12,7 @@
 # settings: status_mode=1
 # rust-only
 wait 300
-tap 200 400
+tap library card.1
 wait 200
 expect screen is editor
 expect editor.page is 1

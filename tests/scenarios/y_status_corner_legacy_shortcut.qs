@@ -6,7 +6,8 @@ wait 500
 clock 1700000000
 battery 37
 hid attach pad Pro Controller
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 500

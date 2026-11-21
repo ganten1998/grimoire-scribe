@@ -5,7 +5,8 @@
 # sensor has the row; GRIMOIRE_SIM_LIGHT_SENSOR gives the simulator one. The light itself is the
 # power service's, which follows its sensor while the row is ticked.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

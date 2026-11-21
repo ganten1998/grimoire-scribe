@@ -3,6 +3,7 @@
 
 use crate::prelude::*;
 use crate::about::AboutView;
+use crate::globalui::{gui_app_tile, gui_chip, gui_fab, gui_icon_button, gui_popup, gui_radius, gui_select, gui_status_bar, gui_text_field, gui_gap, gui_margin, gui_status_h, GuiPopupItem};
 use crate::settingsmenu;
 use crate::ui::{ui_row, ui_row_page, ui_row_pager, Row as UiRow};
 use crate::browser::{BrowseMode, Browser, BrowserResult, FilesPrefs, PickSpec};
@@ -61,6 +62,12 @@ enum Modal {
     /// Settings > System > Darker lines in imported PDFs (2.2, issue #173, Rust only; a number of its own, beside the
     /// eraser's): Off, Medium, Strong, as the eraser's list
     DarkerLines = 385,
+    /// The home's All apps page (2.3, issue #209, Rust only; numbered past the C's sheets as Exit's)
+    Apps = 301,
+    /// The home's + slide-up (2.3, issue #209): New notebook, New folder, Import over Wi-Fi
+    Add = 302,
+    /// The home's Sort slide-up (2.3, issue #209): Name A-Z, Name Z-A, Newest first, Oldest first
+    Sort = 303,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -85,6 +92,8 @@ enum KbPurpose {
     WifiName = 6,      // the Wi-Fi sheet's hidden network name entry
     WifiEapUser = 7,   // the Wi-Fi sheet's enterprise username entry
     WifiEapPassword = 8, // the Wi-Fi sheet's masked enterprise password entry
+    /// The home's global search (2.3, issue #209): filters as the text is typed
+    Search = 9,
 }
 
 const H_NONE: i32 = 0;
@@ -238,6 +247,19 @@ const H_DARKER_PICK: i32 = 251;
 const H_DARKER_BACK: i32 = 252;
 // Settings > Packages > Widgets (2.2, issue #200): the widget package manager (widgetpkgui.rs).
 const H_SET_PACKAGES: i32 = 260;
+// The home's global elements (2.3, issue #209): its filter chips (arg: 0 All, 1 Notebooks, 2 Folders),
+// the Sort select and its choices (arg: the sort), the search field and its clear button, the + button
+// and its slide-up's rows (arg: 0 notebook, 1 folder, 2 Share), the apps buttons and the All apps page.
+const H_FILTER: i32 = 270;
+const H_SORT: i32 = 271;
+const H_SORT_PICK: i32 = 272;
+const H_SEARCH: i32 = 273;
+const H_SEARCH_CLEAR: i32 = 274;
+const H_ADD: i32 = 275;
+const H_ADD_ACTION: i32 = 276;
+const H_APPS: i32 = 277;
+const H_APP: i32 = 278;
+const H_APPS_CLOSE: i32 = 279;
 // Settings > Wi-Fi's top controls and lists: Nearby/Saved (arg: 0 or 1), Rescan, Other... (a hidden
 // network), a saved row's trash (arg: a row), and a network a scan found (arg: an index of
 // WifiSheet.near). The saved rows keep H_WIFI_NET.
@@ -259,6 +281,8 @@ const H_SET_CAT: i32 = 100;
 const H_SETTINGS_BACK: i32 = 101;
 /// Every Settings page's X: the whole of Settings closes (a submenu's Back stays one step back).
 const H_SETTINGS_CLOSE: i32 = 102;
+/// The Exit row at the foot of Settings' sidebar: Grimoire leaves, as the old All apps page's Exit did.
+const H_SETTINGS_EXIT: i32 = 103;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -339,6 +363,17 @@ pub struct LibraryState {
     cur_folder: FixedStr<STORE_NAME_LEN>,
     folder_move_page: usize,
     page: i32,
+    /// The home's view (2.3, issue #209): the filter chip (0 All, 1 Notebooks, 2 Folders), the sort
+    /// (0 Name A-Z, 1 Name Z-A, 2 Newest first, 3 Oldest first), the search query and whether the
+    /// keyboard is editing it. all_items is every folder and notebook before the view is applied;
+    /// items is the grid's page, which the view builds.
+    filter: i32,
+    sort: i32,
+    query: String,
+    search_active: bool,
+    all_items: Vec<Item>,
+    /// the minute the status bar last showed (library_tick redraws when it changes)
+    status_min: i64,
     /// per notebook, lazily loaded (px empty until then)
     thumbs: Vec<Canvas>,
     thumb_tried: Vec<bool>,
@@ -509,47 +544,98 @@ fn lib(a: &mut App) -> &mut LibraryState {
 const LABEL_CAP: usize = STORE_NAME_LEN + 32;
 
 // ---- layout ----
+/// The status bar and the header (draw_base).
 fn top_h() -> i32 {
-    ui_px(190.0)
+    gui_status_h() + head_h()
 }
-/// The top bar's buttons' height, centred in the bar (draw_base).
-fn top_btn_h() -> i32 {
+/// The header's height under the status bar: the Library's name, search, apps and settings buttons.
+fn head_h() -> i32 {
     ui_px(150.0)
 }
-/// Where the top bar's buttons end; about.rs starts a sheet that would cut across them at the margin.
-pub(crate) fn top_buttons_foot() -> i32 {
-    (top_h() - top_btn_h()) / 2 + top_btn_h()
+/// The header's round buttons, centred in it.
+fn top_btn_h() -> i32 {
+    ui_px(96.0)
 }
-/// The pager's bar at the foot (its rule 10 px above it); about.rs keeps a version's notes off it.
+/// Where the header's buttons end; about.rs starts a sheet that would cut across them at the margin.
+pub(crate) fn top_buttons_foot() -> i32 {
+    top_h()
+}
+/// The pager and + button's bar at the foot (its rule above it); about.rs keeps a version's notes off it.
 pub(crate) fn bottom_h() -> i32 {
-    ui_px(170.0)
+    ui_px(190.0)
 }
 fn margin() -> i32 {
-    ui_px(50.0)
+    gui_margin()
+}
+/// The global search field's height, the apps row's and the filter chips'.
+fn search_h() -> i32 {
+    ui_px(100.0)
+}
+fn apps_h() -> i32 {
+    ui_px(240.0)
+}
+fn filters_h() -> i32 {
+    ui_px(88.0)
 }
 fn grid_top() -> i32 {
-    // The Gothic frieze hangs below the header rule; leave air under its drops.
-    top_h()
-        + margin()
-        + if ui_theme() == UiTheme::Gothic {
-            ui_px(24.0)
-        } else {
-            0
-        }
+    top_h() + 4 * gui_gap() + search_h() + apps_h() + filters_h()
+}
+fn card_label_h() -> i32 {
+    ui_px(150.0)
 }
 
-/// cols, rows, cw, ch for a screen aw x ah.
+/// The installed apps' order on the carousel and the All apps page. Only these three are apps; Exit
+/// lives at the foot of Settings' sidebar, and What's new is a utility link on the All apps page.
+fn home_apps() -> [(IconKind, &'static str, i32); 3] {
+    [
+        (IconKind::Browser, "Files", 0),
+        (IconKind::Share, "Share", 1),
+        (IconKind::Gear, "Settings", 2),
+    ]
+}
+
+/// cols, rows, cw, ch for a screen aw x ah. The covers are portrait (4:3) and the labels sit under
+/// them, so a page shows fewer, taller cards than the old square grid.
 fn grid_geom(aw: i32, ah: i32) -> (i32, i32, i32, i32) {
-    let cols = if aw > ah { 5 } else { 3 }; // more, smaller cards when the Kindle is sideways
+    let cols = if aw > ah { 5 } else { 4 };
     let cw = (aw - margin() * (cols + 1)) / cols;
-    let th = cw * 4 / 3;
-    let ch = th + ui_px(150.0);
     let avail = ah - grid_top() - bottom_h();
+    let max_cover = (avail - margin() - card_label_h()).max(ui_px(200.0));
+    let th = (cw * 4 / 3).min(max_cover);
+    let ch = th + card_label_h();
     let mut rows = avail / (ch + margin());
     if rows < 1 {
         rows = 1;
     }
     (cols, rows, cw, ch)
+}
+
+fn fab_rect(aw: i32, ah: i32) -> Rect {
+    let fs = ui_px(144.0);
+    Rect::new(aw - margin() - fs, ah - margin() - fs, fs, fs)
+}
+
+fn sort_rect(aw: i32) -> Rect {
+    let sort_w = ui_px(400.0).min(aw / 3);
+    let fy = top_h() + gui_gap() + search_h() + gui_gap() + apps_h() + gui_gap();
+    Rect::new(aw - margin() - sort_w, fy, sort_w, filters_h())
+}
+
+/// The `...` of the card at `target` on `page`: the popup menus hang from the control that opened them.
+fn card_more_rect(aw: i32, ah: i32, target: i32, page: i32) -> Rect {
+    let (cols, _, cw, ch) = grid_geom(aw, ah);
+    let pp = cols * grid_geom(aw, ah).1;
+    let local = (target - page * pp).max(0);
+    let col = local % cols;
+    let row = local / cols;
+    let th = (ch - card_label_h()).max(ui_px(120.0));
+    let more = ui_px(110.0);
+    Rect::new(
+        margin() + col * (cw + margin()) + cw - more,
+        grid_top() + row * (ch + margin()) + th + ui_px(20.0),
+        more,
+        more,
+    )
 }
 
 fn per_page(a: &App) -> i32 {
@@ -566,6 +652,7 @@ fn empty_hint_shown(s: &LibraryState) -> bool {
 // ---- data ----
 
 fn free_lists(s: &mut LibraryState) {
+    s.all_items = Vec::new();
     for t in s.thumbs.iter_mut() {
         canvas_free(t);
     }
@@ -576,6 +663,107 @@ fn free_lists(s: &mut LibraryState) {
     s.books = Vec::new();
     s.folders = Vec::new();
     s.items = Vec::new();
+}
+
+/// The home's search matches a name without caring about case (issue #209: the search is global,
+/// across every folder, while a query is typed).
+fn name_matches(name: &str, query: &str) -> bool {
+    query.is_empty() || name.to_lowercase().contains(query)
+}
+
+/// Folders first, then notebooks, then the Files card: the modern home keeps the list's groups.
+fn item_group(it: &Item) -> i32 {
+    if it.is_folder {
+        0
+    } else if it.is_files {
+        2
+    } else {
+        1
+    }
+}
+
+fn item_name<'a>(s: &'a LibraryState, it: &'a Item) -> &'a str {
+    if it.is_files {
+        tr("Files")
+    } else if it.is_folder {
+        store_folder_leaf(it.folder.as_str())
+    } else {
+        s.books[it.nb].name.as_str()
+    }
+}
+
+/// Build the grid's page from every item and the home's view: the filter chips, the sort, and the
+/// search (a non-empty query searches every folder, not just the one shown). Cheap enough to run at
+/// each key of the search keyboard: it reads the lists already loaded, never the storage.
+fn apply_view(s: &mut LibraryState, pp: i32) {
+    let query = s.query.trim().to_lowercase();
+    let searching = !query.is_empty();
+    let filter = clampi(s.filter, 0, 2);
+    let mut items: Vec<Item> = Vec::with_capacity(s.all_items.len());
+    for it in s.all_items.iter().copied() {
+        if it.is_files {
+            if filter != 0 || (!searching && !s.cur_folder.is_empty()) {
+                continue;
+            }
+            if searching && !name_matches(tr("Files"), &query) && !"files".contains(&query) {
+                continue;
+            }
+            items.push(it);
+        } else if it.is_folder {
+            if filter == 1 {
+                continue;
+            }
+            if !searching && store_folder_parent(it.folder.as_str()) != s.cur_folder.as_str() {
+                continue;
+            }
+            if searching && !name_matches(store_folder_leaf(it.folder.as_str()), &query) {
+                continue;
+            }
+            items.push(it);
+        } else {
+            if filter == 2 {
+                continue;
+            }
+            let nb = &s.books[it.nb];
+            if !searching && nb.folder != s.cur_folder {
+                continue;
+            }
+            if searching && !name_matches(nb.name.as_str(), &query) {
+                continue;
+            }
+            items.push(it);
+        }
+    }
+    let sort = clampi(s.sort, 0, 3);
+    items.sort_by(|a, b| {
+        let ga = item_group(a);
+        let gb = item_group(b);
+        if ga != gb {
+            return ga.cmp(&gb);
+        }
+        if (sort == 2 || sort == 3) && ga == 1 {
+            let ma = s.books[a.nb].modified;
+            let mb = s.books[b.nb].modified;
+            let ord = if sort == 2 { mb.cmp(&ma) } else { ma.cmp(&mb) };
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+        let na = item_name(s, a).to_lowercase();
+        let nb = item_name(s, b).to_lowercase();
+        let ord = na.cmp(&nb);
+        if sort == 1 { ord.reverse() } else { ord }
+    });
+    s.items = items;
+    let pages = (s.items.len() as i32 + pp - 1) / pp;
+    s.page = clampi(s.page, 0, if pages > 0 { pages - 1 } else { 0 });
+}
+
+/// Re-lay out what the home already knows (a filter, a sort, a typed search), without reading the
+/// storage again.
+fn refresh_view(a: &mut App) {
+    let pp = per_page(a);
+    apply_view(lib(a), pp);
 }
 
 fn reload(a: &mut App) {
@@ -591,38 +779,38 @@ fn reload(a: &mut App) {
     s.thumb_tried = vec![false; nbooks];
     s.thumb_picture = vec![false; nbooks];
     s.card_stamp = vec![0; nbooks];
-    s.items = Vec::with_capacity(nbooks + s.folders.len() + 1);
-    {
-        for f in 0..s.folders.len() {
-            if store_folder_parent(&s.folders[f]) != s.cur_folder.as_str() {
-                continue;
-            }
-            let mut it = Item { is_folder: true, ..Default::default() };
-            it.folder.set(&s.folders[f]);
-            for i in 0..nbooks {
-                it.count += store_folder_contains(&s.folders[f], s.books[i].folder.as_str()) as i32;
-            }
-            it.has_children = s.folders.iter().any(|child| child != &s.folders[f] && store_folder_contains(it.folder.as_str(), child));
-            s.items.push(it);
+    s.all_items = Vec::with_capacity(nbooks + s.folders.len() + 1);
+    // Every folder, not just this one: the search is global, and apply_view picks what shows.
+    for f in 0..s.folders.len() {
+        let mut it = Item { is_folder: true, ..Default::default() };
+        it.folder.set(&s.folders[f]);
+        for i in 0..nbooks {
+            it.count += store_folder_contains(s.folders[f].as_str(), s.books[i].folder.as_str()) as i32;
         }
+        it.has_children = s.folders.iter().any(|child| child != &s.folders[f] && store_folder_contains(it.folder.as_str(), child));
+        s.all_items.push(it);
     }
     for i in 0..nbooks {
-        if s.books[i].folder == s.cur_folder {
-            s.items.push(Item {
-                nb: i,
-                ..Default::default()
-            });
-        }
+        s.all_items.push(Item { nb: i, ..Default::default() });
     }
     // Where the Files card goes (2.2), decided here and nowhere else: after every folder and notebook of the top
     // level, so it is the Library's last card (on its last screen), and no notebook's place changes for it. (The
     // last card of the first screen instead would be an insert at the screen's last place here.)
     if files_card && s.cur_folder.is_empty() {
-        s.items.push(Item { is_files: true, ..Default::default() });
+        s.all_items.push(Item { is_files: true, ..Default::default() });
         s.files_free = crate::browser::files_free_line();
     }
-    let pages = (s.items.len() as i32 + pp - 1) / pp;
-    s.page = clampi(s.page, 0, if pages > 0 { pages - 1 } else { 0 });
+    apply_view(s, pp);
+}
+
+/// The Sort select's value (and the Sort sheet's rows): the modern home's order.
+fn sort_name(sort: i32) -> &'static str {
+    match clampi(sort, 0, 3) {
+        0 => tr("Name (A-Z)"),
+        1 => tr("Name (Z-A)"),
+        2 => tr("Newest first"),
+        _ => tr("Oldest first"),
+    }
 }
 
 fn unique_name(
@@ -741,9 +929,9 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
         draw_files_card(c, s, r, idx);
         return;
     }
-    let th = r.w * 4 / 3;
+    let th = (r.h - card_label_h()).max(ui_px(120.0));
     let tb = Rect::new(r.x, r.y, r.w, th);
-    ui_frame(c, tb, ui_px(16.0), 255, true, 0);
+    ui_frame(c, tb, gui_radius(), 255, true, 0);
     if it.is_folder {
         ui_icon(c, IconKind::Folder, rect_inflate(tb, -r.w / 5), 0);
     } else {
@@ -755,7 +943,7 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
         }
         c.clip = saved;
     }
-    ui_frame(c, tb, ui_px(16.0), 0, false, ui_px(4.0));
+    ui_frame(c, tb, gui_radius(), 0, false, ui_px(4.0));
     let mut line2 = String::new();
     let mut label = String::new();
     let title: &str;
@@ -830,11 +1018,11 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
 /// The Files card (2.2): Files' icon where a notebook's page is, its name, the storage's free space as Files' root
 /// says it (left out when it does not fit), and its `...` (Open, Hide from Library).
 fn draw_files_card(c: &mut Canvas, s: &mut LibraryState, r: Rect, idx: usize) {
-    let th = r.w * 4 / 3;
+    let th = (r.h - card_label_h()).max(ui_px(120.0));
     let tb = Rect::new(r.x, r.y, r.w, th);
-    ui_frame(c, tb, ui_px(16.0), 255, true, 0);
+    ui_frame(c, tb, gui_radius(), 255, true, 0);
     ui_icon(c, IconKind::Files, rect_inflate(tb, -r.w / 5), 0);
-    ui_frame(c, tb, ui_px(16.0), 0, false, ui_px(4.0));
+    ui_frame(c, tb, gui_radius(), 0, false, ui_px(4.0));
     let more = ui_px(110.0);
     let tr_ = Rect::new(r.x, r.y + th + ui_px(14.0), r.w - more - ui_px(10.0), ui_px(96.0));
     let face = if ui_theme() == UiTheme::Gothic { FontFace::Regular } else { FontFace::Bold };
@@ -859,167 +1047,118 @@ fn draw_base(a: &mut App) {
     let s = lib.as_deref_mut().unwrap();
     hits_clear(&mut s.hits);
     canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
-    let th = top_h();
+
+    // The status bar (2.3, issue #209): time and date, Wi-Fi and Bluetooth, the battery.
+    gui_status_bar(c, aw, wall_time());
+
     let m = margin();
-    let mut bw = ui_px(170.0);
+    let gap = gui_gap();
+    let hy = gui_status_h();
+    let hh = head_h();
     let bh = top_btn_h();
-    let by = (th - bh) / 2;
-    let mut x = m;
+    let by = hy + (hh - bh) / 2;
+    let mut title_x = m;
     if !s.cur_folder.is_empty() {
-        let br = Rect::new(x, by, bh, bh);
-        ui_button(c, br, IconKind::Back, "", ButtonStyle::Plain);
+        let br = Rect::new(m, by, bh, bh);
+        gui_icon_button(c, br, IconKind::Back, ButtonStyle::Plain);
         hits_add(&mut s.hits, br, H_BACK, 0);
-        x += bh + ui_px(30.0);
+        title_x = br.x + bh + ui_px(22.0);
     }
-    struct Btn {
-        icon: IconKind,
-        label: &'static str,
-        id: i32,
-        show: bool,
-    }
-    let mut btns = [
-        // TRANSLATORS: the Library's top bar, a word under each icon, at 34 px: 132 px in Gothic
-        // (138 for all but New) and 154 px in Classic. A longer word widens all five buttons, up to
-        // 182 px in Gothic (188 for all but New) and 204 px in Classic. Exit leaves Grimoire.
-        Btn {
-            icon: IconKind::Exit,
-            label: tr("Exit"),
-            id: H_EXIT,
-            show: true,
-        },
-        // TRANSLATORS: the Library's top bar (see Exit).
-        Btn {
-            icon: IconKind::Gear,
-            label: tr("Settings"),
-            id: H_SETTINGS,
-            show: true,
-        },
-        // TRANSLATORS: the Library's top bar (see Exit): to the Share screen (over Wi-Fi).
-        Btn {
-            icon: IconKind::Share,
-            label: tr("Share"),
-            id: H_SHARE,
-            show: true,
-        },
-        // TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
-        Btn { icon: IconKind::FolderPlus, label: tr("Folder"), id: H_NEWFOLDER, show: true },
-        // TRANSLATORS: the Library's top bar (see Exit): makes a new notebook.
-        Btn {
-            icon: IconKind::Plus,
-            label: tr("New"),
-            id: H_NEW,
-            show: true,
-        },
-    ];
-    // Started from KOReader's Grimoire plugin (kindle/app/grimoire.sh --hosted koreader), Exit goes
-    // back to KOReader.
-    let hosted = std::env::var_os("GRIMOIRE_HOST").is_some_and(|h| h == "koreader");
-    if hosted {
-        // The Library's top bar when Grimoire was opened from KOReader: in place of Exit, it opens
-        // KOReader (a name, not translated), using the same button width as its neighbors.
-        btns[0].label = "KOReader";
-    }
-    const NBTNS: usize = 6;
-    // A word too long for its button (a translation) widens all five alike, as far as leaves the
-    // app's name room in the bar (beyond that a word is cut, and the fit check hears of it).
-    for b in btns.iter() {
-        let need = ui_button_need_w(
-            bh,
-            b.icon,
-            b.label,
-            if b.id == H_NEW {
-                ButtonStyle::Primary
-            } else {
-                ButtonStyle::Plain
-            },
-        );
-        if b.show {
-            bw = clampi(need, bw, ui_px(220.0));
-        }
-    }
+    // The header's two round buttons, right to left: Settings and All apps. Search is the field
+    // below the title; it has no duplicate button in the header.
     let mut rx = aw - m;
-    for b in btns.iter().take(NBTNS) {
-        if !b.show {
-            continue;
-        }
-        let w = bw;
-        rx -= w;
-        let r = Rect::new(rx, by, w, bh);
-        ui_button(
-            c,
-            r,
-            b.icon,
-            b.label,
-            if b.id == H_NEW {
-                ButtonStyle::Primary
-            } else {
-                ButtonStyle::Plain
-            },
-        );
-        hits_add(&mut s.hits, r, b.id, 0);
-        rx -= ui_px(20.0);
+    for (icon, id) in [(IconKind::Gear, H_SETTINGS), (IconKind::Grid, H_APPS)] {
+        let r = Rect::new(rx - bh, by, bh, bh);
+        gui_icon_button(c, r, icon, ButtonStyle::Plain);
+        hits_add(&mut s.hits, r, id, 0);
+        rx = r.x - ui_px(12.0);
     }
-    if !s.cur_folder.is_empty() {
-        ui_icon(
-            c,
-            IconKind::Folder,
-            Rect::new(x, by + ui_px(25.0), ui_px(100.0), ui_px(100.0)),
-            0,
-        );
-        x += ui_px(115.0);
-    } else {
-        // The bat, Grimoire's mark: a tap on it (or on the name beside it) opens What's new.
-        let k = ui_px(3.0);
-        let bat = Rect::new(x, (th - BAT_H * k) / 2, BAT_W * k, BAT_H * k);
-        draw_bat(c, bat.x, bat.y, k);
-        s.about_bat = bat;
-        x += bat.w + ui_px(34.0);
-    }
-    // (A folder's name, cut short if it must be; else the app's.)
-    let mut label = String::new();
-    let title_px = ui_title_size()
-        * if ui_theme() == UiTheme::Gothic {
-            1.8
-        } else {
-            1.25
-        };
+    let mut title_buf = String::new();
     let title = if !s.cur_folder.is_empty() {
-        ui_name_label(s.cur_folder.as_str(), &mut label, LABEL_CAP)
+        ui_name_label(s.cur_folder.as_str(), &mut title_buf, LABEL_CAP)
     } else {
-        APP_NAME
+        tr("Library")
     };
-    let title_rect=Rect::new(x,0,rx-x-ui_px(20.0),th);
-    if !s.cur_folder.is_empty() {
-        ui_text_name(c,FontFace::Title,ui_title_size()*1.2,ui_small_size(),title_rect,title,2,0);
+    let title_px = ui_title_size() * if ui_theme() == UiTheme::Gothic { 1.75 } else { 1.1 };
+    let title_r = Rect::new(title_x, hy, (rx - title_x).max(0), hh);
+    if ui_theme() == UiTheme::Gothic {
+        font_draw_left_name(c, FontFace::Title, title_px, title_r, title, 0);
     } else {
-        font_draw_left_name(c,FontFace::Title,title_px,title_rect,title,0);
-        let name_w = font_measure(FontFace::Title, title_px, title).min(title_rect.w);
-        hits_add(&mut s.hits, Rect::new(0, 0, x + name_w + ui_px(20.0), th), H_ABOUT, 0);
+        ui_text(c, FontFace::Title, title_px, ui_small_size(), title_r, title, 1, false, 0);
     }
-    ui_rule(c, 0, aw, th, ui_px(4.0), 0);
-    ui_frieze(c, 0, aw, th + ui_px(9.0), ui_px(28.0), 0);
+
+    // The global search: a field, not just an icon, so it is visible on the home itself. A tap
+    // opens the keyboard and filters as the text is typed.
+    let sy = top_h() + gap;
+    let sr = Rect::new(m, sy, aw - 2 * m, search_h());
+    let clear = gui_text_field(c, sr, IconKind::Search, s.query.as_str(), tr("Search notebooks and folders"));
+    hits_add(&mut s.hits, sr, H_SEARCH, 0);
+    if !rect_is_empty(clear) {
+        hits_add(&mut s.hits, clear, H_SEARCH_CLEAR, 0);
+    }
+
+    // The app carousel: one square tile per installed app, in a row above the notebooks. Only
+    // Files, Share and Settings are apps; Exit is at the foot of Settings' sidebar.
+    let ay = sy + search_h() + gap;
+    let apps = home_apps();
+    let ts = apps_h();
+    for (i, (icon, label, arg)) in apps.iter().enumerate() {
+        let r = Rect::new(m + i as i32 * (ts + gap), ay, ts, ts);
+        gui_app_tile(c, r, *icon, tr(label), false);
+        hits_add(&mut s.hits, r, H_APP, *arg);
+    }
+
+    // The filter chips and the Sort select: the global elements' chip and select.
+    let fy = ay + apps_h() + gap;
+    let chip_h = filters_h();
+    let sort_r = sort_rect(aw);
+    let labels = [tr("All"), tr("Notebooks"), tr("Folders")];
+    let gap_c = ui_px(14.0);
+    let mut chip_w: Vec<i32> = labels
+        .iter()
+        .map(|label| font_measure(FontFace::Bold, ui_text_size(), label) + ui_px(76.0))
+        .collect();
+    let total: i32 = chip_w.iter().sum::<i32>() + gap_c * (labels.len() as i32 - 1);
+    let available = (sort_r.x - gap - m).max(ui_px(240.0));
+    if total > available {
+        let each = ((available - gap_c * (labels.len() as i32 - 1)) / labels.len() as i32).max(ui_px(80.0));
+        for w in chip_w.iter_mut() {
+            *w = each;
+        }
+    }
+    let mut cx = m;
+    for (i, label) in labels.iter().enumerate() {
+        let r = Rect::new(cx, fy, chip_w[i], chip_h);
+        gui_chip(c, r, label, s.filter == i as i32);
+        hits_add(&mut s.hits, r, H_FILTER, i as i32);
+        cx += chip_w[i] + gap_c;
+    }
+    gui_select(c, sort_r, tr("Sort"), sort_name(s.sort));
+    hits_add(&mut s.hits, sort_r, H_SORT, 0);
 
     let (cols, rows, cw, ch) = grid_geom(aw, ah);
     let pp = cols * rows;
     if empty_hint_shown(s) {
-        let mut er = Rect::new(m, th + ui_px(300.0), aw - 2 * m, ui_px(100.0));
-        // TRANSLATORS: the Library with nothing in it (1760 px at 64 px), and what to do (at 44 px).
-        let empty = if !s.cur_folder.is_empty() {
+        let mut er = Rect::new(m, grid_top() + ui_px(150.0), aw - 2 * m, ui_px(100.0));
+        let searching = !s.query.trim().is_empty();
+        let empty = if searching {
+            // TRANSLATORS: the home's search found nothing, above the hint under it.
+            tr("No matches")
+        } else if !s.cur_folder.is_empty() {
             tr("This folder is empty")
         } else {
             tr("No notebooks yet")
         };
         font_draw_centered(c, FontFace::Bold, ui_title_size(), er, empty, 0);
         er.y += ui_px(110.0);
-        // TRANSLATORS: New is the top bar's button (as translated there).
-        font_draw_centered(
-            c,
-            FontFace::Regular,
-            ui_text_size(),
-            er,
-            tr("Tap New to start one."),
-            60,
-        );
+        let hint = if searching {
+            // TRANSLATORS: under "No matches": what to do (change the search).
+            tr("Try another search.")
+        } else {
+            // TRANSLATORS: under the empty Library (or folder): the + button makes one.
+            tr("Tap + to start one.")
+        };
+        font_draw_centered(c, FontFace::Regular, ui_text_size(), er, hint, 60);
     }
     for i in 0..pp {
         let idx = s.page * pp + i;
@@ -1036,37 +1175,22 @@ fn draw_base(a: &mut App) {
             idx as usize,
         );
     }
-    // Pager.
+
+    // The pager and the + button (the issue's small add button at the bottom right).
     let mut pages = (s.items.len() as i32 + pp - 1) / pp;
     if pages < 1 {
         pages = 1;
     }
     let y = ah - bottom_h();
-    ui_rule(c, 0, aw, y - ui_px(10.0), ui_px(3.0), 0);
-    let pr = Rect::new(m, y + ui_px(15.0), ui_px(220.0), bottom_h() - ui_px(30.0));
-    let nr = Rect::new(aw - m - ui_px(220.0), pr.y, ui_px(220.0), pr.h);
-    ui_button(
-        c,
-        pr,
-        IconKind::Prev,
-        "",
-        if s.page > 0 {
-            ButtonStyle::Plain
-        } else {
-            ButtonStyle::Disabled
-        },
-    );
-    ui_button(
-        c,
-        nr,
-        IconKind::Next,
-        "",
-        if s.page < pages - 1 {
-            ButtonStyle::Plain
-        } else {
-            ButtonStyle::Disabled
-        },
-    );
+    let fab = fab_rect(aw, ah);
+    gui_fab(c, fab, IconKind::Plus);
+    hits_add(&mut s.hits, fab, H_ADD, 0);
+    let nav_y = y + (bottom_h() - ui_px(104.0)) / 2;
+    let bw = ui_px(104.0);
+    let pr = Rect::new(m, nav_y, bw, bw);
+    let nr = Rect::new(pr.x + bw + ui_px(10.0), nav_y, bw, bw);
+    gui_icon_button(c, pr, IconKind::Prev, if s.page > 0 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+    gui_icon_button(c, nr, IconKind::Next, if s.page < pages - 1 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
     if s.page > 0 {
         hits_add(&mut s.hits, pr, H_PREV, 0);
     }
@@ -1074,16 +1198,18 @@ fn draw_base(a: &mut App) {
         hits_add(&mut s.hits, nr, H_NEXT, 0);
     }
     let mut pl = String::new();
-    // TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
+    // TRANSLATORS: between the home's page buttons, as before (1320 px at 44 px).
     csnprintf!(&mut pl, 96, tr("Page %d of %d"), s.page + 1, pages);
     font_draw_centered(
         c,
         FontFace::Bold,
         ui_text_size(),
-        Rect::new(pr.x + pr.w, pr.y, nr.x - pr.x - pr.w, pr.h),
+        Rect::new(nr.x + nr.w, nav_y, (fab.x - gap - nr.x - nr.w).max(0), bw),
         &pl,
         0,
     );
+    // About hangs its card from the bat; the modern header has no bat, so it opens under the title.
+    s.about_bat = Rect::new(aw / 2, hy + hh, ui_px(4.0), ui_px(4.0));
 }
 
 /// Where a sheet `h` px tall goes on a screen (Files' Delete question is drawn in the same place: browser.rs).
@@ -4789,7 +4915,6 @@ pub(crate) fn settings_page(
         title,
         0,
     );
-    ui_rule(c, 0, aw, th, ui_px(4.0), 0);
     let footer_h = if footer { ui_px(170.0) } else { ui_px(36.0) };
     let content = Rect::new(pad, th + ui_px(36.0), aw - 2 * pad, ah - th - ui_px(36.0) - footer_h);
     let footer_r = if footer {
@@ -4853,7 +4978,9 @@ fn draw_settings(a: &mut App) {
     let side_w = (aw * 30 / 100).clamp(ui_px(320.0), ui_px(560.0));
     let ncat = cats.len() as i32;
     let content_bottom = page.content.y + page.content.h;
-    let cat_area = Rect::new(pad, top, side_w, content_bottom - top);
+    // Exit is the last row in the sidebar, below the categories.
+    let exit_h = ui_px(120.0);
+    let cat_area = Rect::new(pad, top, side_w, (content_bottom - top - exit_h - ui_px(24.0)).max(0));
     // A list is a page of ui_row's (ui_row_page): the same card, icon, label and spacing whether
     // there are six categories or sixty, and its own page arrows when they no longer fit.
     let active = clampi(s.settings_cat, 0, ncat - 1);
@@ -4887,6 +5014,9 @@ fn draw_settings(a: &mut App) {
     if cat_page.page + 1 < cat_page.pages {
         hits_add(&mut s.hits, cat_page.next, H_SET_CAT_PAGE, 1);
     }
+    let exit = Rect::new(pad, content_bottom - exit_h, side_w, exit_h);
+    ui_row(c, exit, &UiRow::new(IconKind::Exit, tr("Exit")));
+    hits_add(&mut s.hits, exit, H_SETTINGS_EXIT, 0);
     let cat = &cats[active as usize];
     let content_x = pad + side_w + ui_px(48.0);
     let content_w = aw - content_x - pad;
@@ -5487,11 +5617,119 @@ fn name_label(name: &str) -> String {
     ui_name_label(name, &mut label, LABEL_CAP).to_string()
 }
 
+/// What the home's app tiles do: Files, Share and Settings are the three installed apps. What's
+/// new is the All apps page's utility link, not an app tile.
+fn home_app(a: &mut App, app: i32) {
+    match app {
+        0 => {
+            lib(a).modal = Modal::None;
+            files_open_place(a);
+        }
+        1 => {
+            lib(a).modal = Modal::None;
+            share_open(a);
+        }
+        2 => {
+            lib(a).modal = Modal::None;
+            act(a, &Hit { id: H_SETTINGS, ..Default::default() });
+        }
+        6 => {
+            lib(a).modal = Modal::None;
+            about_open(lib(a));
+            open_modal(a, Modal::About);
+        }
+        _ => {}
+    }
+}
+
+/// The home's All apps page (2.3, issue #209): the three installed apps as square tiles, then the
+/// What's new utility link. Exit is in Settings' sidebar.
+fn draw_apps(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
+    gui_status_bar(c, aw, wall_time());
+    let m = margin();
+    let hy = gui_status_h();
+    let hh = head_h();
+    let bh = top_btn_h();
+    let close = Rect::new(aw - m - bh, hy + (hh - bh) / 2, bh, bh);
+    gui_icon_button(c, close, IconKind::Close, ButtonStyle::Plain);
+    hits_add(&mut s.hits, close, H_APPS_CLOSE, 0);
+    let title_px = ui_title_size() * if ui_theme() == UiTheme::Gothic { 1.75 } else { 1.1 };
+    font_draw_left(c, FontFace::Title, title_px, Rect::new(m, hy, (close.x - m - ui_px(20.0)).max(0), hh), tr("Apps"), 0);
+    let gap = gui_gap();
+    let ts = ui_px(270.0);
+    let top = hy + hh + gap;
+    for (i, (icon, label, arg)) in home_apps().iter().enumerate() {
+        let r = Rect::new(m + i as i32 * (ts + gap), top, ts, ts);
+        gui_app_tile(c, r, *icon, tr(label), false);
+        hits_add(&mut s.hits, r, H_APP, *arg);
+    }
+    let whats = Rect::new(m, top + ts + gap * 2, ui_px(380.0), ui_px(110.0));
+    ui_button(c, whats, IconKind::Castle, tr("What's new"), ButtonStyle::Plain);
+    hits_add(&mut s.hits, whats, H_APP, 6);
+}
+
+/// Draw any of the home's small menus in the one global popup, anchored to the control that opened
+/// it, and add its rows' hits.
+fn draw_popup_menu(a: &mut App, title: &str, anchor: Rect, rows: &[MenuRow]) -> Vec<Rect> {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let items: Vec<GuiPopupItem> = rows
+        .iter()
+        .map(|row| GuiPopupItem {
+            icon: row.icon,
+            label: &row.label,
+            selected: row.st == ButtonStyle::Selected,
+            disabled: row.st == ButtonStyle::Disabled,
+        })
+        .collect();
+    let rects = gui_popup(c, Rect::new(0, 0, aw, ah), anchor, title, &items);
+    for (r, row) in rects.iter().zip(rows.iter()) {
+        if row.st != ButtonStyle::Disabled {
+            hits_add(&mut s.hits, *r, row.id, row.arg);
+        }
+    }
+    rects
+}
+
+/// The + button's popup: the three things a new notebook, a new folder and Share start.
+fn draw_add(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let rows = [
+        menu_row(IconKind::Plus, tr("New notebook"), H_ADD_ACTION, 0, ButtonStyle::Plain),
+        menu_row(IconKind::FolderPlus, tr("New folder"), H_ADD_ACTION, 1, ButtonStyle::Plain),
+        menu_row(IconKind::Share, tr("Import over Wi-Fi"), H_ADD_ACTION, 2, ButtonStyle::Plain),
+        menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
+    ];
+    draw_popup_menu(a, tr("Create"), fab_rect(aw, ah), &rows);
+}
+
+/// The Sort popup: the four orders, the current one filled.
+fn draw_sort(a: &mut App) {
+    let aw = a.w;
+    let sort = clampi(lib(a).sort, 0, 3);
+    let rows = [
+        menu_row(IconKind::Sort, sort_name(0), H_SORT_PICK, 0, if sort == 0 { ButtonStyle::Selected } else { ButtonStyle::Plain }),
+        menu_row(IconKind::Sort, sort_name(1), H_SORT_PICK, 1, if sort == 1 { ButtonStyle::Selected } else { ButtonStyle::Plain }),
+        menu_row(IconKind::Update, sort_name(2), H_SORT_PICK, 2, if sort == 2 { ButtonStyle::Selected } else { ButtonStyle::Plain }),
+        menu_row(IconKind::Update, sort_name(3), H_SORT_PICK, 3, if sort == 3 { ButtonStyle::Selected } else { ButtonStyle::Plain }),
+        menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
+    ];
+    draw_popup_menu(a, tr("Sort"), sort_rect(aw), &rows);
+}
+
 fn draw_modal(a: &mut App) {
     let it = target_item(lib(a));
     let modal = lib(a).modal;
     match modal {
         Modal::New => draw_new(a),
+        Modal::Apps => draw_apps(a),
+        Modal::Add => draw_add(a),
+        Modal::Sort => draw_sort(a),
         Modal::Settings => draw_settings(a),
         Modal::Font => draw_font_sheet(a),
         Modal::Wifi => draw_wifi_sheet(a),
@@ -5953,7 +6191,8 @@ fn draw_modal(a: &mut App) {
                 ),
             ];
             let title = name_label(lib(a).books[it.nb].name.as_str());
-            draw_menu(a, &title, &rows);
+            let anchor = card_more_rect(a.w, a.h, lib(a).target, lib(a).page);
+            draw_popup_menu(a, &title, anchor, &rows);
         }
         Modal::FilesMore => {
             let rows = [
@@ -5963,7 +6202,8 @@ fn draw_modal(a: &mut App) {
                 menu_row(IconKind::Ban, tr("Hide from Library"), H_FILES_HIDE, 0, ButtonStyle::Plain),
                 menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
-            draw_menu(a, tr("Files"), &rows);
+            let anchor = card_more_rect(a.w, a.h, lib(a).target, lib(a).page);
+            draw_popup_menu(a, tr("Files"), anchor, &rows);
         }
         Modal::FolderMore => {
             let Some(it) = it else { return };
@@ -6003,7 +6243,8 @@ fn draw_modal(a: &mut App) {
             let keeps = Home::parse(home.value().as_bytes()) == Some(home);
             let rows: Vec<MenuRow> = rows.into_iter().filter(|r| keeps || r.id != H_FMORE_HOME || r.arg != 0).collect();
             let title = name_label(it.folder.as_str());
-            draw_menu(a, &title, &rows);
+            let anchor = card_more_rect(a.w, a.h, lib(a).target, lib(a).page);
+            draw_popup_menu(a, &title, anchor, &rows);
         }
         Modal::Move => {
             let Some(it) = it else { return };
@@ -6229,7 +6470,9 @@ fn toast_floor(a: &App) -> i32 {
         moved = false;
         for h in &l.h {
             let r = h.r;
-            if r.y < y + t.h && r.y + r.h > y {
+            // The toast is centred: a control beside it (Settings' Exit at the foot of its sidebar)
+            // does not stand in its way.
+            if r.x < t.x + t.w && r.x + r.w > t.x && r.y < y + t.h && r.y + r.h > y {
                 y = r.y - t.h - gap; // above this control, then look again from there
                 below = r.y;
                 moved = true;
@@ -6678,6 +6921,21 @@ fn create_notebook(a: &mut App) {
 }
 
 fn kb_finished(a: &mut App, ok: bool) {
+    // The home's search: the text stays in the field after the keyboard goes, and the grid already
+    // followed each typed key (the Keyboard arm of library_event_in).
+    if lib(a).kbp == KbPurpose::Search {
+        let txt = lib(a).kb.text.as_str().to_string();
+        if ok {
+            lib(a).query = txt;
+        }
+        lib(a).search_active = false;
+        lib(a).page = 0;
+        lib(a).modal = Modal::None;
+        refresh_view(a);
+        redraw(a, RefreshMode::Ui);
+        input_touch_context(library_touch_view(a));
+        return;
+    }
     let s = lib(a);
     let txt = s.kb.text.as_str().to_string();
     let it = target_item(s);
@@ -6814,7 +7072,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                     }
                 }
             }
-            KbPurpose::WifiPassword | KbPurpose::WifiName | KbPurpose::WifiEapUser | KbPurpose::WifiEapPassword => {}
+            KbPurpose::WifiPassword | KbPurpose::WifiName | KbPurpose::WifiEapUser | KbPurpose::WifiEapPassword | KbPurpose::Search => {}
             KbPurpose::RenameFolder => {
                 if let Some(it) = it.filter(|it| it.is_folder) {
                     let mut dest = FixedStr::new();
@@ -6985,6 +7243,46 @@ fn act(a: &mut App, h: &Hit) {
             s.settings_menu_page = 0;
             open_modal(a, Modal::Settings);
         }
+        H_FILTER => {
+            lib(a).filter = clampi(h.arg, 0, 2);
+            lib(a).page = 0;
+            refresh_view(a);
+            redraw(a, RefreshMode::Ui);
+        }
+        H_SORT => open_modal(a, Modal::Sort),
+        H_SORT_PICK => {
+            lib(a).sort = clampi(h.arg, 0, 3);
+            lib(a).page = 0;
+            lib(a).modal = Modal::None;
+            refresh_view(a);
+            redraw(a, RefreshMode::Ui);
+        }
+        H_SEARCH => {
+            let initial = lib(a).query.as_bytes().to_vec();
+            lib(a).search_active = true;
+            open_kb_sel(a, KbPurpose::Search, tr("Search"), &initial, !initial.is_empty());
+        }
+        H_SEARCH_CLEAR => {
+            let s = lib(a);
+            s.query.clear();
+            s.search_active = false;
+            s.page = 0;
+            refresh_view(a);
+            redraw(a, RefreshMode::Ui);
+        }
+        H_ADD => open_modal(a, Modal::Add),
+        H_ADD_ACTION => {
+            lib(a).modal = Modal::None;
+            match h.arg {
+                0 => act(a, &Hit { id: H_NEW, ..Default::default() }),
+                1 => act(a, &Hit { id: H_NEWFOLDER, ..Default::default() }),
+                2 => share_open(a),
+                _ => {}
+            }
+        }
+        H_APPS => open_modal(a, Modal::Apps),
+        H_APPS_CLOSE => close_modal(a),
+        H_APP => home_app(a, h.arg),
         H_SET_CAT => {
             let s = lib(a);
             s.settings_cat = clampi(h.arg, 0, settingsmenu::CATEGORIES.len() as i32 - 1);
@@ -7003,7 +7301,7 @@ fn act(a: &mut App, h: &Hit) {
             *page += h.arg;
             redraw(a, RefreshMode::Ui);
         }
-        H_EXIT => a.running = false,
+        H_EXIT | H_SETTINGS_EXIT => a.running = false,
         H_EXIT_YES => {
             lib(a).modal = Modal::None;
             a.running = false;
@@ -7056,6 +7354,10 @@ fn act(a: &mut App, h: &Hit) {
             } else if item.is_folder {
                 s.cur_folder.set_bytes(item.folder.as_bytes());
                 s.page = 0;
+                // A folder found by the global search: entering it leaves the search, as a folder does
+                // from the plain grid.
+                s.query.clear();
+                s.search_active = false;
                 reload(a);
                 redraw(a, RefreshMode::Full);
             } else {
@@ -8497,9 +8799,9 @@ pub fn library_back(a: &mut App) -> bool {
         tap(a, H_RECORD_CANCEL);
         return true;
     }
-    let (modal, in_folder, reset_asked) = {
+    let (modal, in_folder, reset_asked, searching) = {
         let s = lib(a);
-        (s.modal, !s.cur_folder.is_empty(), s.gestures_reset_confirm)
+        (s.modal, !s.cur_folder.is_empty(), s.gestures_reset_confirm, !s.query.trim().is_empty() || s.search_active)
     };
     match modal {
         Modal::Kb => {
@@ -8507,6 +8809,14 @@ pub fn library_back(a: &mut App) -> bool {
                 keyboard_close(&mut lib(a).kb);
                 kb_finished(a, false);
             }
+        }
+        Modal::None if searching => {
+            let s = lib(a);
+            s.query.clear();
+            s.search_active = false;
+            s.page = 0;
+            refresh_view(a);
+            redraw(a, RefreshMode::Ui);
         }
         Modal::None if a.scr != ScreenId::Library => return false,
         Modal::None if in_folder => tap(a, H_BACK),
@@ -8550,7 +8860,7 @@ pub fn library_back(a: &mut App) -> bool {
         Modal::Gestures if reset_asked => tap(a, H_GESTURES_RESET_CANCEL),
         Modal::Gestures => tap(a, H_GESTURES_DONE),
         Modal::New | Modal::Settings | Modal::More | Modal::FolderMore | Modal::Move | Modal::Delete
-        | Modal::About | Modal::Exit | Modal::Merge | Modal::FilesMore => close_modal(a),
+        | Modal::About | Modal::Exit | Modal::Merge | Modal::FilesMore | Modal::Apps | Modal::Add | Modal::Sort => close_modal(a),
     }
     true
 }
@@ -8588,6 +8898,12 @@ pub fn library_modal_key(a: &mut App, code: i32) -> bool {
         }
         Modal::New if code == ENTER || code == KP_ENTER => {
             act(a, &Hit { id: H_NEW_CREATE, ..Default::default() });
+            true
+        }
+        Modal::Apps | Modal::Add | Modal::Sort => {
+            if code == 1 {
+                close_modal(a);
+            }
             true
         }
         // What's new's Enter opens: the card's Read all (the list), and on the list the notes of the row
@@ -8923,7 +9239,18 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
     if modal == Modal::Kb {
         let mut kb = std::mem::take(&mut lib(a).kb);
         let r = app_keyboard_pointer(a, &mut kb, ph, ev); // (what a key changed, drawn and refreshed)
+        let live = r == KbResult::Changed && lib(a).kbp == KbPurpose::Search;
         lib(a).kb = kb;
+        if live {
+            // The search filters as the text is typed: the grid under the keyboard follows each key
+            // (the same view apply_view builds for a filter or a sort, with no storage read).
+            let txt = lib(a).kb.text.as_str().to_string();
+            lib(a).query = txt;
+            lib(a).page = 0;
+            refresh_view(a);
+            redraw(a, RefreshMode::Ui);
+            return;
+        }
         if r == KbResult::Done || r == KbResult::Cancel {
             kb_finished(a, r == KbResult::Done);
         }
@@ -8966,6 +9293,16 @@ pub fn library_tick(a: &mut App, now: u32) {
         return;
     }
     crate::userfonts::userfonts_tick(a, now); // (a font check that ended with no verdict is queued again after its wait)
+    // The home's status bar keeps the clock: one redraw when the minute changes (nothing behind a
+    // sheet or the keyboard is laying itself out again).
+    if !files_shown(a) && !graph_shown(a) && lib(a).modal == Modal::None {
+        let min = wall_time() / 60;
+        if lib(a).status_min != min {
+            lib(a).status_min = min;
+            redraw(a, RefreshMode::Ui);
+            return;
+        }
+    }
     if files_shown(a) {
         // (not under Exit Grimoire?, asked at a home inside Files: a draw of Files' own would paint over it)
         if files_in_front(a) {
@@ -9542,6 +9879,11 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_MERGE_INTO => "merge.into", H_MERGE_BOTH => "merge.both",
                 H_FILES_OPEN => "files-card.open", H_FILES_HIDE => "files-card.hide",
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
+                H_CARD => "card.", H_CARD_MORE => "card-menu.",
+                H_ADD => "add", H_ADD_ACTION => "add.", H_APPS => "apps", H_APPS_CLOSE => "apps.close",
+                H_APP => "app.", H_FILTER => "filter.", H_SORT => "sort", H_SORT_PICK => "sort.",
+                H_SEARCH => "search", H_SEARCH_CLEAR => "search.clear",
+                H_PREV => "prev", H_NEXT => "next",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
                 H_LINK => "about.link.", H_LINK_PAGE => if hit.arg < 0 { "about.link.prev" } else { "about.link.next" },
@@ -9560,7 +9902,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_WIFI_OTHER_CANCEL => "wifi.other.cancel",
                 // (the new Settings page's rows and submenus that had no name: its Back and X, and the
                 // choice lists that open from a row)
-                H_SETTINGS_BACK => "settings.back", H_SETTINGS_CLOSE => "settings.close",
+                H_SETTINGS_BACK => "settings.back", H_SETTINGS_CLOSE => "settings.close", H_SETTINGS_EXIT => "settings.exit",
                 H_SET_LANGUAGE => "language", H_LANG_PICK => "language.", H_LANG_BACK => "language.back",
                 H_SET_SIDE => "pen-button", H_SIDE_PICK => "pen-button.", H_SIDE_BACK => "pen-button.back",
                 H_SET_ERASER => "eraser-mode", H_ERASER_PICK => "eraser-mode.", H_ERASER_BACK => "eraser-mode.back",
@@ -9591,6 +9933,13 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             if hit.id == H_WIFI_TAB { name.push_str(if hit.arg == 0 { ".near" } else { ".saved" }); }
             if hit.id == H_WIFI_DELETE { name.push_str(&(hit.arg + 1).to_string()); }
             if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
+            if matches!(hit.id, H_CARD | H_CARD_MORE) { name.push_str(&(hit.arg + 1).to_string()); }
+            if hit.id == H_FILTER { name.push_str(["all", "notebooks", "folders"].get(hit.arg as usize).copied().unwrap_or("")); }
+            if hit.id == H_SORT_PICK { name.push_str(["name-az", "name-za", "newest", "oldest"].get(hit.arg as usize).copied().unwrap_or("")); }
+            if hit.id == H_ADD_ACTION { name.push_str(["new-notebook", "new-folder", "share"].get(hit.arg as usize).copied().unwrap_or("")); }
+            if hit.id == H_APP {
+                name.push_str(["files", "share", "settings", "", "", "", "whats-new", "exit"].get(hit.arg as usize).copied().unwrap_or(""));
+            }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
             } else if matches!(hit.id, H_GESTURE_ROW | H_BUTTON_ROW) {
@@ -9810,6 +10159,53 @@ mod tests {
             seen.push(v);
         }
         assert!(seen.len() >= 20 && seen.contains(&300));
+    }
+
+    // The home's view applies the filter chips, the sort and the global search from the lists it
+    // already has: every folder and notebook, no storage read (2.3, issue #209).
+    #[test]
+    fn the_home_view_filters_sorts_and_searches() {
+        let mut s = LibraryState::default();
+        s.books = vec![
+            NotebookInfo { name: FixedStr::from_str("Zebra"), modified: 10, ..Default::default() },
+            NotebookInfo { name: FixedStr::from_str("apple"), modified: 20, ..Default::default() },
+            NotebookInfo { name: FixedStr::from_str("Mango"), modified: 30, folder: FixedStr::from_str("School"), ..Default::default() },
+        ];
+        s.folders = vec!["School".to_string()];
+        s.all_items = vec![
+            Item { is_folder: true, folder: FixedStr::from_str("School"), count: 1, ..Default::default() },
+            Item { nb: 0, ..Default::default() },
+            Item { nb: 1, ..Default::default() },
+            Item { nb: 2, ..Default::default() },
+        ];
+        let names = |s: &LibraryState| s.items.iter().map(|it| item_name(s, it).to_string()).collect::<Vec<_>>();
+        apply_view(&mut s, 6);
+        assert_eq!(names(&s), ["School", "apple", "Zebra"], "folders first, then this folder's notebooks, without case");
+        s.sort = 1;
+        apply_view(&mut s, 6);
+        assert_eq!(names(&s), ["School", "Zebra", "apple"], "Name (Z-A)");
+        s.sort = 2;
+        apply_view(&mut s, 6);
+        assert_eq!(names(&s), ["School", "apple", "Zebra"], "Newest first");
+        s.sort = 3;
+        apply_view(&mut s, 6);
+        assert_eq!(names(&s), ["School", "Zebra", "apple"], "Oldest first");
+        s.sort = 0;
+        s.query = "ma".into();
+        apply_view(&mut s, 6);
+        assert_eq!(names(&s), ["Mango"], "the search is across every folder and ignores case");
+        s.query.clear();
+        s.filter = 2;
+        apply_view(&mut s, 6);
+        assert_eq!(names(&s), ["School"], "the Folders chip");
+        s.filter = 1;
+        s.query = "man".into();
+        apply_view(&mut s, 6);
+        assert_eq!(names(&s), ["Mango"], "Notebooks only, and the query still applies");
+        s.filter = 0;
+        s.query = "nothing here".into();
+        apply_view(&mut s, 6);
+        assert!(s.items.is_empty(), "a query nothing matches leaves no card");
     }
 
     fn probe(a: &mut App, key: &str) -> String {

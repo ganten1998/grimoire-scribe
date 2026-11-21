@@ -14,7 +14,8 @@ expect library.sheet is none
 expect settings.hints is 0
 rotate 1
 wait 800
-tap 1583 93
+tap library add
+tap library add.new-notebook
 wait 300
 tap 1910 1696
 wait 1200
@@ -26,7 +27,7 @@ expect toast is
 pentap panel library
 wait 500
 expect screen is library
-tap 200 400
+tap library card.1
 wait 600
 expect screen is editor
 expect toast is

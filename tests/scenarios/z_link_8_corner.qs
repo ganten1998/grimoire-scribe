@@ -7,7 +7,7 @@
 # Link to... docked at the bottom end 8 px above the corner's zone, so neither meets it; a tap in the corner toggles
 # the clock and cancels nothing; the strip's Cancel, above the corner, still cancels.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.page is 1
 expect status.zone is 1695 2315 165 165

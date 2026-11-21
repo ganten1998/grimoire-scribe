@@ -14,7 +14,7 @@
 # press or drag had set; a finger outside the menu, cancelled when the pen comes down, closes nothing,
 # and the pen drags the slider.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 pen leave
 wait 1100

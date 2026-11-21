@@ -11,7 +11,8 @@
 wait 150
 expect pads.hold-eraser is L2
 expect pads.close-menu is 613
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

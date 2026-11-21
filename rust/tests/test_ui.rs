@@ -32,7 +32,8 @@ const ICONS: [IconKind; IconKind::COUNT - 1] = [
     IconKind::Live, IconKind::Gamepad, IconKind::Update, IconKind::Clock, IconKind::Search, IconKind::Eye, IconKind::LinkPlus, IconKind::Bubbles, IconKind::Gestures, IconKind::Lasso,
     IconKind::Hourglass, IconKind::Font, IconKind::Ban, IconKind::Files, IconKind::Image, IconKind::Pdf,
     IconKind::FileOther, IconKind::LinkOff, IconKind::Sort, IconKind::FolderOpen, IconKind::Home,
-    IconKind::Calculator, IconKind::Package,
+    IconKind::Calculator, IconKind::Package, IconKind::Calendar, IconKind::Agenda,
+    IconKind::Browser, IconKind::Wifi, IconKind::Bluetooth, IconKind::Battery, IconKind::Keyboard,
 ];
 
 fn slider_snap() {

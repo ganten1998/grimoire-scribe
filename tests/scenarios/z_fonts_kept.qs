@@ -9,7 +9,7 @@ expect settings.font is literata
 expect font is literata
 expect settings.kept.font is
 shot 01-library-literata
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.1

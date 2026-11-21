@@ -6,7 +6,8 @@
 # (The Rust build runs templates-rust.qs instead: its panel has one more button, and the Paper button moved.)
 # copy: tests/fixtures/tpl-many templates
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap 300 1650
@@ -29,7 +30,8 @@ wait 100
 expect library.sheet is none
 rotate 1
 wait 300
-tap 1585 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap 1462 1116
@@ -48,7 +50,8 @@ expect library.sheet is none
 rotate 0
 wait 300
 # Over the editor's page, from its Paper sheet, upright and sideways.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 400

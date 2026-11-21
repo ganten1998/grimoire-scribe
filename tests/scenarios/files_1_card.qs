@@ -9,7 +9,8 @@
 wait 300
 expect library.items is 3
 expect library.card.3 not files
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300
@@ -61,7 +62,8 @@ wait 300
 expect library.sheet is none
 expect library.items is 3
 expect library.card.3 not files
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300

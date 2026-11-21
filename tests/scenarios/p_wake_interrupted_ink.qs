@@ -3,7 +3,8 @@
 # A missed sleep announcement must still end a held stroke on the real wake. Its delayed
 # release must not join the next stroke or leave handwriting mode active under menus.
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

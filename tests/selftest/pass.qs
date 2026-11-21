@@ -42,7 +42,8 @@ expect editor.music is
 expect editor.ticked is 0
 expect editor.unsaved is 0
 # New notebook (Narrow, no margin is preselected), then Create
-tap 965 95
+tap library add
+tap library add.new-notebook
 expect library.sheet is new
 expect library.paper is 5
 tap 1564 2254

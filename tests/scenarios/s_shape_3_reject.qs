@@ -3,7 +3,8 @@
 # settings: mirror_pdf=0
 # root: s_shape_1_record
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

@@ -3,7 +3,7 @@
 # settings: status_mode=1
 # settings: shapes=1
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 pen leave
 wait 1100

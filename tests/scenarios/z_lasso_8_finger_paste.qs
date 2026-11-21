@@ -8,7 +8,7 @@
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
 wait 300
-tap 322 620
+tap library card.1
 wait 1000
 expect screen is editor
 expect editor.strokes is 2

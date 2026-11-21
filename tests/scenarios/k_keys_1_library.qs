@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # settings: shortcuts_enabled=1
 # settings: mirror_pdf=0
-# generate: tests/keys_fixture.py --books 8
+# generate: tests/keys_fixture.py --books 13
 # rust-only
 # The keyboard scheme in the Library, on a keyboard
 # paired with the Kindle (no shortcuts.ini: the starter map): Ctrl+N New notebook, Ctrl+F a new folder's name,

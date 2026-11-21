@@ -7,7 +7,8 @@
 clock 1700000000
 wait 3600
 expect language is ja
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 # the kana key (the accents key's place), then か, た
@@ -45,7 +46,8 @@ expect library.sheet is none
 # sideways
 rotate 1
 wait 300
-tap library new-folder
+tap library add
+tap library add.new-folder
 wait 100
 tap 1837 950
 wait 100

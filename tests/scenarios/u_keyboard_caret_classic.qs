@@ -6,7 +6,8 @@
 clock 1700000000
 wait 3600
 expect settings.theme is classic
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 398 2045

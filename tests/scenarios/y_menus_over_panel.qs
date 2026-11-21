@@ -9,7 +9,8 @@
 # and then the screen is turned: a panel repainted late (after a stroke, once a shortcut had opened a menu) used
 # to lay itself over the menu.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

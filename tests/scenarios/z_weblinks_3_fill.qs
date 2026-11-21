@@ -11,7 +11,7 @@ pdfimport z_weblinks_3_fill/Documents/Links.pdf
 waitbg
 wait 300
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.page is 1
@@ -39,7 +39,7 @@ waitfor toast is Added 1 book page.
 waitbg
 wait 300
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.pages is 3

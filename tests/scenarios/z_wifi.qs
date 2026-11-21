@@ -3,7 +3,8 @@
 # env: GRIMOIRE_SIM_ADDRS=wlan0=192.168.0.20
 # env: GRIMOIRE_CHECK_FIT=1
 wait 200
-tap 1345 95
+tap library add
+tap library add.share
 wait 200
 expect screen is share
 tap share wifi

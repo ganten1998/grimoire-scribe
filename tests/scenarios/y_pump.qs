@@ -5,7 +5,8 @@
 # many came since it was last checked.
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap 510 460
 wait 100

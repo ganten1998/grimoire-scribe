@@ -6,7 +6,8 @@
 # toolbar button presses nothing); a nib down outside closes it at its down and its stroke is swallowed (no ink);
 # the clock corner keeps its tap and the card stays for it; Esc closes it, one layer; a turn closes it, silently.
 wait 3600
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.1
 tap 1564 2254

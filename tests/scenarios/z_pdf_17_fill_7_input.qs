@@ -12,7 +12,7 @@
 waitfor notice has Adding book pages:
 # (one batch: the key, then the tap)
 key 24 0
-tap 326 608
+tap library card.1
 expect notice has Adding book pages:
 expect screen is library
 expect library.sheet is none
@@ -20,7 +20,7 @@ expect toast is
 waitfor toast is Added 2 book pages.
 waitbg
 wait 300
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.pages is 4

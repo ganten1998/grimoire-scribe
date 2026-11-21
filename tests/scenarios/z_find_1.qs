@@ -8,7 +8,7 @@
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
 wait 3700
-tap 200 400
+tap library card.1
 wait 300
 swipe 2 930 1300 0 -400
 wait 300

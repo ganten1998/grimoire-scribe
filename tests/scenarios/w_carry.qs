@@ -5,7 +5,8 @@
 # brings back pages an older version set aside) shows the page as it was.
 # rust-only
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 wait 100
@@ -29,7 +30,7 @@ shot 03-dot-grid
 pentap panel library
 wait 500
 expect screen is library
-tap 326 608
+tap library card.1
 wait 500
 expect screen is editor
 expect toast not This page was made by a newer version, and will be viewed as read-only.

@@ -26,9 +26,10 @@ expect status.text is
 expect status.rect is
 expect status.front is 0
 expect status.zone is 0 0 165 165
-# The Library has no corner: a tap there is nothing to it (it is the bat's, which opens What's new), and
-# the Display sheet's size shows nothing on it.
-tap 70 70
+# The Library has no corner; What's new opens from the Apps page, and the Display sheet's size
+# shows nothing on it.
+tap library apps
+tap library app.whats-new
 wait 300
 expect settings.status_on is 0
 expect status.shown is 0
@@ -48,7 +49,8 @@ wait 300
 expect settings.status_on is 0
 expect toast is Clock and battery off.
 # The editor: a notebook, the page in front.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

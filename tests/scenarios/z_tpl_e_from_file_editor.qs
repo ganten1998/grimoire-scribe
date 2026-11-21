@@ -10,7 +10,8 @@
 # keep it up. The same from Photos... with a photo.
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 400

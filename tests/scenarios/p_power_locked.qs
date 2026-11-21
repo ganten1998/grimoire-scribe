@@ -3,7 +3,8 @@
 # leaves Grimoire on its sleep screen; a second one in a row saves and leaves Grimoire, so the
 # Kindle gets its pen and touch back even where the 4 s hold cannot be seen.
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

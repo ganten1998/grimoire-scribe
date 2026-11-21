@@ -10,7 +10,8 @@
 # next tap, and X still closes Share. Esc does the same. Nothing is kept.
 # rust-only
 wait 300
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 upload send send/2027 Planner.pdf
@@ -30,7 +31,8 @@ expect storage.exists.grimoire/.cache/share-upload.part is 0
 expect storage.names.grimoire/import is .lock|README.txt
 shot 01-closed
 # Share again: a question, its Cancel, the next at once, and Esc
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 expect screen is share
 upload send send/2027 Planner.pdf

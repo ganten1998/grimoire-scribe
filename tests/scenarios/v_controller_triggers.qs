@@ -9,7 +9,7 @@
 wait 150
 hid attach pad Xbox Bluetooth Gamepad
 wait 100
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.4
 wait 100
@@ -55,7 +55,8 @@ tap library settings.close
 wait 100
 expect library.sheet is none
 # In a notebook: LT undoes once per pull, RT erases while it is held
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

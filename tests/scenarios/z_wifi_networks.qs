@@ -7,7 +7,7 @@
 # has fifteen saved networks, listed only while the radio is on, and Far away refusing a switch.
 # make l10n-check runs it in every language and style, for the fit check.
 wait 200
-tap 1535 95
+tap library settings
 wait 100
 expect library.sheet is settings
 shot 01-settings

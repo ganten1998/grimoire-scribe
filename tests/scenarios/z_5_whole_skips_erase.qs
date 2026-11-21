@@ -9,7 +9,7 @@
 # rust-only
 wait 300
 expect settings.eraser_mode is 0
-tap 326 608
+tap library card.1
 wait 500
 expect screen is editor
 expect editor.strokes is 5

@@ -7,7 +7,8 @@
 # copy: tests/fixtures/link-keys .
 # rust-only
 wait 100
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200
@@ -146,7 +147,7 @@ tap panel map.back
 rotate 0
 pentap panel library
 waitbg
-tap 200 400
+tap library card.1
 expect editor.page_name is Notes
 expect editor.loaded_pages is 1
 pentap panel pages

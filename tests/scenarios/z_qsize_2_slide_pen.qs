@@ -7,7 +7,8 @@
 # card may sit near the held button), and one that slid off every chip leaves the card open. The tool button,
 # while it shows a pen, opens its card too.
 wait 3600
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.1
 tap 1564 2254

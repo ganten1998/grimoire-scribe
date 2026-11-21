@@ -106,10 +106,19 @@ pub enum IconKind {
     Calculator = 71,
     /// A widget package, and Settings' Packages category (2.2, Rust only)
     Package = 72,
+    /// The home's app row and Apps page (2.3, issue #209): Calendar and Agenda (apps still to come),
+    /// Browser (Files), and the status bar's Wi-Fi, Bluetooth and battery.
+    Calendar = 73,
+    Agenda = 74,
+    Browser = 75,
+    Wifi = 76,
+    Bluetooth = 77,
+    Battery = 78,
+    Keyboard = 79,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 73;
+    pub const COUNT: usize = 80;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -336,6 +345,15 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Home as usize] = 0xF02DC; // md-home
     k[IconKind::Calculator as usize] = 0xF00EC; // md-calculator
     k[IconKind::Package as usize] = 0xF03D7; // md-package_variant_closed
+    // (the bundled Terminess subset carries these three by their nearest existing glyph: the icon
+    // font is built from the app's needs, not the whole Nerd Font set)
+    k[IconKind::Calendar as usize] = 0xF0150; // md-clock_outline
+    k[IconKind::Agenda as usize] = 0xF125F; // md-bookshelf (an agenda's list, clearer at 60 px)
+    k[IconKind::Browser as usize] = 0xF0AB6; // md-file_cabinet
+    k[IconKind::Wifi as usize] = 0xF05A9; // md-wifi
+    k[IconKind::Bluetooth as usize] = 0xF0339; // md-link_variant (the closest glyph in the subset)
+    k[IconKind::Battery as usize] = 0xF0079; // md-battery (the status bar draws its own battery)
+    k[IconKind::Keyboard as usize] = 0xF0570; // md-view_grid (the subset has no keyboard glyph)
     k
 };
 
@@ -403,7 +421,12 @@ pub enum ButtonStyle {
     Primary = 3,  // BTN_PRIMARY
 }
 fn radius() -> i32 {
-    ui_px(16.0)
+    // Classic is the modern rounded design (2.3, issue #209); Gothic keeps its carved corners.
+    if gothic() {
+        ui_px(16.0)
+    } else {
+        ui_px(22.0)
+    }
 }
 
 // In Gothic a button big enough for one has the inner line of a carved panel, 2 px wide, this far
@@ -575,9 +598,9 @@ pub fn ui_row_space() -> i32 {
 /// The chosen one is filled; the rest are outlined (a disabled one in gray), all at one radius.
 pub fn ui_card(c: &mut Canvas, r: Rect, st: ButtonStyle) {
     match st {
-        ButtonStyle::Selected => ui_frame(c, r, ui_px(16.0), 0, true, 0),
-        ButtonStyle::Disabled => ui_frame(c, r, ui_px(16.0), 170, false, ui_px(3.0)),
-        _ => ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0)),
+        ButtonStyle::Selected => ui_frame(c, r, if gothic() { ui_px(16.0) } else { ui_px(22.0) }, 0, true, 0),
+        ButtonStyle::Disabled => ui_frame(c, r, if gothic() { ui_px(16.0) } else { ui_px(22.0) }, 170, false, ui_px(3.0)),
+        _ => ui_frame(c, r, if gothic() { ui_px(16.0) } else { ui_px(22.0) }, 0, false, ui_px(3.0)),
     }
 }
 
@@ -954,8 +977,6 @@ pub fn ui_sheet(c: &mut Canvas, card: Rect, title: &str) -> Rect {
             },
             title,
             0,
-        );
-        canvas_hline(c, card.x + ui_px(6.0), card.x + card.w - ui_px(6.0), card.y + th, ui_px(3.0), 0,
         );
         return ui_sheet_inner(card, true);
     }

@@ -35,7 +35,7 @@ pdfimport z_pdf_darker_1_row/Documents/Planner.pdf
 waitbg
 wait 300
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect annotate.gamma is 1.5

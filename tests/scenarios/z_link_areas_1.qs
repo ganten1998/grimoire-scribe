@@ -10,7 +10,7 @@
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect screen is editor
 expect editor.page is 1
@@ -64,7 +64,7 @@ wait 1200
 # kept through a restart
 pentap panel library
 waitbg
-tap 200 400
+tap library card.1
 wait 400
 expect screen is editor
 expect settings.link_areas is 1

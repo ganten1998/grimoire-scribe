@@ -4,7 +4,7 @@
 # page: no page change, nothing on the back list. Cancel comes back to Link to...; for an area low on the page the
 # keyboard docks at the top, below the clock corner, with the rows under it.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.links is 3 3
 key 38 0

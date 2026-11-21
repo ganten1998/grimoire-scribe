@@ -8,7 +8,8 @@
 # goes back to the sheet.
 # rust-only
 wait 300
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 expect library.sheet is new
 tap library paper.more

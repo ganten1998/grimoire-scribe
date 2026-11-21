@@ -8,7 +8,7 @@
 # coming back with shortcuts (Settings > Shortcuts' Enable shortcuts).
 wait 2000
 expect library.bluetooth is external
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.4
 wait 100
@@ -50,7 +50,7 @@ wait 200
 expect library.bluetooth is external
 tap library settings.close
 wait 200
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.4
 wait 100

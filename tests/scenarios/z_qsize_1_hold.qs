@@ -12,7 +12,8 @@
 # corner held still, as its minute's refresh would land among the counted ones)
 clock 1700000000
 wait 3600
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.1
 tap 1564 2254

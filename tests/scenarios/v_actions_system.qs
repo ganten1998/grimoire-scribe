@@ -4,7 +4,8 @@
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/gestures/actions .
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200
@@ -44,7 +45,7 @@ wake
 wait 200
 tap panel library
 wait 200
-tap 1535 95
+tap library settings
 wait 100
 expect library.ui_at.329.830 is settings.cat.4
 tap 329 830

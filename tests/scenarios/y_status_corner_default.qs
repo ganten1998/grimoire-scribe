@@ -13,7 +13,8 @@ expect settings.status_on is 1
 expect settings.status_size is 0
 expect settings.status_corner is 0
 expect status.shown is 0
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 500

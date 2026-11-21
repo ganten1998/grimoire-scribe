@@ -14,7 +14,8 @@
 clock 1700000000
 wait 3600
 expect keyboard.clipboard is
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 # "sheet", then the caret after it, as a name always typed
@@ -122,7 +123,8 @@ wait 300
 expect library.sheet is none
 expect library.folders is seehseeha
 # The clipboard lasts the session, across keyboards: New folder again, Paste on the edit page
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.caret is |
 tap 1372 1570
@@ -160,7 +162,8 @@ expect library.sheet is none
 # Sideways: the edit key 1837 950, the left arrow 2076 950, the right arrow 2315 950
 rotate 1
 wait 300
-tap library new-folder
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 283 1425

@@ -13,7 +13,8 @@
 wait 300
 expect screen is library
 expect annotate.book is running
-tap library new
+tap library add
+tap library add.new-notebook
 wait 300
 tap library create
 wait 500
@@ -30,8 +31,8 @@ expect library.sheet is none
 expect toast is Imported notebook (4 pages).
 waitbg
 expect library.items is 2
-expect library.card.1.name is Tabs Planner
-tap 326 608
+expect library.card.2.name is Tabs Planner
+tap library card.2
 wait 700
 expect screen is editor
 expect editor.pages is 4

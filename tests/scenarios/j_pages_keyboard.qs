@@ -18,7 +18,8 @@
 clock 1700000000
 wait 3600
 # The Library's keyboard (New folder): a with the pen, resting on it for eight samples
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 expect display.presents not -1
@@ -48,7 +49,8 @@ wait 300
 expect library.sheet is none
 # A notebook, its first stroke, and Name the page at once: the settle the stroke left is not drawn
 # under the Pages view (no GL16 of the stroke and the panel, no keyboard drawn again)
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

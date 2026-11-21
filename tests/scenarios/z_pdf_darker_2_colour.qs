@@ -10,7 +10,7 @@
 waitbg
 wait 300
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.pages is 3

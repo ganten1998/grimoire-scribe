@@ -3,7 +3,7 @@
 # env: GRIMOIRE_CHECK_FIT=1
 wait 300
 expect library.items is 1
-tap 326 608
+tap library card.1
 expect editor.pages is 40
 expect editor.page is 3
 tap panel pages

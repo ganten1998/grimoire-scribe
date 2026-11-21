@@ -10,10 +10,10 @@
 # rust-only
 wait 300
 expect size is 1986x2648
-pentap 347 636
+pentap library card.1
 wait 300
 expect library.folder is School
-tap 347 636
+tap library card.1
 wait 500
 expect screen is editor
 expect editor.pins is

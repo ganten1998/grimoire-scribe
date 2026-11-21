@@ -19,7 +19,7 @@ expect notice is
 expect toast is
 expect library.items is 1
 expect library.card.1 is thumb
-tap 326 608
+tap library card.1
 wait 700
 shot 03-page-1
 expect screen is editor

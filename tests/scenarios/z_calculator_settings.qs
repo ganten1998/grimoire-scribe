@@ -4,7 +4,8 @@
 # The calculator package's settings choose its default mode and which calculators its dropdown
 # offers. Changing them applies to an open frame; a mode that is turned off falls back.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

@@ -5,7 +5,7 @@
 # env: GRIMOIRE_SIM_ADDRS=en0=192.168.0.20
 # root: z_bar_0_make
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.page is 1
 expect editor.strokes is 0
@@ -65,14 +65,15 @@ expect toast is
 pentap panel library
 waitbg
 # Live view on, then the same lasso
-tap 1345 95
+tap library add
+tap library add.share
 wait 300
 tap share live
 wait 300
 expect live.on is 1
 tap share done
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect screen is editor
 key 38 0

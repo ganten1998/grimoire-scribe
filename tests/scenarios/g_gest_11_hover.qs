@@ -4,7 +4,8 @@
 # A fresh hover sample is valid for 50 ms. Keep this contact burst inside that window.
 # The nearer contact starts 952 px (80.6 mm at 300 dpi) from the pen.
 wait 200
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

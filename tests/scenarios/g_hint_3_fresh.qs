@@ -5,7 +5,8 @@
 # settings: mirror_pdf=0
 wait 300
 expect settings.hints is 0
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 300

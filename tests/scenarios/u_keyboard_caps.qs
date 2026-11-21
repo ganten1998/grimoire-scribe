@@ -10,7 +10,8 @@
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
 wait 3600
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 shot 01-off
@@ -65,7 +66,8 @@ wait 300
 expect library.sheet is none
 expect library.folders is NASA 2026 ÉTÉ! go
 # The next keyboard opens with shift off
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 221 2045
@@ -85,7 +87,8 @@ expect library.sheet is none
 # Sideways: shift 221 1585, a 283 1425, b 1473 1585, Cancel 221 1745
 rotate 1
 wait 300
-tap library new-folder
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 221 1585

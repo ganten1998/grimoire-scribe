@@ -5,7 +5,7 @@
 # band above it) and its foot on the bottom edge, upright and sideways, where its buttons still take
 # their taps. A drag the pen's coming near cancels leaves it where it was last drawn.
 wait 300
-tap 200 400
+tap library card.1
 wait 300
 expect editor.panel_rect is 1704 220 128 1842
 drag touch 1737 260 1737 0 5

@@ -3,7 +3,7 @@
 # settings: mirror_pdf=0
 # settings: shape_quads=2
 wait 300
-tap 200 400
+tap library card.1
 wait 200
 expect editor.strokes is 0
 expect editor.links is 3 3
@@ -65,7 +65,7 @@ tap panel previous
 expect editor.links is 0 0
 tap panel library
 waitbg
-tap 200 400
+tap library card.1
 wait 300
 expect editor.links is 0 0
 expect editor.strokes is 0

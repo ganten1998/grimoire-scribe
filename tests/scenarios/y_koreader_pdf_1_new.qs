@@ -21,7 +21,8 @@ expect annotate.book_version is 2
 expect annotate.book_leftover is 0
 waitfor notice.key is import
 expect notice has Importing: page
-tap library new
+tap library add
+tap library add.new-notebook
 wait 300
 expect library.sheet is new
 tap library done

@@ -9,7 +9,8 @@ wait 300
 expect toast is Last update failed. See grimoire.log.
 # (x y w h: its usual place, near the bottom)
 expect toast.rect is 476 2250 907 110
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 # above Cancel and Create (their tops at 2180), in the space under "In: Library"
@@ -19,7 +20,8 @@ tap 300 2250
 wait 100
 expect library.sheet is none
 expect toast.rect is 476 2250 907 110
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 # above the keyboard (its top at 1480)
@@ -32,7 +34,8 @@ rotate 1
 wait 400
 expect rotation is 1
 expect toast.rect is 786 1630 907 110
-tap 1585 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 expect toast.rect is 786 1496 907 110
@@ -49,7 +52,7 @@ expect library.sheet is new
 tap 570 1700
 wait 100
 expect library.sheet is none
-tap 2155 95
+tap library settings
 wait 100
 expect library.sheet is settings
 # The Settings page (since the new Settings menu, #115) has no buttons along its foot (its X is at the top):

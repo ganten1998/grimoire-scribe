@@ -4,7 +4,8 @@
 # settings: theme=classic
 wait 200
 expect settings.theme is classic
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 175 2205
@@ -34,7 +35,8 @@ wait 300
 expect library.sheet is none
 rotate 1
 wait 300
-tap library new-folder
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 221 1585

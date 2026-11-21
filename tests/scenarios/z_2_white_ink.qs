@@ -11,7 +11,7 @@
 wait 300
 expect settings.white is 1
 expect settings.side_button is 2
-tap 326 608
+tap library card.1
 wait 500
 expect screen is editor
 expect editor.page is 1

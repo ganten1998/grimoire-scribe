@@ -11,7 +11,8 @@ wait 3800
 clock 1700000000
 battery 100
 wait 100
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

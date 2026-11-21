@@ -8,7 +8,8 @@
 # pdfs: 1
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap library paper.more
 wait 200
@@ -41,7 +42,7 @@ expect library.card.1 is thumb
 expect library.card.1.luma is 247
 expect library.cards_redrawn is 1
 shot 02-card-with-the-picture
-tap 326 608
+tap library card.1
 wait 600
 expect editor.picture is shown
 expect editor.strokes is 1

@@ -7,7 +7,7 @@
 # (the switch checks again) finds nothing newer (1.2.0), and Update stays off; betas again, then Update:
 # Grimoire leaves (the request for the launcher: tests/test_update.c).
 wait 150
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.0
 wait 100

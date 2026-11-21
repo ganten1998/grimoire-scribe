@@ -7,7 +7,7 @@
 # selected. The fixture's shortcuts.ini (shortcuts enabled) binds none of the Graph's actions: its arrows and V
 # come in memory (shortcuts.rs shortcuts_lookup_graph).
 wait 300
-tap 326 608
+tap library card.1
 expect editor.page is 3
 tap panel pages
 tap panel pages.graph

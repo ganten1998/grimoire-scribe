@@ -9,12 +9,12 @@ expect settings.pen.valid is 1
 expect settings.touch.valid is 1
 expect settings.fountain.pressure_gamma is 2.9000
 expect toast is
-tap 326 608
+tap library card.1
 wait 300
 shot 02-folder
 expect library.folder is School
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 500
 shot 03-notebook-reopened
 expect screen is editor

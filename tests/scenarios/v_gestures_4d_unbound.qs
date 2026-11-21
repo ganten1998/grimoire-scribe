@@ -4,7 +4,8 @@
 # settings: side_button=2
 wait 200
 expect settings.side_button is 2
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap 510 460

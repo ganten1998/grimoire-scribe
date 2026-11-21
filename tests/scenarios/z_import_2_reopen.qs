@@ -7,7 +7,7 @@ wait 1500
 expect toast not Imported notebook (3 pages).
 expect screen is library
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 600
 shot 01-reopened
 expect screen is editor

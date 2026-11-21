@@ -5,7 +5,8 @@
 # settings: eraser_mode=1
 # settings: mirror_pdf=0
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254

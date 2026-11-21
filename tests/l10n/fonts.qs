@@ -5,7 +5,7 @@
 # (2.1, Rust only)
 wait 100
 expect settings.theme is classic
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.1

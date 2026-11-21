@@ -18,7 +18,7 @@ expect toast is Controller disconnected
 hid attach pad Pro Controller
 wait 100
 expect toast is Controller disconnected
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.4
 wait 100
@@ -149,7 +149,8 @@ tap library settings.close
 wait 100
 expect library.sheet is none
 # In a notebook the learned buttons act
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200
@@ -213,7 +214,7 @@ expect editor.modal is none
 # Reset: shortcuts.ini's buttons again
 pentap panel library
 wait 300
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.4
 wait 100

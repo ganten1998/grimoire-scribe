@@ -8,7 +8,8 @@
 # here) and the precise eraser at its 12 mm chip, zoomed to 2, still reads 12 mm on the screen (it keeps its size
 # on the screen at any zoom: 6 page mm).
 wait 3600
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.1
 tap 1564 2254

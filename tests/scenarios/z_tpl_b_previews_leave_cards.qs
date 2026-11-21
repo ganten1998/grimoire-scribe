@@ -9,7 +9,8 @@ wait 500
 expect screen is library
 expect library.items is 1
 expect library.card.1 is thumb
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap library paper.more

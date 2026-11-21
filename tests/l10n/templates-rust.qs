@@ -9,7 +9,8 @@
 # sheet's other state, with no templates.) The taps are z_tpl_6_es_fit's; they land in both styles.
 # copy: tests/fixtures/tpl-many templates
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap library paper.more
@@ -32,7 +33,8 @@ wait 100
 expect library.sheet is none
 rotate 1
 wait 300
-tap 1585 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap library paper.more
@@ -51,7 +53,8 @@ expect library.sheet is none
 rotate 0
 wait 300
 # Over the editor's page, from its Paper sheet, upright and sideways.
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 400

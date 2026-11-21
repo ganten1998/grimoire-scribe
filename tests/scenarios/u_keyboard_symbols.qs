@@ -3,7 +3,8 @@
 # u_keyboard_symbols_classic.qs shoots Classic's)
 # rust-only
 wait 200
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 shot 01-letters
@@ -47,7 +48,8 @@ wait 300
 expect library.sheet is none
 expect library.folders is Joe's notes (2)!
 # A folder name may not hold a slash (the store refuses it, and says so)
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 tap 221 2045
 tap 570 2365
@@ -62,7 +64,8 @@ expect library.folders is Joe's notes (2)!
 # Sideways: the same three pages; ' at its place there
 rotate 1
 wait 300
-tap library new-folder
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 1723 1745

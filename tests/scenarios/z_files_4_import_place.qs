@@ -5,7 +5,8 @@
 # just copied in has not held still yet: Waiting. (The row says it, so no notice is needed there.)
 # rust-only
 wait 300
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library new.file
 wait 300

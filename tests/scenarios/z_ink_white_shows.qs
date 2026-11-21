@@ -4,7 +4,8 @@
 # The tool picker's ink row shows the ink picked at once (2.0.0-rc.12: it showed the old one until the
 # picker was opened again), and so does an open picker when a shortcut turns white ink on or off.
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 1564 2254
 wait 200

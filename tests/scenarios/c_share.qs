@@ -3,7 +3,8 @@
 # make scenarios runs this script as it is)
 wait 300
 expect screen is library
-tap 1345 95
+tap library add
+tap library add.share
 wait 600
 shot 01-share
 expect screen is share

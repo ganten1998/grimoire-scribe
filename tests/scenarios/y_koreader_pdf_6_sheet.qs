@@ -13,7 +13,8 @@
 wait 300
 expect screen is library
 expect annotate.book is running
-tap library new
+tap library add
+tap library add.new-notebook
 wait 300
 expect library.sheet is new
 waitfor annotate.book is done
@@ -27,7 +28,7 @@ wait 300
 waitbg
 expect library.sheet is none
 expect library.items is 1
-tap 326 608
+tap library card.1
 wait 700
 expect screen is editor
 expect editor.pages is 4

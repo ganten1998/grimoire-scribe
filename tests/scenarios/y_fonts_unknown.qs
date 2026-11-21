@@ -11,7 +11,7 @@ wait 100
 expect settings.font is terminess
 expect font is terminess
 expect settings.kept.font is comic-sans
-tap 1535 95
+tap library settings
 wait 50
 expect library.sheet is settings
 tap library settings.cat.1
@@ -45,7 +45,7 @@ wait 50
 expect library.sheet is none
 expect settings.kept.font is comic-sans
 # A font tapped: applied and saved at once, the font written as it is
-tap 1535 95
+tap library settings
 wait 50
 tap library settings.cat.1
 wait 50

@@ -6,7 +6,7 @@
 wait 200
 expect language is es
 expect settings.language is auto
-tap 1535 95
+tap library settings
 wait 200
 expect library.sheet is settings
 shot 01-settings-automatic-spanish

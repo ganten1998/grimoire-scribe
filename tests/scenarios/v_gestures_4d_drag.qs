@@ -5,7 +5,8 @@
 wait 200
 expect gestures.index-map is touch.2.down
 expect gestures.pages is pen.Button.drag
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 expect library.sheet is new
 tap 510 460

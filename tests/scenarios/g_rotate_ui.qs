@@ -2,7 +2,8 @@
 # Library and sheets when the Kindle is turned sideways
 # rust-only
 wait 300
-tap 965 95
+tap library add
+tap library add.new-notebook
 wait 100
 tap 510 460
 tap 1564 2254
@@ -19,7 +20,7 @@ shot 01-library-landscape
 expect rotation is 1
 expect size is 2480x1860
 expect screen is library
-tap 2155 95
+tap library settings
 wait 300
 shot 02-settings-landscape
 expect library.sheet is settings

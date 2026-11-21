@@ -83,7 +83,8 @@ tap library files.back
 wait 300
 expect files.open is 0
 # the Templates sheet's From a file...: refused the same way, the picker still up
-tap library new
+tap library add
+tap library add.new-notebook
 wait 200
 tap library paper.more
 wait 200

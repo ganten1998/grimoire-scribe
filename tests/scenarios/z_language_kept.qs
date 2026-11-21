@@ -6,7 +6,7 @@
 wait 200
 expect settings.language is en
 expect language is en
-tap 1535 95
+tap library settings
 wait 200
 tap library settings.cat.0
 wait 100

@@ -11,7 +11,8 @@ expect library.mirror is . 1, School 1
 tap library folder.School
 wait 300
 expect library.folder is School
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 expect library.sheet is keyboard
 tap 175 2205
@@ -23,10 +24,10 @@ expect library.text is Math
 tap 1643 2365
 wait 300
 expect library.folders is School, School/Math
-tap 125 95
+tap library back
 wait 300
 expect library.folder is
-tap 1151 1052
+tap library card-menu.2
 wait 200
 expect library.sheet is more
 tap library more.move
@@ -37,7 +38,8 @@ wait 300
 expect library.items is 1
 expect library.mirror is . 0, School 1, School_Math 1
 # A folder Archive at the top level
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 tap 175 2205
 tap 221 2045
@@ -86,16 +88,17 @@ tap library folder.Archive/School/Math
 wait 300
 expect library.folder is Archive/School/Math
 expect library.items is 1
-tap 125 95
+tap library back
 wait 300
-tap 125 95
+tap library back
 wait 300
 expect library.folder is Archive
 # A top-level folder named School: moving Archive/School to the top asks (Merge dialog); Cancel changes nothing
-tap 125 95
+tap library back
 wait 300
 expect library.folder is
-tap 1155 95
+tap library add
+tap library add.new-folder
 wait 100
 tap 175 2205
 tap 398 2045
@@ -127,7 +130,7 @@ expect library.folders is Archive, Archive/School, Archive/School/Math, School
 expect library.mirror is . 0, Archive_School 1, Archive_School_Math 1
 shot 04-cancelled
 # Without the clash (the empty top-level School removed) it goes back to the top level
-tap 125 95
+tap library back
 wait 300
 tap library folder-menu.School
 wait 100
@@ -145,7 +148,7 @@ wait 300
 expect library.items is 0
 expect library.folders is Archive, School, School/Math
 expect library.mirror is . 0, School 1, School_Math 1
-tap 125 95
+tap library back
 wait 300
 expect library.items is 2
 # New folder... in Move to makes a folder beside it and moves it in
