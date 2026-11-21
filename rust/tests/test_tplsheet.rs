@@ -212,33 +212,33 @@ fn pages_of_tiles() {
     v = probe(&s, "ready");
     check!(v == "50");
     v = probe(&s, "pages");
-    check!(v == "3"); // 24 a page upright
-    check!(find_hit(&s, TS_HIT_TILE, 0).is_some() && find_hit(&s, TS_HIT_TILE, 23).is_some() && find_hit(&s, TS_HIT_TILE, 24).is_none());
+    check!(v == "3"); // 18 a page upright (the Paper sheet's rows exactly, #195)
+    check!(find_hit(&s, TS_HIT_TILE, 0).is_some() && find_hit(&s, TS_HIT_TILE, 17).is_some() && find_hit(&s, TS_HIT_TILE, 18).is_none());
     check!(find_hit(&s, TS_HIT_PREV, 0).is_none());
     check!(!s.t[s.shown[0] as usize].thumb.px.is_empty() && s.t[s.shown[30] as usize].thumb.px.is_empty()); // only the tiles on screen are read
-    // The next page; a turn keeps its first tile in view (sideways 21 a page: page 2 of 3 holds 24).
+    // The next page; a turn keeps its first tile in view (18 a page, either way up).
     let mut h = find_hit(&s, TS_HIT_NEXT, 0);
     check!(h.is_some() && tap(&mut s, &mut a, h.unwrap().r, &mut d) == TsResult::Changed);
     v = probe(&s, "page");
-    check!(v == "2" && find_hit(&s, TS_HIT_TILE, 24).is_some() && find_hit(&s, TS_HIT_PREV, 0).is_some());
-    check!(s.t[s.shown[0] as usize].thumb.px.is_empty() && !s.t[s.shown[24] as usize].thumb.px.is_empty()); // the page before let go of
+    check!(v == "2" && find_hit(&s, TS_HIT_TILE, 18).is_some() && find_hit(&s, TS_HIT_PREV, 0).is_some());
+    check!(s.t[s.shown[0] as usize].thumb.px.is_empty() && !s.t[s.shown[18] as usize].thumb.px.is_empty()); // the page before let go of
     screen(&mut a, 2480, 1860);
     tplsheet_draw(&mut s, &mut a);
     v = probe(&s, "page");
-    check!(v == "2" && s.per == 21 && find_hit(&s, TS_HIT_TILE, 21).is_some() && find_hit(&s, TS_HIT_TILE, 24).is_some());
+    check!(v == "2" && s.per == 18 && find_hit(&s, TS_HIT_TILE, 21).is_some() && find_hit(&s, TS_HIT_TILE, 34).is_some());
     h = find_hit(&s, TS_HIT_NEXT, 0);
     check!(h.is_some() && tap(&mut s, &mut a, h.unwrap().r, &mut d) == TsResult::Changed);
     v = probe(&s, "page");
     check!(v == "3" && find_hit(&s, TS_HIT_TILE, 49).is_some() && find_hit(&s, TS_HIT_NEXT, 0).is_none());
-    // Back upright: the page that holds the first tile shown sideways (42: page 2).
+    // Back upright: the page that holds the first tile shown sideways (36: page 3).
     screen(&mut a, 1860, 2480);
     tplsheet_draw(&mut s, &mut a);
     v = probe(&s, "page");
-    check!(v == "2" && find_hit(&s, TS_HIT_TILE, 42).is_some());
+    check!(v == "3" && find_hit(&s, TS_HIT_TILE, 42).is_some());
     // Picking a tile: its file and preview, until tplsheet_close.
-    h = find_hit(&s, TS_HIT_TILE, 30);
+    h = find_hit(&s, TS_HIT_TILE, 40);
     check!(h.is_some() && tap(&mut s, &mut a, h.unwrap().r, &mut d) == TsResult::Picked && !s.open);
-    path = format!("{}/templates/page-31.png", root());
+    path = format!("{}/templates/page-41.png", root());
     check!(!tplsheet_path(&s).is_empty() && tplsheet_path(&s) == path && tplsheet_preview(&mut s).is_some());
     v = probe(&s, "count");
     check!(v.is_empty()); // (closed)
@@ -258,9 +258,9 @@ fn pages_of_tiles() {
     tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, Some(&path));
     tplsheet_draw(&mut s, &mut a);
     v = probe(&s, "selected");
-    check!(v == "page-31");
+    check!(v == "page-41");
     v = probe(&s, "page");
-    check!(v == "2");
+    check!(v == "3");
     tplsheet_close(&mut s);
     canvas_free(&mut a.screen);
 }
@@ -305,7 +305,7 @@ fn page_paper_selected() {
     let mut v = probe(&s, "selected");
     check!(v == "page-40");
     v = probe(&s, "page");
-    check!(v == "2"); // (page-0, page-1 ... page-40 is the 41st)
+    check!(v == "3"); // (page-0, page-1 ... page-40 is the 41st, on page 3 of 18 a page)
     tplsheet_close(&mut s);
     let not_here = [k2, paper_image(PAPER_ROLE_DOCUMENT, paper_image_id(k)), PAPER_MEDIUM];
     for i in 0..3 {
@@ -318,7 +318,8 @@ fn page_paper_selected() {
     canvas_free(&mut a.screen);
 }
 
-// No templates at all (and no folder): the sheet says how to add some, with Back and From a file... (#146) to tap.
+// No templates at all (and no folder): the sheet says how to add some, with Back and From a file... (#146) and
+// From a notebook... (#195) to tap.
 fn empty_sheet() {
     check!(rm_rf(&format!("{}/templates", root())) == 0);
     let mut a = new_app();
@@ -327,8 +328,8 @@ fn empty_sheet() {
     tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
     tplsheet_draw(&mut s, &mut a);
     let mut v = probe(&s, "count");
-    check!(s.open && v == "0" && s.hits.h.len() == 2 && s.hits.h[0].id == TS_HIT_BACK && !bg_busy());
-    check!(find_hit(&s, TS_HIT_FROM_FILE, 0).is_some());
+    check!(s.open && v == "0" && s.hits.h.len() == 3 && s.hits.h[0].id == TS_HIT_BACK && !bg_busy());
+    check!(find_hit(&s, TS_HIT_FROM_FILE, 0).is_some() && find_hit(&s, TS_HIT_FROM_NOTEBOOK, 0).is_some());
     v = probe(&s, "pages");
     check!(v == "1");
     tplsheet_close(&mut s);
@@ -530,9 +531,9 @@ fn empty_state_paragraphs() {
                 tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
                 tplsheet_draw(&mut s, &mut a);
                 let v = probe(&s, "count");
-                check!(v == "0" && s.t.len() == 2 && s.hits.h.len() == 2);
-                // The text's column: the sheet's inside (ui_sheet says where), above the From a file... tile (#146),
-                // which is under the text, and Back.
+                check!(v == "0" && s.t.len() == 2 && s.hits.h.len() == 3);
+                // The text's column: the sheet's inside (ui_sheet says where), above the From a file... and From a
+                // notebook... tiles (#146, #195), which are under the text, and Back.
                 let mut scratch = Canvas::default();
                 check!(canvas_init(&mut scratch, a.w, a.h) == 0);
                 let in_ = ui_sheet(&mut scratch, s.rect, tr("Templates"));
@@ -589,6 +590,94 @@ fn empty_state_paragraphs() {
     canvas_free(&mut a.screen);
 }
 
+// The From a notebook... tile (issue #195): beside From a file... on the editor's Templates sheet, and only there
+// (a page's template needs the open page; New notebook and the Photos sheet have none). A tap says so and leaves
+// the sheet open for the pick of a notebook and its page.
+fn from_notebook_tile() {
+    check!(rm_rf(&format!("{}/templates", root())) == 0);
+    templates_init();
+    for n in 1..=18 {
+        put_template(n, &format!("page-{n}.png"));
+    }
+    let mut a = new_app();
+    screen(&mut a, 1860, 2480);
+    let mut nb = NotebookInfo::default();
+    check!(store_create("Planner", "", PAPER_MEDIUM, &mut nb) == 0);
+    let mut s = TplSheet::default();
+    let mut d = Rect::default();
+    // The editor's sheet: eighteen templates fill the paper picker's rows, so both tiles are on page 2, side by side
+    tplsheet_open(&mut s, &mut a, Some(&nb), PAPER_MEDIUM, None);
+    tplsheet_draw(&mut s, &mut a);
+    check!(s.per == 18 && probe(&s, "pages") == "2" && find_hit(&s, TS_HIT_FROM_FILE, 0).is_none());
+    let next = find_hit(&s, TS_HIT_NEXT, 0);
+    check!(next.is_some() && tap(&mut s, &mut a, next.unwrap().r, &mut d) == TsResult::Changed);
+    let file = find_hit(&s, TS_HIT_FROM_FILE, 0);
+    let book = find_hit(&s, TS_HIT_FROM_NOTEBOOK, 0);
+    check!(file.is_some() && book.is_some());
+    check!(book.unwrap().r.x == file.unwrap().r.x + file.unwrap().r.w + ui_px(30.0) && book.unwrap().r.y == file.unwrap().r.y);
+    check!(tplsheet_point(&s, "from_notebook").is_some());
+    check!(tap(&mut s, &mut a, book.unwrap().r, &mut d) == TsResult::FromNotebook && s.open);
+    tplsheet_close(&mut s);
+    // New notebook's Templates sheet offers it too (the notebook is made on the page picked); the Photos sheet
+    // does not.
+    tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
+    tplsheet_draw(&mut s, &mut a);
+    check!(s.per == 18 && probe(&s, "pages") == "2" && find_hit(&s, TS_HIT_FROM_NOTEBOOK, 0).is_none());
+    let next = find_hit(&s, TS_HIT_NEXT, 0);
+    check!(next.is_some() && tap(&mut s, &mut a, next.unwrap().r, &mut d) == TsResult::Changed);
+    check!(find_hit(&s, TS_HIT_FROM_NOTEBOOK, 0).is_some() && tplsheet_point(&s, "from_notebook").is_some());
+    tplsheet_close(&mut s);
+    tplsheet_open_photos(&mut s, &mut a, &nb, PAPER_BLANK);
+    tplsheet_draw(&mut s, &mut a);
+    check!(find_hit(&s, TS_HIT_FROM_NOTEBOOK, 0).is_none());
+    tplsheet_close(&mut s);
+    canvas_free(&mut a.screen);
+}
+
+// BgKind::PageTemplate (issue #195): a notebook's page drawn whole as the picture its key was given in the
+// notebook's bg/index.ini, fitted to its page; a key no index has makes nothing.
+fn page_as_a_template_picture() {
+    let mut a = new_app();
+    screen(&mut a, 1860, 2480);
+    let (mut nb, mut other) = (NotebookInfo::default(), NotebookInfo::default());
+    check!(store_create("Forms", "", PAPER_MEDIUM, &mut nb) == 0 && store_create("Empty", "", PAPER_MEDIUM, &mut other) == 0);
+    let mut page = None;
+    check!(store_read_page(&nb, 0, &mut page) == 0 && page.is_some());
+    check!(store_save_page(&nb, 0, page.as_deref().unwrap()) == 0);
+    page = None;
+    let (mut pw, mut ph) = (0, 0);
+    store_notebook_page_size(&nb, &mut pw, &mut ph);
+    let key = store_page_template_key(&nb, 0, pw, ph);
+    check!(key.is_some());
+    let key = key.unwrap();
+    let mut dir = String::new();
+    check!(bgimage_dir(nb.id.as_str(), &mut dir, 700) == 0 && mkdir_p(&dir) == 0);
+    let mut ix = BgIndex::default();
+    let (mut id, mut added) = (0u32, false);
+    check!(bgindex_load(&dir, &mut ix) == 0 && bgindex_claim(&mut ix, &dir, key, &mut id, &mut added) == 0 && added);
+    check!(bgindex_save(&dir, &ix) == 0);
+    bgindex_free(&mut ix);
+    let mut file = String::new();
+    bgimage_file(&dir, id, &mut file, 800);
+    check!(std::fs::metadata(&file).is_err());
+    let path = format!("{}:0:{:016x}", nb.id.as_str(), key);
+    bg_queue(BgKind::PageTemplate, Some(nb.id.as_str()), Some(&path), DPI, true);
+    drain_jobs();
+    // (the page was blank: a fitted white picture of this notebook's page size)
+    let pic = bgimage_read(&file, 32 << 20);
+    check!(pic.is_some());
+    let mut why: &'static str = "";
+    check!(bgimage_check(pic.as_deref().unwrap(), pic.as_deref().unwrap().len(), &mut pw, &mut ph, &mut why) == 0);
+    let (mut w, mut h) = (0, 0);
+    store_notebook_page_size(&nb, &mut w, &mut h);
+    check!(pw == w && ph == h);
+    // A key this notebook's index does not have: nothing is made
+    let path = format!("{}:0:{:016x}", nb.id.as_str(), key ^ 1);
+    bg_queue(BgKind::PageTemplate, Some(nb.id.as_str()), Some(&path), DPI, true);
+    check!(drain_jobs() == BgKind::PageTemplate as i32);
+    canvas_free(&mut a.screen);
+}
+
 // The From a file... tile (2.2, #146): the last tile, after every template (so no template's tile moves for it),
 // on a page of its own when the templates fill their pages; a tap on it says so and leaves the sheet open. Once the
 // host has asked for a copy the tile waits (it cannot be tapped) until the copy job is no longer queued or running;
@@ -606,14 +695,15 @@ fn from_file_tile() {
     let mut s = TplSheet::default();
     tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
     tplsheet_draw(&mut s, &mut a);
-    // 24 templates fill page 1 upright: the tile is page 2's only tile
-    check!(s.per == 24 && probe(&s, "pages") == "2" && find_hit(&s, TS_HIT_FROM_FILE, 0).is_none());
+    // 24 templates fill page 1 upright (18): the tile is on page 2
+    check!(s.per == 18 && probe(&s, "pages") == "2" && find_hit(&s, TS_HIT_FROM_FILE, 0).is_none());
     check!(probe(&s, "copying") == "0" && probe(&s, "count") == "24");
     let mut d = Rect::default();
     let next = find_hit(&s, TS_HIT_NEXT, 0);
     check!(next.is_some() && tap(&mut s, &mut a, next.unwrap().r, &mut d) == TsResult::Changed);
     let tile = find_hit(&s, TS_HIT_FROM_FILE, 0);
-    check!(tile.is_some() && find_hit(&s, TS_HIT_TILE, 23).is_none());
+    // (the six templates after page 1's eighteen, still waiting for their previews, then the tile)
+    check!(tile.is_some() && find_hit(&s, TS_HIT_TILE, 24).is_none());
     check!(tplsheet_point(&s, "from_file").is_some());
     check!(tap(&mut s, &mut a, tile.unwrap().r, &mut d) == TsResult::FromFile && s.open);
     // a copy asked: the tile waits, and stays so while the job is queued
@@ -725,6 +815,8 @@ fn test_tplsheet() {
     run!(fills_in_while_the_job_runs);
     run!(labels_keep_to_their_tiles);
     run!(empty_state_paragraphs);
+    run!(from_notebook_tile);
+    run!(page_as_a_template_picture);
     run!(from_file_tile);
     run!(a_copy_ends_under_a_contact);
     font_shutdown();

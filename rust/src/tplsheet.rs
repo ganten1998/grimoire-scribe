@@ -9,10 +9,12 @@
 //! A modal hosted by the editor (in the Paper sheet's place) and the library (over New notebook).
 //! It never shows or logs more of a template than its name on screen: names are the owner's.
 //!
-//! Its last tile is From a file... (2.2, issue #146): the host opens the picture pick over it (browser.rs) and asks the
-//! copy job for the picture picked (bgwork_copy.rs); the tile waits while that copy runs, and when it ends the folder
-//! is read again, with the new picture's tile in view (never while a pen or finger is down on the sheet: after its
-//! lift).
+//! Its last tiles are From a file... (2.2, issue #146) and From a notebook... (2.2, issue #195): the host opens the
+//! picture pick over the first (browser.rs) and asks the copy job for the picture picked (bgwork_copy.rs); the tile
+//! waits while that copy runs, and when it ends the folder is read again, with the new picture's tile in view (never
+//! while a pen or finger is down on the sheet: after its lift). The second opens a pick of a notebook and one of its
+//! pages (notebookpicker.rs): the editor renders the page in the background as this page's template
+//! (bgwork_template.rs, BgKind::PageTemplate), and the library makes the new notebook on it.
 //!
 //! A PDF in the folder (2.2, issue #172) is a tile a page, named after the file and the page ("Planner p. 3", the
 //! page's number kept in view however long the name), each waiting until its job made the page's picture
@@ -29,7 +31,8 @@ const CHECK_MS: u32 = 1500;
 
 /// The paper pickers' tiles: the fixed papers in paper_at() order, then Custom music... More layouts...
 /// (this sheet) and, in the editor's Paper sheet, Photos... (this sheet on the photos) are buttons
-/// beside Cancel since rc.9, so the tiles keep the owner's three rows of six.
+/// beside Cancel since rc.9, so the tiles keep the owner's three rows of six. This sheet shares that grid
+/// exactly since issue #195.
 pub const PAPER_SHEET_TILES: i32 = PAPER_PICKER_COUNT;
 pub const PAPER_SHEET_EDITOR_TILES: i32 = PAPER_PICKER_COUNT;
 /// The pickers' columns: always six, so each row is one of the owner's rows (rc.9).
@@ -107,16 +110,17 @@ pub fn paper_sheet_rect(a: &App, g: &mut PaperGrid) -> Rect {
     let sheet_h = ui_px(120.0) + ui_px(72.0) + g.rows * g.cell_h + ui_px(190.0);
     Rect { x: m, y: (a.h - sheet_h) / 3, w: a.w - 2 * m, h: sheet_h }
 }
-/// The Templates (and Photos) sheet's place: as the Paper sheet's was before rc.9 (19 tiles: 24
-/// templates a page upright, 21 sideways), so the shorter three-row Paper sheet leaves it as big.
-fn templates_sheet_rect(a: &App, g: &mut PaperGrid) -> Rect {
-    let m = ui_px(70.0);
-    let gap = ui_px(30.0);
-    let avail_w = a.w - 2 * m - ui_px(72.0);
-    let avail_h = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
-    *g = paper_grid(19, avail_w, avail_h, gap, ui_px(100.0), a.w / 6, PAPER_GRID_MIN_COLS);
-    let sheet_h = ui_px(120.0) + ui_px(72.0) + g.rows * g.cell_h + ui_px(190.0);
-    Rect { x: m, y: (a.h - sheet_h) / 3, w: a.w - 2 * m, h: sheet_h }
+/// The Templates (and Photos) sheet's place: the paper picker's, and its rows exactly (issue #195: six columns,
+/// three rows, the same tiles), so More layouts... opens the paper picker's grid with the templates in it. Over the
+/// editor that is the Paper sheet's (tiles from the sheet's inside); over New notebook it is New notebook's card,
+/// the tiles where its Paper heading's are (a grid y of -1: the sheet's inside, below its title).
+fn templates_sheet_rect(a: &App, new_notebook: bool, g: &mut PaperGrid) -> (Rect, i32) {
+    if new_notebook {
+        let (card, ty) = crate::library::new_notebook_paper_place(a.w, a.h, g);
+        (card, ty)
+    } else {
+        (paper_sheet_rect(a, g), -1)
+    }
 }
 /// A paper tile's label, under the tile (tile: its rect; gap: the grid's): on one line, centred,
 /// or on two lines no wider than the tile when it is wider than the tile (a break after a comma
@@ -163,6 +167,8 @@ pub enum TsResult {
     Cancel = 4,  // TS_CANCEL
     /// the From a file... tile (#146): the host opens the picture pick; the sheet stays open under it
     FromFile = 5,
+    /// the From a notebook... tile (#195): the host opens the notebook and page pick; the sheet stays open under it
+    FromNotebook = 6,
 }
 /// The hits it registers as it draws (tests find its buttons by them): a tile (arg: the template, an
 /// index into shown), the page buttons, Back, the From a file... tile.
@@ -171,6 +177,7 @@ pub const TS_HIT_PREV: i32 = 2;
 pub const TS_HIT_NEXT: i32 = 3;
 pub const TS_HIT_BACK: i32 = 4;
 pub const TS_HIT_FROM_FILE: i32 = 5;
+pub const TS_HIT_FROM_NOTEBOOK: i32 = 6;
 
 #[derive(Clone, Debug, Default)]
 pub struct TplSheet {
@@ -459,6 +466,32 @@ fn draw_from_file(s: &mut TplSheet, c: &mut Canvas, r: Rect, gap: i32) {
     }
 }
 
+// The From a notebook... tile (#195): a blank page with a notebook's sign. It opens a pick of a notebook and then
+// one of its pages, which becomes this page's template (the host renders that page in the background).
+fn tile_from_notebook(c: &mut Canvas, tr: Rect) {
+    canvas_fill(c, tr, 255);
+    let s = tr.w * 2 / 5;
+    ui_icon(c, IconKind::Notebook, Rect { x: tr.x + (tr.w - s) / 2, y: tr.y + (tr.h - s) / 2, w: s, h: s }, 0);
+}
+
+fn draw_from_notebook(s: &mut TplSheet, c: &mut Canvas, r: Rect, gap: i32) {
+    tile_from_notebook(c, r);
+    ui_frame(c, r, ui_px(12.0), 0, false, ui_px(3.0));
+    // TRANSLATORS: (also) the tile after From a file... on the Templates sheet, under its picture (a tile of about
+    // 250 px, on two lines if need be): it opens a pick of a notebook and one of its pages, to use that page as the
+    // open page's template.
+    paper_tile_label(c, r, gap, tr("From a notebook..."), false);
+    hits_add(&mut s.hits, Rect { x: r.x, y: r.y, w: r.w, h: r.h + ui_px(90.0) }, TS_HIT_FROM_NOTEBOOK, 0);
+}
+
+// Whether the sheet offers From a notebook... (#195): only the editor's Templates sheet has the open page it would
+// become the template of (New notebook's has none, and the Photos sheet's pages are its own pictures).
+fn offers_from_notebook(s: &TplSheet) -> bool {
+    // (a photo has no template, and the pick makes a page's template: a page the editor has open, or the new
+    // notebook's first one)
+    !s.photos
+}
+
 // A tile whose preview is not made yet: the sign for more, in gray, until it is.
 fn tile_waiting(c: &mut Canvas, tr: Rect) {
     let s = tr.w / 4;
@@ -543,7 +576,8 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
     hits_clear(&mut s.hits);
     s.pressed = None;
     let mut g = PaperGrid::default();
-    s.rect = templates_sheet_rect(a, &mut g);
+    let (rect, grid_ty) = templates_sheet_rect(a, s.nb.is_none(), &mut g);
+    s.rect = rect;
     let c = &mut a.screen;
     // TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
     // write on as paper), which More papers... opens (1560 px at 64 px).
@@ -554,12 +588,15 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
         title = tr("Photos");
     }
     let in_ = ui_sheet(c, s.rect, title);
+    let ty = if grid_ty < 0 { in_.y } else { grid_ty };
     let gap = ui_px(30.0);
     let bh = ui_px(140.0);
     let offered = usable(s);
+    let from_notebook = offers_from_notebook(s);
     s.per = g.cols * g.rows;
-    // (the From a file... tile after the last template's: one place more)
-    s.pages = if offered != 0 { (s.shown.len() as i32 + s.per) / s.per } else { 1 };
+    // (the From a file... and From a notebook... tiles after the last template's: a place each)
+    let extra = 1 + from_notebook as i32;
+    s.pages = if offered != 0 { (s.shown.len() as i32 + extra + s.per - 1) / s.per } else { 1 };
     s.page = clampi(s.anchor / s.per, 0, s.pages - 1);
     let back = Rect { x: in_.x, y: in_.y + in_.h - bh, w: ui_px(380.0), h: bh };
     // TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at
@@ -575,13 +612,20 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
     }
     if offered == 0 {
         draw_empty(s, a, Rect { x: in_.x, y: in_.y, w: in_.w, h: back.y - in_.y });
-        // (From a file... under the text, in the grid's last row, centred)
-        let tr = Rect { x: in_.x + (in_.w - g.tw) / 2, y: in_.y + (g.rows - 1) * g.cell_h, w: g.tw, h: g.th };
-        draw_from_file(s, &mut a.screen, tr, gap);
+        // (From a file..., and From a notebook..., under the text, in the grid's last row, centred)
+        let n = extra;
+        let total = n * g.tw + (n - 1) * gap;
+        let mut x = in_.x + (in_.w - total) / 2;
+        let y = ty + (g.rows - 1) * g.cell_h;
+        draw_from_file(s, &mut a.screen, Rect { x, y, w: g.tw, h: g.th }, gap);
+        x += g.tw + gap;
+        if from_notebook {
+            draw_from_notebook(s, &mut a.screen, Rect { x, y, w: g.tw, h: g.th }, gap);
+        }
         return s.rect;
     }
     let gridw = g.cols * g.tw + (g.cols - 1) * gap;
-    let cell = |k: i32| Rect { x: in_.x + (in_.w - gridw) / 2 + (k % g.cols) * (g.tw + gap), y: in_.y + (k / g.cols) * g.cell_h, w: g.tw, h: g.th };
+    let cell = |k: i32| Rect { x: in_.x + (in_.w - gridw) / 2 + (k % g.cols) * (g.tw + gap), y: ty + (k / g.cols) * g.cell_h, w: g.tw, h: g.th };
     let mut k = 0;
     while k < s.per && first + k < s.shown.len() as i32 {
         let i = first + k;
@@ -606,10 +650,13 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
         }
         k += 1;
     }
-    // the From a file... tile, when this page holds its place
+    // the From a file... tile, and From a notebook..., when this page holds their places
     let last = s.shown.len() as i32;
     if last >= first && last < first + s.per {
         draw_from_file(s, c, cell(last - first), gap);
+    }
+    if from_notebook && last + 1 >= first && last + 1 < first + s.per {
+        draw_from_notebook(s, c, cell(last + 1 - first), gap);
     }
     if s.pages > 1 {
         let nr = Rect { x: in_.x + in_.w - ui_px(220.0), y: back.y, w: ui_px(220.0), h: bh };
@@ -682,6 +729,7 @@ pub fn tplsheet_pointer(s: &mut TplSheet, a: &mut App, phase: i32, x: f32, y: f3
         }
         // (the sheet stays open under the picker the host opens)
         TS_HIT_FROM_FILE => TsResult::FromFile,
+        TS_HIT_FROM_NOTEBOOK => TsResult::FromNotebook,
         TS_HIT_PREV | TS_HIT_NEXT => {
             s.anchor = clampi(s.page + if h.id == TS_HIT_NEXT { 1 } else { -1 }, 0, s.pages - 1) * s.per;
             tplsheet_draw(s, a);
@@ -826,10 +874,12 @@ pub fn tplsheet_probe(s: &TplSheet, key: &str, out: &mut String, cap: usize) -> 
 }
 
 /// Where the runner's `templates.NAME` taps (docs/SIM.md): from_file, the From a file... tile while it can be tapped
-/// (not while a copy it asked for runs), and back; None for another name, or with the sheet closed.
+/// (not while a copy it asked for runs), from_notebook, that tile (both hosts' Templates sheet), and back; None for
+/// another name, or with the sheet closed.
 pub fn tplsheet_point(s: &TplSheet, name: &str) -> Option<(f32, f32)> {
     let id = match name {
         "from_file" => TS_HIT_FROM_FILE,
+        "from_notebook" => TS_HIT_FROM_NOTEBOOK,
         "back" => TS_HIT_BACK,
         _ => return None,
     };

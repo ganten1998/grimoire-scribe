@@ -3928,6 +3928,20 @@ pub fn editor_open_notebook_at(a: &mut App, id: &str, page_id: u32, added: bool)
     s.thumb_dirty = true; // (a page added: the card follows the page the notebook opens at)
 }
 
+/// The end of BgKind::PageTemplate (2.2, issue #195): the picture a page of a notebook was made into for this
+/// page is there (ok), or could not be made. The staying notice goes; the open page, drawn white, is drawn again
+/// once the picture is there.
+pub fn editor_page_template_done(a: &mut App, id: &str, ok: bool) {
+    app_notice_clear(a, NoticeKey::Loading);
+    if !ok {
+        template_failed(a);
+        return;
+    }
+    store_invalidate_page_previews(id);
+    bgimage_retry_missing();
+    editor_picture_made(a);
+}
+
 /// a picture job is done: the open page drawn again
 // A picture made in the background (a template's, a page KOReader sent: bgimage.h) may be the open
 // page's paper, drawn white while its file was missing: the page is drawn again with it, now, or once
@@ -5927,7 +5941,7 @@ fn migration_reset(s: &mut EditorState) {
 /// to... and New page...'s keyboard close with it.
 fn lm_drop(s: &mut EditorState) {
     sel_drop(s);
-    if !s.destination.copying {
+    if !s.destination.copying && !s.destination.pages {
         s.destination=NotebookPicker::default(); // (Copy to notebook...'s picker is the Pages view's, not link making's)
     }
     if s.owner == Owner::Lasso || s.owner == Owner::Strip || s.owner == Owner::LinkTo {
@@ -9343,7 +9357,15 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         return false;
     }
     if s.destination.open {
-        if action==SHORTCUT_GO_BACK||action==SHORTCUT_CLOSE_MENU||action==SHORTCUT_BACK {s.destination.open=false;s.lt.hidden=false;compose_all(a,RefreshMode::Full);return true;}
+        if action==SHORTCUT_GO_BACK||action==SHORTCUT_CLOSE_MENU||action==SHORTCUT_BACK {
+            if s.destination.pages {
+                // (From a notebook...'s pick closes; the Templates sheet stays open under it)
+                s.destination=NotebookPicker::default();
+            } else {
+                s.destination.open=false;s.lt.hidden=false;
+            }
+            compose_all(a,RefreshMode::Full);return true;
+        }
         return false;
     }
     // The picture pick over the page (#146): Esc and Back up a level (at its root back to the sheet), the page keys
@@ -9920,17 +9942,92 @@ fn apply_template(a: &mut App, path: &str) {
             app_toast(a, not_ready_yet(), 4000);
             return;
         }
-        let mut msg = String::new();
-        // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
-        // on the Templates sheet could not become the page's paper (or the new notebook's); %s is
-        // the log file that says why.
-        csnprintf!(&mut msg, 256, tr("Couldn't use template (see %s)."), "grimoire.log");
-        app_toast(a, &msg, 4000);
+        template_failed(a);
         return;
     }
     if s.open_page().unwrap().paper != k {
         apply_paper(a, k);
     }
+}
+
+// The Templates sheet's From a notebook... (issue #195): a pick of a notebook and then one of its pages, whose
+// page becomes this page's template picture.
+fn tpl_notebook_open(a: &mut App) {
+    if !save_page(a) {
+        return;
+    }
+    let folder = ed_ref(a).nb.folder.as_str().to_string();
+    if with_modal(a, |s| &mut s.destination, |p, _| p.start_pages(&folder)) {
+        compose_all(a, RefreshMode::Full);
+    } else {
+        app_toast(a, tr("Couldn't read notebooks."), 3000);
+    }
+}
+
+// Page `index` of notebook `src_id` becomes this page's template (issue #195): its picture is made for this
+// notebook in the background (BgKind::PageTemplate), at an id this notebook's bg/index.ini is given now, so the
+// page may take its paper at once and draws white until the picture is there (as a template's first use does).
+pub(crate) fn apply_page_template(a: &mut App, src_id: &str, index: i32) {
+    let cur = ed_ref(a).nb.clone();
+    let (mut pw, mut ph) = (0, 0);
+    store_notebook_page_size(&cur, &mut pw, &mut ph);
+    let mut other = NotebookInfo::default();
+    let src = if src_id == cur.id.as_str() {
+        &cur
+    } else if store_load_info(src_id, &mut other) == 0 {
+        &other
+    } else {
+        app_toast(a, tr("Couldn't read notebooks."), 3000);
+        return;
+    };
+    let Some(key) = store_page_template_key(src, index, pw, ph) else {
+        template_failed(a);
+        return;
+    };
+    let mut dir = String::new();
+    if bgimage_dir(cur.id.as_str(), &mut dir, 700) != 0 || mkdir_p(&dir) != 0 {
+        template_failed(a);
+        return;
+    }
+    let mut ix = BgIndex::default();
+    let (mut id, mut added) = (0u32, false);
+    let rc = bgindex_load(&dir, &mut ix);
+    let rc = if rc == 0 { bgindex_claim(&mut ix, &dir, key, &mut id, &mut added) } else { rc };
+    let saved = rc == 0 && (!added || bgindex_save(&dir, &ix) == 0);
+    bgindex_free(&mut ix);
+    if !saved {
+        template_failed(a);
+        return;
+    }
+    let mut file = String::new();
+    bgimage_file(&dir, id, &mut file, 800);
+    let k = paper_image(PAPER_ROLE_TEMPLATE, id);
+    {
+        let s = ed(a);
+        tplsheet_close(&mut s.ts); // (the sheet it was picked on goes)
+        s.paper_open = false;
+    }
+    if std::fs::metadata(&file).is_err() {
+        let path = format!("{}:{}:{:016x}", src_id, index, key);
+        bg_queue(BgKind::PageTemplate, Some(cur.id.as_str()), Some(&path), a.dpi, true);
+        // TRANSLATORS: the staying notice while a notebook's page is drawn as the open page's template (the
+        // Templates sheet's From a notebook..., issue #195): a few seconds on a dense page.
+        app_notice(a, NoticeKey::Loading, tr("Making template..."));
+    }
+    if ed(a).open_page().is_some_and(|p| p.paper != k) {
+        apply_paper(a, k);
+    } else {
+        compose_all(a, RefreshMode::Full);
+    }
+}
+
+fn template_failed(a: &mut App) {
+    let mut msg = String::new();
+    // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked on the Templates
+    // sheet (or a page of a notebook, issue #195) could not become the page's paper; %s is the log file that says
+    // why.
+    csnprintf!(&mut msg, 256, tr("Couldn't use template (see %s)."), "grimoire.log");
+    app_toast(a, &msg, 4000);
 }
 
 // A template or photo picked a moment after it was copied in: its preview (and the check that it is a picture
@@ -11211,9 +11308,18 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
     if ed_ref(a).destination.open {
         let ph=app_pointer_phase(ev);
         if ph>=0 {let r=with_modal(a,|s|&mut s.destination,|p,a|p.pointer(a,ph,ev));match r {
-            NotebookPick::Cancel=>{ed(a).lt.hidden=false;compose_all(a,RefreshMode::Full);},
+            NotebookPick::Cancel=>{
+                if ed_ref(a).destination.pages {
+                    // (the Templates sheet stays open under the pick)
+                    ed(a).destination=NotebookPicker::default();
+                } else {
+                    ed(a).lt.hidden=false;
+                }
+                compose_all(a,RefreshMode::Full);
+            },
             NotebookPick::Place(id,at)=>{let pids=std::mem::take(&mut ed(a).copy_pids);pages_copy_to(a,&id,at,&pids);},
             NotebookPick::Notebook(_)=>compose_all(a,RefreshMode::Full),
+            NotebookPick::Page(id,at)=>{ed(a).destination=NotebookPicker::default();apply_page_template(a,&id,at);},
             NotebookPick::Target(t)=>{ed(a).lt.hidden=false;let target=if let Some((id,pid))=nav_external_target(t.as_str()){if ed_ref(a).nb.id==id{format!("p{pid}")}else{t.as_str().to_string()}}else{t.as_str().to_string()};link_pick(a,&target);compose_all(a,RefreshMode::Full);},
             NotebookPick::None=>{}
         }}
@@ -11922,6 +12028,8 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                 }
             } else if r == TsResult::FromFile {
                 files_open(a);
+            } else if r == TsResult::FromNotebook {
+                tpl_notebook_open(a);
             } else if r == TsResult::Back {
                 // Back to the Paper sheet, in the same place.
                 compose(a, d);

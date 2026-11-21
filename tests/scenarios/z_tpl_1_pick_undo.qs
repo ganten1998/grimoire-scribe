@@ -76,7 +76,7 @@ pentap panel paper.more
 wait 300
 expect templates.selected is Lined
 shot 06-lined-selected
-pentap 300 2123
+pentap 300 1835
 wait 200
 expect editor.modal is paper
 tap 1562 2125

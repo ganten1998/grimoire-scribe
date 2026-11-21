@@ -2213,6 +2213,11 @@ fn poll_jobs(a: &mut App) -> i32 {
         bgimage_retry_missing();
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
     }
+    if done == BgKind::PageTemplate as i32 {
+        // (a notebook's page drawn as the open page's template: From a notebook..., issue #195)
+        crate::editor::editor_page_template_done(a, done_id.as_str(), r > 0);
+        return 0;
+    }
     if done == BgKind::PdfImport as i32 {
         // (the PDF KOReader handed over by its path, 2.2: its end opens the reader's page, through the book job)
         let src = crate::pdfimport::queued_src(done_id.as_str());

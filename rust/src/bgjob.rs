@@ -51,6 +51,11 @@ pub enum BgKind {
     /// (not copied), or not copied for a cause the screen has a sentence for, bgwork_copy.rs's CopyFail: 2 (bigger
     /// than its folder takes), 3 (no longer the file listed) or 4 (a path or name too long).
     CopyFile = 10,
+    /// id: the notebook the picture is made in, path: "<source notebook id>:<page index>:<key, 16 hex>"; one of
+    /// the source notebook's pages rendered as a template picture for the notebook (the Templates sheet's From a
+    /// notebook..., 2.2, issue #195), drawn in the child (bgwork_template.rs). Ends 0, or -1 (not made: the page does
+    /// not read, its paper's picture is missing, or the id it was given is not in the notebook's bg/index.ini).
+    PageTemplate = 11,
 }
 
 /// Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
@@ -382,8 +387,8 @@ struct Job {
 }
 
 // (by the kind's number)
-const K_KIND_NAMES: [&str; 11] =
-    ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout", "PDF import", "font check", "file previews", "file copy"];
+const K_KIND_NAMES: [&str; 12] =
+    ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout", "PDF import", "font check", "file previews", "file copy", "page template"];
 
 /// bgjob.c's g_q, g_n, g_pid, g_running_notify and g_running.
 struct State {
@@ -496,6 +501,7 @@ fn run_job(j: &Job) -> i32 {
         BgKind::PdfImport => crate::pdfimport::bg_pdf_import(j.id.as_str(), j.dir.as_str()),
         BgKind::FontCheck => crate::userfonts::bg_font_check(j.dir.as_str(), j.dpi),
         BgKind::CopyFile => crate::bgwork_copy::bg_copy_file(j.id.as_str(), j.dir.as_str()),
+        BgKind::PageTemplate => crate::bgwork_template::bg_page_template(j.id.as_str(), j.dir.as_str(), j.dpi),
         BgKind::FilePreviews => crate::bgwork_previews::bg_file_preview(j.dir.as_str()),
     }
 }

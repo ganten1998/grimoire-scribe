@@ -2826,6 +2826,22 @@ A picture from anywhere on the Kindle becomes a template or a photo by a copy in
 - **Fonts** come in the same way, by the same job and the same kind of pick: "Add a font... and Add to fonts",
   below.
 
+## Templates from a notebook (2.2, issue #195)
+
+The Templates sheet has a From a notebook... tile beside From a file..., over the editor and over New notebook. It
+opens a pick of a notebook and then one of its pages (`NotebookPicker::start_pages`, `notebookpicker.rs`). Over the
+editor the page picked becomes the open page's template; over New notebook, the notebook it creates opens on it.
+The page's key (`store_page_template_key`, from the notebook, the page and its file as it is now,
+and this notebook's page size) is given an id in this notebook's `bg/index.ini` at once, and `BgKind::PageTemplate`
+(`bgwork_template.rs`) draws that page, paper and ink, as the notebook's gray page-size picture. The page takes the
+picture's paper at once, as a template's first use does, and draws white until the child has written it; the
+staying notice says "Making template..." meanwhile, and the page is drawn again when the job ends (`app.rs`,
+`editor_page_template_done`). A page whose own picture is missing is not made into a template (the log says so),
+and neither is one whose id the index does not have. The Templates and Photos sheets now take the Paper row's
+place and its rows exactly (`templates_sheet_rect`): over the editor, the Paper sheet's place and tiles; over New
+notebook, its card and paper grid (`new_notebook_paper_place`), the Templates sheet at the same y as New
+notebook's papers. Either way six columns, three rows, the same tiles, a page of eighteen upright and sideways.
+
 ## Add a font... and Add to fonts (2.2, issue #161)
 
 A font file from anywhere on the Kindle, its own fonts folder too, is copied into `grimoire/fonts` by the copy job

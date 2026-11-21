@@ -355,6 +355,12 @@ pub struct LibraryState {
     new_tpl: FixedStr<TEMPLATE_PATH_MAX>,
     /// and its preview, for its tile
     tpl_prev: Canvas,
+    /// the Templates sheet's From a notebook... over New notebook (2.2, issue #195): the pick of a notebook and
+    /// one of its pages
+    tpl_picker: NotebookPicker,
+    /// the page picked there, if one was (its notebook's id and its index): create_notebook makes the new
+    /// notebook's first page on it, as it would on a template picture
+    new_tpl_page: Option<(String, i32)>,
     /// bgimage_generation when the cards were last read
     card_gen: u32,
     /// per notebook: what thumbs[i] was read from (store_thumb_stamp), or CARD_STALE
@@ -1099,6 +1105,23 @@ pub(crate) fn sheet_rect(aw: i32, ah: i32, mut h: i32) -> Rect {
     Rect::new((aw - w) / 2, (ah - h) / 3, w, h)
 }
 
+/// New notebook's card, and the place its paper tiles start (draw_new's): the Templates sheet over it takes the
+/// same card and rows (issue #195: More layouts... opens the paper picker's grid with the templates in it).
+pub fn new_notebook_paper_place(aw: i32, ah: i32, g: &mut PaperGrid) -> (Rect, i32) {
+    let card = sheet_rect(aw, ah, ui_px(2300.0));
+    let in_ = ui_sheet_inner(card, true);
+    *g = paper_grid_cols(
+        PAPER_SHEET_TILES,
+        in_.w,
+        in_.h - ui_px(80.0) - ui_px(420.0),
+        ui_px(30.0),
+        ui_px(100.0),
+        ui_px(300.0),
+        PAPER_PICKER_COLS,
+    );
+    (card, in_.y + ui_px(80.0))
+}
+
 fn draw_new(a: &mut App) {
     let (aw, ah, dpi) = (a.w, a.h, a.dpi);
     let App {
@@ -1133,7 +1156,7 @@ fn draw_new(a: &mut App) {
     );
     let gridw = g.cols * g.tw + (g.cols - 1) * gap;
     let ty = in_.y + ui_px(80.0);
-    let tpl = !s.new_tpl.is_empty();
+    let tpl = !s.new_tpl.is_empty() || s.new_tpl_page.is_some();
     let new_custom = !tpl && paper_is_custom(s.new_paper);
     for i in 0..PAPER_SHEET_TILES {
         // The last tile, Custom music: the chosen layout, or the last one built. (More layouts...,
@@ -6186,6 +6209,11 @@ fn draw_modal(a: &mut App) {
             let mut ts = std::mem::take(&mut lib(a).ts);
             tplsheet_draw(&mut ts, a);
             lib(a).ts = ts;
+            if lib(a).tpl_picker.open {
+                let mut p = std::mem::take(&mut lib(a).tpl_picker);
+                p.draw(a);
+                lib(a).tpl_picker = p;
+            }
         }
         Modal::None => {}
     }
@@ -6657,11 +6685,16 @@ fn create_notebook(a: &mut App) {
     ) == 0
     {
         s.modal = Modal::None;
+        let tpl_page = s.new_tpl_page.take();
         let tpl_ok = s.new_tpl.is_empty() || start_on_template(&mut nb, s.new_tpl.as_str());
         let id = nb.id.as_str().to_string();
         drop(nb);
         editor_open_notebook(a, &id);
-        if !tpl_ok {
+        if let Some((src, at)) = tpl_page {
+            // A page of a notebook was picked (the Templates sheet's From a notebook..., issue #195): the new
+            // notebook's first page takes it as its template, as it takes a template picture.
+            crate::editor::apply_page_template(a, &src, at);
+        } else if !tpl_ok {
             let mut msg = String::new();
             csnprintf!(
                 &mut msg,
@@ -6971,6 +7004,7 @@ fn act(a: &mut App, h: &Hit) {
             s.new_name_typed = false;
             s.new_paper = PAPER_NARROW_NM;
             s.new_tpl.clear();
+            s.new_tpl_page = None;
             canvas_free(&mut s.tpl_prev);
             open_modal(a, Modal::New);
         }
@@ -7091,6 +7125,7 @@ fn act(a: &mut App, h: &Hit) {
             let s = lib(a);
             s.new_paper = PaperKind(h.arg as u32);
             s.new_tpl.clear();
+            s.new_tpl_page = None;
             redraw(a, RefreshMode::Ui);
         }
         H_PAPER_CUSTOM => {
@@ -8836,6 +8871,32 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
     }
     let modal = lib(a).modal;
     if modal == Modal::Templates {
+        // From a notebook... (issue #195): the pick of a notebook and one of its pages over the sheet.
+        if lib(a).tpl_picker.open {
+            let mut p = std::mem::take(&mut lib(a).tpl_picker);
+            let r = p.pointer(a, ph, ev);
+            lib(a).tpl_picker = p;
+            match r {
+                NotebookPick::Page(id, at) => {
+                    let mut ts = std::mem::take(&mut lib(a).ts);
+                    tplsheet_close(&mut ts);
+                    let s = lib(a);
+                    s.ts = ts;
+                    s.tpl_picker = NotebookPicker::default();
+                    s.new_tpl.clear();
+                    canvas_free(&mut s.tpl_prev);
+                    s.new_tpl_page = Some((id, at));
+                    s.modal = Modal::New; // (create_notebook makes the notebook's first page on it)
+                    redraw(a, RefreshMode::Full);
+                }
+                NotebookPick::Cancel => {
+                    lib(a).tpl_picker = NotebookPicker::default();
+                    redraw(a, RefreshMode::Full); // (the Templates sheet stays under it)
+                }
+                _ => {}
+            }
+            return;
+        }
         let mut d = Rect::default();
         let mut ts = std::mem::take(&mut lib(a).ts);
         let r = tplsheet_pointer(&mut ts, a, ph, ev.x, ev.y, ev.t_ms, &mut d);
@@ -8844,6 +8905,7 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
             let path = tplsheet_path(&ts).to_string();
             let s = lib(a);
             s.new_tpl.set(&path);
+            s.new_tpl_page = None;
             canvas_free(&mut s.tpl_prev);
             if let Some(pv) = tplsheet_preview(&mut ts) {
                 if canvas_init(&mut s.tpl_prev, pv.w, pv.h) == 0 {
@@ -8853,7 +8915,13 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
             tplsheet_close(&mut ts);
         }
         lib(a).ts = ts;
-        if r == TsResult::FromFile {
+        if r == TsResult::FromNotebook {
+            if lib(a).tpl_picker.start_pages("") {
+                redraw(a, RefreshMode::Full);
+            } else {
+                app_toast(a, tr("Couldn't read notebooks."), 3000);
+            }
+        } else if r == TsResult::FromFile {
             files_open_picture(a, crate::bgwork_copy::CopyTo::Templates);
         } else if r == TsResult::Picked || r == TsResult::Back || r == TsResult::Cancel {
             lib(a).modal = Modal::New; // back to New notebook, also from a tap outside the sheet
@@ -8907,6 +8975,7 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
                 let s = lib(a);
                 s.new_paper = musicbuild_result(&mb);
                 s.new_tpl.clear(); // (a layout built takes the place of a template picked before)
+                s.new_tpl_page = None;
             }
             musicbuild_free(&mut mb);
             lib(a).mb = mb;
@@ -9090,6 +9159,14 @@ pub fn library_tick(a: &mut App, now: u32) {
         lib(a).ts = ts;
         if drawn {
             app_invalidate(a, d, RefreshMode::Ui);
+        }
+        if lib(a).tpl_picker.open {
+            let mut p = std::mem::take(&mut lib(a).tpl_picker);
+            let pages = p.repaint_pages(a);
+            lib(a).tpl_picker = p;
+            if !rect_is_empty(pages) {
+                app_invalidate(a, pages, RefreshMode::Ui);
+            }
         }
     }
     // A background job ended (bgimage.h): the cards it may have changed are read again. A
@@ -9719,8 +9796,12 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "%d", if empty_hint_shown(s) { 1 } else { 0 });
     } else if key == "cards_redrawn" {
         csnprintf!(out, cap, "%d", s.cards_redrawn); // after background jobs that changed a card
+    } else if key == "picker" {
+        csnprintf!(out, cap, "%d", s.tpl_picker.open as i32); // the Templates sheet's From a notebook... pick
     } else if key == "paper" {
-        if !s.new_tpl.is_empty() {
+        if s.new_tpl_page.is_some() {
+            csnprintf!(out, cap, "notebook");
+        } else if !s.new_tpl.is_empty() {
             csnprintf!(out, cap, "template");
         } else if paper_is_custom(s.new_paper) {
             csnprintf!(out, cap, "custom");
@@ -12224,10 +12305,19 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     if name.starts_with("ui_has.") {return None;}
     // The file picker: files.back, files.row.N, files.more.N, files.item.NAME, files.prev, files.next, files.card.*
     if let Some(n)=name.strip_prefix("files.") {return a.lib.as_deref()?.files.point(n);}
-    // The Templates sheet over New notebook (2.2): templates.from_file, templates.back
+    // The Templates sheet over New notebook (2.2): templates.from_file, templates.from_notebook, templates.back
     if let Some(n)=name.strip_prefix("templates.") {
         let s=a.lib.as_deref()?;
-        return (s.modal==Modal::Templates && !s.files.open).then(||tplsheet_point(&s.ts,n)).flatten();
+        return (s.modal==Modal::Templates && !s.files.open && !s.tpl_picker.open).then(||tplsheet_point(&s.ts,n)).flatten();
+    }
+    // Its From a notebook... pick (issue #195), named as the editor's pick of a notebook's pages: elsewhere.book.ID,
+    // elsewhere.page.N, elsewhere.back, ...
+    {
+        let s=a.lib.as_deref()?;
+        if s.tpl_picker.open {
+            if let Some(n)=name.strip_prefix("elsewhere.") {return s.tpl_picker.point(n);}
+            return None;
+        }
     }
     // The Display sheet's controls while it is open ("display.done", "display.fit").
     if let Some(n)=name.strip_prefix("display.") {return dispmenu_control_point(&a.lib.as_deref()?.dm,n);}

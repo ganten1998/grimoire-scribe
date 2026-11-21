@@ -1,9 +1,9 @@
 # settings: status_mode=1
 # 50 templates and a file that is no picture: the Templates sheet opens at once, its tiles waiting
 # for the previews the background makes, which fill in as they come (the file that is no picture
-# leaves the sheet). Three pages of 24 upright, 21 sideways, with Prev and Next. A turn and a sleep
-# keep the sheet open with the same tiles in view: after a turn it shows the page with the first
-# tile it showed. The same over New notebook.
+# leaves the sheet). Three pages of 18, upright and sideways (the Paper sheet's six by three), with
+# Prev and Next. A turn and a sleep keep the sheet open with the same tiles in view: after a turn it
+# shows the page with the first tile it showed. The same over New notebook.
 # copy: tests/fixtures/tpl-many templates
 # rust-only
 wait 300
@@ -26,7 +26,7 @@ expect templates.count is 50
 expect templates.ready is 50
 expect templates.pages is 3
 shot 02-filled-in
-pentap 1640 2123
+pentap 1640 1835
 wait 200
 expect templates.page is 2
 shot 03-page-2
@@ -43,24 +43,24 @@ wait 500
 expect editor.modal is templates
 expect templates.page is 2
 shot 05-sideways-after-a-wake
-pentap 2260 1694
+pentap 2260 1734
 wait 200
 expect templates.page is 3
 shot 06-sideways-page-3
-pentap 1600 1694
+pentap 1600 1734
 wait 200
 expect templates.page is 2
-pentap 2260 1694
+pentap 2260 1734
 wait 200
 expect templates.page is 3
-# Upright again: page 3 sideways starts with Grid 43, on page 2 upright.
+# Upright again: page 3 sideways starts with Grid 37, on page 3 upright.
 rotate 0
 wait 400
 expect editor.modal is templates
-expect templates.page is 2
-shot 07-upright-page-2
-# Grid 43 (page 2's 19th tile) becomes the page's paper.
-pentap 232 1748
+expect templates.page is 3
+shot 07-upright-page-3
+# Grid 43 (page 3's 7th tile) becomes the page's paper.
+pentap 232 1035
 wait 300
 expect editor.modal is none
 expect editor.paper_hex has 0x50
@@ -73,8 +73,8 @@ wait 200
 pentap panel paper.more
 wait 300
 expect templates.selected is Grid 43
-expect templates.page is 2
-pentap 300 2123
+expect templates.page is 3
+pentap 300 1835
 wait 200
 tap 1562 2125
 wait 200
@@ -89,7 +89,7 @@ tap library paper.more
 wait 200
 expect library.sheet is templates
 expect templates.page is 1
-tap 1640 2123
+tap 1640 2250
 wait 200
 expect templates.page is 2
 rotate 1
@@ -103,7 +103,7 @@ wake
 wait 500
 expect library.sheet is templates
 expect templates.page is 2
-tap 300 1694
+tap 570 1696
 wait 200
 expect library.sheet is new
 tap 570 1700

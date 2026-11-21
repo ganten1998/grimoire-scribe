@@ -1255,6 +1255,76 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
     rc
 }
 
+/// BgKind::PageTemplate (2.2, issue #195): page `index` of notebook `src`, in the path as
+/// "<src>:<index>:<key>", drawn whole (paper and ink) as the picture notebook `dest`'s bg/index.ini gives that
+/// key. The Templates sheet's From a notebook... gave dest the id before it queued this. 0, or -1: the page
+/// does not read, a picture it is drawn on is missing, or the id is not in the index.
+pub fn bg_page_template(dest: &str, path: &str, dpi: f32) -> i32 {
+    let Some((rest, key)) = path.rsplit_once(':') else { return -1 };
+    let Some((src, index)) = rest.split_once(':') else { return -1 };
+    let (Ok(index), Ok(key)) = (index.parse::<i32>(), u64::from_str_radix(key, 16)) else { return -1 };
+    let cap = cap_memory();
+    let rc = make_page_template(dest, src, index, key, dpi);
+    uncap_memory(&cap);
+    rc
+}
+
+fn make_page_template(dest: &str, src: &str, index: i32, key: u64, dpi: f32) -> i32 {
+    let mut dir = String::new();
+    let mut ix = BgIndex::default();
+    let mut pic = 0u32;
+    if bgimage_dir(dest, &mut dir, 700) != 0 || bgindex_load(&dir, &mut ix) != 0 || !bgindex_find(&ix, key, &mut pic) {
+        bgindex_free(&mut ix);
+        qlog!("templates: %s: no picture was given to this page template; nothing made", dest);
+        return -1;
+    }
+    bgindex_free(&mut ix);
+    let mut file = String::new();
+    bgimage_file(&dir, pic, &mut file, 800);
+    if exists(&file) {
+        return 0; // (the same page as it was picked before: the picture is there)
+    }
+    let mut srcnb = NotebookInfo::default();
+    if store_load_info(src, &mut srcnb) != 0 {
+        qlog!("templates: %s: the notebook a page template comes from does not open", dest);
+        return -1;
+    }
+    let mut page = None;
+    if store_read_page(&srcnb, index, &mut page) != 0 {
+        return -1;
+    }
+    let Some(page) = page else { return -1 };
+    let (mut pw, mut ph) = (0, 0);
+    let mut dstnb = NotebookInfo::default();
+    if store_load_info(dest, &mut dstnb) != 0 {
+        return -1;
+    }
+    store_notebook_page_size(&dstnb, &mut pw, &mut ph);
+    let mut c = Canvas::default();
+    if canvas_init(&mut c, page.w, page.h) != 0 {
+        return -1;
+    }
+    bgimage_take_missing(); // (what drew white before)
+    page_render(&mut c, &page, Rect::new(0, 0, page.w, page.h), dpi);
+    if bgimage_take_missing() {
+        qlog!("templates: %s: the page's paper picture is missing; no template made", dest);
+        return -1;
+    }
+    // (fitted to this notebook's page as a template's picture is, and gray: a page is drawn gray)
+    let srcpic = BgPicture { px: c.px, w: c.w, h: c.h, ch: 1 };
+    let mut fit = BgPicture::default();
+    if bgimage_normalize(&srcpic, pw, ph, &mut fit) != 0 {
+        return -1;
+    }
+    let rc = bgimage_write_png(&file, &fit);
+    if rc == 0 {
+        qlog!("templates: %s: bg/%06x.png made from page %d (%dx%d)", dest, pic, index, pw, ph);
+    } else {
+        qlog!("templates: %s: bg/%06x.png could not be made from page %d", dest, pic, index);
+    }
+    rc
+}
+
 // ---- imports ----
 
 // Only one import runs at a time, in whichever process (a run's last jobs go on in a detached child after
