@@ -1189,6 +1189,27 @@ fn translated(s: &Stroke, spot: Spot, dpi: f32) -> Box<Stroke> {
     c
 }
 
+/// Group g made k times as large by a resize of the selection (issue #204): each stroke's widths scaled with
+/// its points, ink, white ink and the erasing that goes with it alike, so the group is put down as a picture of
+/// itself, larger or smaller: what its erasing hid stays hidden and what showed still shows. With the widths
+/// kept, an enlarged group's erasing no longer covered all the ink it had erased, and a shrunk group's reached
+/// ink it had not. A width stays within the range a page file keeps (page_parse clamps to it, and the brush
+/// draws no wider), so the stroke reads back as it is put down. Floor markers are left as they are. (A paste
+/// scaled to fit keeps the widths in mm, as scale_page does.) The boxes are made again where the strokes are
+/// put down (lasso_place).
+pub fn lasso_scale_widths(g: &mut Group, k: f32) {
+    if !k.is_finite() || k <= 0.0 || k == 1.0 {
+        return;
+    }
+    let table = tool_param_table();
+    for s in g.strokes.iter_mut().filter(|s| !is_floor_marker(s)) {
+        for pi in table.iter().filter(|pi| pi.field <= 1) {
+            let v = tool_param_ptr(&mut s.params, pi);
+            *v = clampf(*v * k, pi.min, pi.max);
+        }
+    }
+}
+
 /// Draws s onto c (a canvas of the page), as the renderer does: ink clipped to the canvas's clip, an
 /// erase stroke restoring toward `rest` (its buffer and the rect it covers, which it is clipped to).
 fn draw_stroke(c: &mut Canvas, s: &Stroke, dpi: f32, rest: Option<(Rc<Vec<u8>>, Rect, i32)>) {

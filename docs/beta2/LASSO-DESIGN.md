@@ -69,6 +69,7 @@ Shared facts:
 | 7 | A lasso-touched page in older versions | Section 4. Pages never touched by the lasso look and save exactly as today in every version. Lasso pages without scoping (the common case) are exact in 1.1, 1.2.0 and 2.0.0-beta.1. A scoped group shows there with its erasure also lightening the destination ink under its gaps; nothing is lost on their re-save and beta.2 shows it right again. 1.0.0-beta draws no erasure (as on every page) and its re-save zeroes the scope. |
 | 8 | Pencil-textured partial erasing (white pencil, texture byte), and erase strokes crossing selected and unselected ink | The moved or pasted word carries a copy of each such stroke (same texture byte, seed, parameters and points), scoped if needed, so its partial erasing is identical. The original stays, so the unselected neighbour stays partly erased exactly as before (except where the moved ink used to overlap it, which is now uncovered as expected). |
 | 9 | Drawing or erasing over a pasted group later | New ink goes after the group: normal. New erase strokes are ordinary and take away group ink and anything under it, as anywhere. The stroke eraser takes group strokes away (erase strokes and floor markers stay, as erase strokes always do), deciding visibility through the floor-aware renderer. Lassoing the group again, alone or together with the ink under it, keeps every floor, so it moves exactly again. |
+| 10 | A selection made larger or smaller by a corner handle (2.1, issue #37; 2.2, issue #204) | Scaled about the opposite corner as a picture of itself: each stroke's points and widths, black ink, white ink and the erasing carried with the ink alike, so what the erasing hid stays hidden and what showed still shows, both ways, and a resize undone by the opposite one gives the widths back. Before 2.2 the widths stayed in mm: made larger, the erasing no longer covered all the ink it had erased (faint traces of an erased word at 1.1 times, dark ones at 1.5); made smaller, a cut kept its width and took away ink beside it that showed. A width stays within 0.1 to 12 mm, the range a page file keeps and the brush draws: erasing that would be wider is drawn 12 mm wide (an 8 mm eraser's past 1.5 times), so a word erased with little room to spare can show traces at the edge of its erasing after a larger resize. Erasing made larger over ink outside the selection is scoped (6.4), as a move's. One undo step. A paste scaled to fit (row 4) keeps the widths in mm. |
 
 Other rules:
 
@@ -286,7 +287,8 @@ overlaps existing ink.
   of the spine has a halo where the page shows the stroke's ink across it (`stroke_shown_runs`), so none
   across an erased gap, however narrow the pass that cut it against the ink's width, none where several passes
   erased together what none of them covers alone, and none at all on ink the page shows nothing of, which the
-  rule above may still select (its box takes it in). Erased ink stays in the page file under its erase strokes
+  rule above still selects beside ink that shows (its box takes it in; alone, it is nothing to select: below).
+  Erased ink stays in the page file under its erase strokes
   until compaction, so before 2.2 each lasso drew it again as a dithered outline: faint marks where ink had
   been erased, on the page copied from and on the page pasted to.
 - **Links.** A link goes with the selection when:
@@ -295,7 +297,15 @@ overlaps existing ink.
   - every ink stroke inside its area is selected (at least one); or
   - for a beta.5 link without an area: every stroke with its seed is selected (all or nothing:
     if at least half its ink length is selected, all of its strokes join the selection).
-- **Nothing selected** (no ink, no link): the toast of row 3.
+- **Nothing selected** (no ink, no link): "Nothing to select."; round white ink or eraser marks alone, the toast
+  of row 3. (2.2, issue #205) The same "Nothing to select." when all the ink a lasso takes is ink the page shows
+  nothing of (erased wholly by the precise eraser or white ink) and no link comes with it: such a selection had
+  no halo, only a box round nothing. "Shows" is the halo's rule above (`plan_shows`: would the selection have a
+  halo anywhere, its strokes taken whole and its exact-area pieces judged as the page draws them), reading what
+  the preview found first. Beside ink that shows, such ink is selected by the rule above, as before: Copy leaves
+  it out, Cut and Delete take it with the rest. A lasso that takes a link keeps it, with such ink (the link
+  shows; the link rules are unchanged). The bar's mode button, judging the lasso again in the other mode, does
+  the same.
 - Cost on the dense page: about 300k samples x a binary search, plus the hidden test only near
   erase strokes: 20 to 40 ms estimated.
 
@@ -334,6 +344,11 @@ Inputs: page P, selected ink S (in page order).
 
 1. Translate (and scale, only for an oversized group) every point; markers stay at (-8192,
    -8192). Recompute bboxes with `stroke_append` (as `scale_page` does). Assign seeds (6.6).
+   (A resize by a corner handle, issue #37, places the selection so too, scaled about the opposite corner.
+   2.2, issue #204: before, it scales each stroke's widths by the same factor, `lasso_scale_widths`, ink,
+   white ink and erasing alike, each kept within the 0.1 to 12 mm `page_parse` clamps a page file's widths to;
+   markers as they are. A group scaled to fit keeps its widths in mm. The floors below are decided on the
+   strokes as they are put down, scaled widths and all.)
 2. Walk L in order over the page canvas C (valid, equal to P rendered; for a move, the source
    already removed):
    - **At each floor position φ:** `R_φ` = union of the bboxes of φ's erase strokes, clipped to

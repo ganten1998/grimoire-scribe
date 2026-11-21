@@ -139,11 +139,14 @@
   when to wait, when the storage is full, or when the page must be reloaded; otherwise "Not imported.". Share still
   has no password: anyone on your Wi-Fi can open its page while it is open, so only send, and only tap Import, when
   you expect it and the two codes are the same.
-- **No faint marks in a lasso selection** (#187). Selecting with the lasso no longer shows faint outlines where ink
-  was erased (on a page you copied from, or erased on after a paste): the dotted halo follows the ink as the page
-  shows it, whatever the eraser's size and however many strokes of it, and after a move or a resize too. The
-  lasso's work over much erased ink is several times quicker, so its line keeps up with the pen there (it could
-  cut straight across part of the way).
+- **No faint marks in a lasso selection** (#187, #204, #205). Selecting with the lasso no longer shows faint
+  outlines where ink was erased (on a page you copied from, or erased on after a paste): the dotted halo follows
+  the ink as the page shows it, whatever the eraser's size and however many strokes of it, and after a move or a
+  resize too. The lasso's work over much erased ink is several times quicker, so its line keeps up with the pen
+  there (it could cut straight across part of the way). A selection made larger or smaller by a corner now scales
+  the width of everything in it with its size, ink, white ink and erasing alike, so an erased word no longer comes
+  back as faint traces after Done. A lasso round only ink you erased wholly selects nothing and says "Nothing to
+  select.", as a lasso round empty paper does.
 
 ## 2.1.0 (2026-11-13)
 
